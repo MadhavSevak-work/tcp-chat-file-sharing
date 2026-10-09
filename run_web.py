@@ -27,8 +27,25 @@ def main():
     print("=" * 65)
     print("[WEB] TCP Chat & File Sharing Web Application Gateway")
     print(f"[*] Web Interface:  http://localhost:{args.port}")
-    print(f"[*] Underlying TCP: 127.0.0.1:{DEFAULT_CHAT_PORT}")
-    print("=" * 65)
+    # Check if TCP server is already running on port 5000; if not, launch it automatically
+    import socket
+    s = socket.socket()
+    try:
+        s.connect(("127.0.0.1", DEFAULT_CHAT_PORT))
+        s.close()
+        print(f"[*] Connected to existing TCP Server on Port {DEFAULT_CHAT_PORT}")
+    except Exception:
+        s.close()
+        print(f"[*] Starting internal TCP Chat Server on Port {DEFAULT_CHAT_PORT} for cloud/single-process mode...")
+        try:
+            from server.server_core import ChatServer
+            from server.logger import setup_logger
+            from shared.constants import DEFAULT_FILE_PORT
+            logger = setup_logger("TCPServerAuto")
+            tcp_server = ChatServer(host="127.0.0.1", chat_port=DEFAULT_CHAT_PORT, file_port=DEFAULT_FILE_PORT, logger=logger)
+            tcp_server.start()
+        except Exception as e:
+            print(f"[!] Warning: Could not auto-start TCP server: {e}")
 
     socketio.run(app, host=args.host, port=args.port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
 
