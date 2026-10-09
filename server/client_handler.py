@@ -105,7 +105,11 @@ class ClientHandler(threading.Thread):
             self.close()
             return False
 
-        if not init_msg or init_msg.get("type") != MSG_CONNECT:
+        if not init_msg:
+            self.close()
+            return False
+
+        if init_msg.get("type") != MSG_CONNECT:
             self.send_payload({"type": MSG_ERROR, "message": "Expected CONNECT message."})
             self.close()
             return False

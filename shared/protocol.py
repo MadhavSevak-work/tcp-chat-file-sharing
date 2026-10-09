@@ -107,6 +107,13 @@ def recv_msg(sock: socket.socket) -> Optional[Dict[str, Any]]:
 
     payload_length = struct.unpack("!I", header_bytes)[0]
     if payload_length > MAX_MESSAGE_SIZE:
+        # Gracefully handle Cloud HTTP probes (e.g., Render/AWS health checks: HEAD, GET, OPTIONS)
+        if header_bytes in (b"HEAD", b"GET ", b"POST", b"OPTI", b"PUT "):
+            try:
+                sock.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\nContent-Length: 2\r\n\r\nOK")
+            except Exception:
+                pass
+            return None
         raise ProtocolError(f"Incoming message payload too large: {payload_length} bytes")
 
     # 2. Read exact payload
