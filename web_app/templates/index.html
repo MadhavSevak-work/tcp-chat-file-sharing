@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TCP Multi-Client Chat & File Sharing Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body class="dark-theme">
+
+  <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
+  <div id="login-overlay" class="modal-backdrop">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="logo-badge">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+        </div>
+        <h2>Computer Networks Lab</h2>
+        <p class="subtitle">TCP-Based Multi-Client Chat & File Sharing System</p>
+      </div>
+
+      <div class="login-body">
+        <div id="login-error" class="alert-box alert-error hidden"></div>
+
+        <div class="form-group">
+          <label for="username-input">Choose Username</label>
+          <div class="input-with-icon">
+            <span class="icon">👤</span>
+            <input type="text" id="username-input" placeholder="e.g. Alice_CN, Student1" maxlength="20" autofocus autocomplete="off">
+          </div>
+          <span class="input-hint">2-20 characters: letters, numbers, hyphens, and dots.</span>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group flex-2">
+            <label for="host-input">TCP Server IP</label>
+            <input type="text" id="host-input" value="127.0.0.1">
+          </div>
+          <div class="form-group flex-1">
+            <label for="port-input">Port</label>
+            <input type="number" id="port-input" value="5000">
+          </div>
+        </div>
+
+        <div class="network-badge">
+          <span class="dot pulse"></span>
+          <span>Gateway: <strong>Web (Port 5050) &rarr; TCP (Port 5000)</strong></span>
+        </div>
+
+        <button id="connect-btn" class="btn btn-primary btn-block">
+          <span>Connect to Network</span>
+          <span class="arrow">&rarr;</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MAIN APPLICATION CONTAINER ==================== -->
+  <div id="app-container" class="app-layout hidden">
+    
+    <!-- LEFT SIDEBAR -->
+    <aside class="sidebar">
+      <!-- App Brand -->
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-icon">⚡</span>
+          <div>
+            <h3>TCP NetChat</h3>
+            <span class="badge-tech">Layer 4 TCP / WS</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Current User Profile Card -->
+      <div class="user-profile-card">
+        <div class="avatar-ring">
+          <div class="avatar" id="my-avatar">?</div>
+          <span class="status-indicator online"></span>
+        </div>
+        <div class="user-meta">
+          <span class="username" id="my-username">Connecting...</span>
+          <span class="user-ip" id="my-endpoint">127.0.0.1:5000</span>
+        </div>
+      </div>
+
+      <!-- Channels & Direct Messages Navigation -->
+      <div class="sidebar-section">
+        <div class="section-title">CHANNELS</div>
+        <ul class="nav-list">
+          <li class="nav-item active" id="btn-public-room">
+            <span class="icon">🌐</span>
+            <span class="name">Public Room</span>
+            <span class="badge" id="public-badge">ALL</span>
+          </li>
+        </ul>
+      </div>
+
+      <div class="sidebar-section flex-grow">
+        <div class="section-title flex-between">
+          <span>ONLINE PEERS (<span id="user-count">0</span>)</span>
+        </div>
+        <ul class="nav-list user-list" id="users-nav-list">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Live Diagnostics Mini-Widget -->
+      <div class="diagnostics-mini" id="diagnostics-mini-btn" title="Click to view detailed network metrics">
+        <div class="diag-header">
+          <span>NETWORK TELEMETRY</span>
+          <span class="diag-ping" id="mini-ping">-- ms</span>
+        </div>
+        <div class="diag-metrics">
+          <div class="metric"><span class="label">Transport:</span> <span class="val text-green" id="mini-transport">WebSocket</span></div>
+          <div class="metric"><span class="label">TCP Target:</span> <span class="val text-blue" id="mini-tcp-target">5000</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER CHAT AREA -->
+    <main class="chat-area">
+      <!-- Chat Header -->
+      <header class="chat-header">
+        <div class="channel-info">
+          <h2 id="active-chat-title">🌐 Public Room</h2>
+          <span class="channel-desc" id="active-chat-desc">Broadcasts to all connected TCP & Web peers</span>
+        </div>
+        <div class="header-actions">
+          <button id="btn-open-file-panel" class="btn btn-secondary">
+            <span>📎 Share File</span>
+          </button>
+          <button id="btn-open-diagnostics" class="btn btn-secondary">
+            <span>📊 Diagnostics</span>
+          </button>
+          <button id="btn-disconnect" class="btn btn-danger btn-sm">
+            <span>Disconnect</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Messages History Scroll Container -->
+      <div class="messages-container" id="messages-container">
+        <!-- Messages appended dynamically -->
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon">💬</div>
+          <h3>Welcome to the Room</h3>
+          <p>Send a message below or select a peer to whisper privately.</p>
+        </div>
+      </div>
+
+      <!-- Message Composer -->
+      <footer class="chat-composer">
+        <form id="chat-form" class="composer-form">
+          <button type="button" id="btn-composer-attach" class="btn-icon" title="Attach File">📎</button>
+          <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off">
+          <button type="submit" id="btn-send-message" class="btn btn-primary btn-send">
+            <span>Send</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </form>
+      </footer>
+    </main>
+
+  </div>
+
+  <!-- ==================== SEND FILE MODAL ==================== -->
+  <div id="file-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>📤 Share File with Peer</h3>
+        <button class="modal-close" id="close-file-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="file-recipient-select">Select Recipient</label>
+          <select id="file-recipient-select" class="form-select">
+            <option value="">-- Choose Online Peer --</option>
+          </select>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-icon">📁</div>
+          <p>Drag & drop file here or <span class="browse-link">browse</span></p>
+          <span class="file-size-limit">Maximum file size: 100 MB</span>
+          <input type="file" id="file-input-element" class="hidden-file-input">
+        </div>
+
+        <div id="file-preview-card" class="file-preview-card hidden">
+          <div class="file-preview-icon">📄</div>
+          <div class="file-preview-details">
+            <div class="file-preview-name" id="preview-filename">report.pdf</div>
+            <div class="file-preview-size" id="preview-filesize">2.4 MB</div>
+            <div class="file-preview-hash" id="preview-hash">Computing SHA-256...</div>
+          </div>
+        </div>
+
+        <div id="upload-progress-container" class="progress-box hidden">
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="upload-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div class="progress-stats">
+            <span id="upload-progress-text">Uploading: 0%</span>
+            <span id="upload-progress-bytes">0 / 0 KB</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-file-btn">Cancel</button>
+        <button class="btn btn-primary" id="confirm-send-file-btn" disabled>Send File Offer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== INCOMING FILE OFFER MODAL ==================== -->
+  <div id="incoming-file-modal" class="modal-backdrop hidden">
+    <div class="modal-card modal-highlight">
+      <div class="modal-header">
+        <h3>📥 Incoming File Offer</h3>
+      </div>
+      <div class="modal-body">
+        <p class="lead-text"><strong id="incoming-sender-name">Alice</strong> wants to share a file with you:</p>
+
+        <div class="incoming-file-box">
+          <div class="file-title" id="incoming-file-name">document.pdf</div>
+          <div class="file-meta-row">
+            <span>Size: <strong id="incoming-file-size">1.2 MB</strong></span>
+          </div>
+          <div class="hash-tag">
+            <span class="hash-label">SHA-256:</span>
+            <code id="incoming-file-hash">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="btn-reject-file">Decline</button>
+        <button class="btn btn-success" id="btn-accept-file">Accept & Download</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== NETWORK DIAGNOSTICS MODAL ==================== -->
+  <div id="diagnostics-modal" class="modal-backdrop hidden">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <h3>📊 Network Architecture & Telemetry</h3>
+        <button class="modal-close" id="close-diag-modal">&times;</button>
+      </div>
+      <div class="modal-body diag-grid">
+        <div class="diag-card">
+          <h4>Application Transport</h4>
+          <div class="diag-stat">
+            <span class="stat-label">Browser Transport</span>
+            <span class="stat-value text-green" id="diag-transport">WebSocket</span>
+          </div>
+          <div class="diag-stat">
+            <span class="stat-label">Round-Trip Latency</span>
+            <span class="stat-value text-blue" id="diag-latency">-- ms</span>
+          </div>
+          <div class="diag-stat">
+            <span class="stat-label">Socket State</span>
+            <span class="stat-value" id="diag-socket-state">Connected</span>
+          </div>
+        </div>
+
+        <div class="diag-card">
+          <h4>Underlying TCP Socket</h4>
+          <div class="diag-stat">
+            <span class="stat-label">Chat Server Socket</span>
+            <span class="stat-value text-amber" id="diag-tcp-host">127.0.0.1:5000</span>
+          </div>
+          <div class="diag-stat">
+            <span class="stat-label">File Relay Socket</span>
+            <span class="stat-value" id="diag-file-port">Port 5001</span>
+          </div>
+          <div class="diag-stat">
+            <span class="stat-label">Framing Format</span>
+            <span class="stat-value text-purple">4-Byte Length-Prefix (!I)</span>
+          </div>
+        </div>
+
+        <div class="diag-card full-width">
+          <h4>Live Connection Activity Log</h4>
+          <div class="activity-log" id="activity-log-box">
+            <!-- Log entries appended dynamically -->
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="close-diag-btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging & Virtual Environments
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+ENV/
+
+# Unit test / coverage
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Logs and runtime artifacts
+*.log
+logs/
+downloads/
+temp_test_files/
+web_app/uploads/
+
+# Operating system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo

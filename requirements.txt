@@ -1,0 +1,9 @@
+# Python Dependencies for TCP Chat & File Sharing System
+#
+# Core Desktop Application & TCP Server:
+# - Uses Python 3 Standard Library exclusively (socket, threading, tkinter, json, struct, hashlib, logging, unittest)
+#
+# Web Application & Gateway (Port 5050):
+flask>=3.0.0
+flask-socketio>=5.3.0
+simple-websocket>=1.0.0
