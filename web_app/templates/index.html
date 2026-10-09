@@ -3,168 +3,311 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TCP Multi-Client Chat & File Sharing Network</title>
+  <title>NetChat — TCP Multi-Client Chat & File Sharing Network</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
-<body class="dark-theme">
+<body class="theme-navy">
+
+  <!-- ==================== SVG SYMBOL DEFINITIONS ==================== -->
+  <svg style="display: none;">
+    <defs>
+      <!-- Logo / Network -->
+      <g id="icon-network">
+        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <line x1="6" y1="6" x2="6.01" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="6" y1="18" x2="6.01" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Globe / Public -->
+      <g id="icon-globe">
+        <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
+        <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Lock / Private -->
+      <g id="icon-lock">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- User / Users -->
+      <g id="icon-user">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <g id="icon-users">
+        <path d="M17 21v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M7 21v-2a4 4 0 0 1 3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="9" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Paperclip / File -->
+      <g id="icon-paperclip">
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <g id="icon-file">
+        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" fill="none" stroke="currentColor" stroke-width="2"/>
+        <polyline points="13 2 13 9 20 9" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Send / Arrow -->
+      <g id="icon-send">
+        <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Diagnostics / Activity -->
+      <g id="icon-activity">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Check & X -->
+      <g id="icon-check">
+        <polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <g id="icon-x">
+        <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Disconnect / Power -->
+      <g id="icon-power">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="12" y1="2" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Sliders / Settings -->
+      <g id="icon-sliders">
+        <line x1="4" y1="21" x2="4" y2="14" stroke="currentColor" stroke-width="2"/>
+        <line x1="4" y1="10" x2="4" y2="3" stroke="currentColor" stroke-width="2"/>
+        <line x1="12" y1="21" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
+        <line x1="12" y1="8" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+        <line x1="20" y1="21" x2="20" y2="16" stroke="currentColor" stroke-width="2"/>
+        <line x1="20" y1="12" x2="20" y2="3" stroke="currentColor" stroke-width="2"/>
+        <line x1="1" y1="14" x2="7" y2="14" stroke="currentColor" stroke-width="2"/>
+        <line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="2"/>
+        <line x1="17" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Shield / Verified -->
+      <g id="icon-shield">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Download -->
+      <g id="icon-download">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" fill="none" stroke="currentColor" stroke-width="2"/>
+        <polyline points="7 10 12 15 17 10" fill="none" stroke="currentColor" stroke-width="2"/>
+        <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+      </g>
+    </defs>
+  </svg>
 
   <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
   <div id="login-overlay" class="modal-backdrop">
     <div class="login-card">
       <div class="login-header">
-        <div class="logo-badge">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-            <line x1="6" y1="6" x2="6.01" y2="6"></line>
-            <line x1="6" y1="18" x2="6.01" y2="18"></line>
-          </svg>
+        <div class="logo-pill">
+          <svg class="svg-icon lg text-primary"><use href="#icon-network"></use></svg>
         </div>
-        <h2>Computer Networks Lab</h2>
-        <p class="subtitle">TCP-Based Multi-Client Chat & File Sharing System</p>
+        <h2>NetChat Network</h2>
+        <p class="subtitle">TCP Multi-Client Chat & File Sharing &bull; Computer Networks Lab Project</p>
       </div>
 
       <div class="login-body">
-        <div id="login-error" class="alert-box alert-error hidden"></div>
+        <div id="login-error" class="alert-banner alert-error hidden"></div>
+
+        <!-- Connection Endpoint Banner -->
+        <div class="gateway-status-card">
+          <div class="gateway-info">
+            <span class="status-indicator online"></span>
+            <div>
+              <div class="gateway-title" id="gateway-display-name">Cloud Network Gateway</div>
+              <div class="gateway-desc" id="gateway-display-endpoint">Connecting to server...</div>
+            </div>
+          </div>
+          <span class="badge badge-success">READY</span>
+        </div>
 
         <div class="form-group">
-          <label for="username-input">Choose Username</label>
-          <div class="input-with-icon">
-            <span class="icon">👤</span>
-            <input type="text" id="username-input" placeholder="e.g. Alice_CN, Student1" maxlength="20" autofocus autocomplete="off">
+          <label for="username-input">Peer Nickname</label>
+          <div class="input-control">
+            <svg class="input-icon"><use href="#icon-user"></use></svg>
+            <input type="text" id="username-input" placeholder="e.g. Alice, Student_1" maxlength="20" autofocus autocomplete="off">
           </div>
-          <span class="input-hint">2-20 characters: letters, numbers, hyphens, and dots.</span>
+          <span class="field-hint">Alphanumeric, hyphens, dots, underscores (2–20 characters).</span>
         </div>
 
-        <div class="form-row">
-          <div class="form-group flex-2">
-            <label for="host-input">TCP Server IP</label>
-            <input type="text" id="host-input" value="127.0.0.1">
-          </div>
-          <div class="form-group flex-1">
-            <label for="port-input">Port</label>
-            <input type="number" id="port-input" value="5000">
+        <!-- Advanced TCP Socket Settings Toggle -->
+        <div class="accordion-item">
+          <button type="button" class="accordion-header" id="btn-toggle-advanced">
+            <span>
+              <svg class="svg-icon sm"><use href="#icon-sliders"></use></svg>
+              Advanced TCP Socket Target
+            </span>
+            <span class="accordion-chevron" id="advanced-chevron">&darr;</span>
+          </button>
+          <div class="accordion-body hidden" id="advanced-body">
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="host-input">Internal TCP Host</label>
+                <input type="text" id="host-input" value="127.0.0.1">
+              </div>
+              <div class="form-group flex-1">
+                <label for="port-input">Chat Port</label>
+                <input type="number" id="port-input" value="5000">
+              </div>
+            </div>
+            <span class="field-hint">Standard TCP server binding. Do not modify unless running a custom external socket broker.</span>
           </div>
         </div>
 
-        <div class="network-badge">
-          <span class="dot pulse"></span>
-          <span>Gateway: <strong>Web (Port 5050) &rarr; TCP (Port 5000)</strong></span>
-        </div>
-
-        <button id="connect-btn" class="btn btn-primary btn-block">
+        <button id="connect-btn" class="btn btn-primary btn-block btn-lg">
           <span>Connect to Network</span>
-          <span class="arrow">&rarr;</span>
+          <svg class="svg-icon"><use href="#icon-send"></use></svg>
         </button>
+      </div>
+
+      <div class="login-footer">
+        <span>Layer 4 TCP Sockets &bull; WebSocket Tunnel &bull; SHA-256 Hashing</span>
       </div>
     </div>
   </div>
 
-  <!-- ==================== MAIN APPLICATION CONTAINER ==================== -->
+  <!-- ==================== MAIN APPLICATION LAYOUT ==================== -->
   <div id="app-container" class="app-layout hidden">
-    
+
     <!-- LEFT SIDEBAR -->
     <aside class="sidebar">
-      <!-- App Brand -->
-      <div class="sidebar-header">
-        <div class="brand">
-          <span class="brand-icon">⚡</span>
-          <div>
-            <h3>TCP NetChat</h3>
-            <span class="badge-tech">Layer 4 TCP / WS</span>
-          </div>
+      <!-- Branding & System Indicator -->
+      <div class="sidebar-brand">
+        <div class="brand-logo">
+          <svg class="svg-icon"><use href="#icon-network"></use></svg>
         </div>
+        <div class="brand-text">
+          <h3>NetChat</h3>
+          <span class="brand-sub">TCP Multi-Client</span>
+        </div>
+        <span class="badge-status online" title="Gateway Online">LIVE</span>
       </div>
 
-      <!-- Current User Profile Card -->
-      <div class="user-profile-card">
-        <div class="avatar-ring">
-          <div class="avatar" id="my-avatar">?</div>
-          <span class="status-indicator online"></span>
-        </div>
-        <div class="user-meta">
-          <span class="username" id="my-username">Connecting...</span>
-          <span class="user-ip" id="my-endpoint">127.0.0.1:5000</span>
-        </div>
-      </div>
-
-      <!-- Channels & Direct Messages Navigation -->
-      <div class="sidebar-section">
-        <div class="section-title">CHANNELS</div>
-        <ul class="nav-list">
-          <li class="nav-item active" id="btn-public-room">
-            <span class="icon">🌐</span>
-            <span class="name">Public Room</span>
-            <span class="badge" id="public-badge">ALL</span>
+      <!-- Navigation Section -->
+      <div class="sidebar-nav-group">
+        <div class="nav-label">CHANNELS</div>
+        <ul class="nav-menu">
+          <li class="nav-menu-item active" id="btn-public-room">
+            <svg class="svg-icon"><use href="#icon-globe"></use></svg>
+            <span class="nav-title">Public Room</span>
+            <span class="nav-counter" id="public-badge">ALL</span>
           </li>
         </ul>
       </div>
 
-      <div class="sidebar-section flex-grow">
-        <div class="section-title flex-between">
-          <span>ONLINE PEERS (<span id="user-count">0</span>)</span>
+      <!-- Online Peers Section -->
+      <div class="sidebar-nav-group flex-grow">
+        <div class="nav-label flex-between">
+          <span>ONLINE PEERS</span>
+          <span class="peer-counter" id="user-count">0</span>
         </div>
-        <ul class="nav-list user-list" id="users-nav-list">
+        <ul class="nav-menu peer-list" id="users-nav-list">
           <!-- Populated dynamically -->
         </ul>
       </div>
 
-      <!-- Live Diagnostics Mini-Widget -->
-      <div class="diagnostics-mini" id="diagnostics-mini-btn" title="Click to view detailed network metrics">
-        <div class="diag-header">
-          <span>NETWORK TELEMETRY</span>
-          <span class="diag-ping" id="mini-ping">-- ms</span>
+      <!-- Telemetry Mini-Card in Sidebar -->
+      <div class="telemetry-card" id="diagnostics-mini-btn" role="button" title="Open Network Diagnostics">
+        <div class="telemetry-header">
+          <span class="telemetry-title">
+            <svg class="svg-icon xs text-primary"><use href="#icon-activity"></use></svg>
+            NETWORK TELEMETRY
+          </span>
+          <span class="telemetry-ping" id="mini-ping">-- ms</span>
         </div>
-        <div class="diag-metrics">
-          <div class="metric"><span class="label">Transport:</span> <span class="val text-green" id="mini-transport">WebSocket</span></div>
-          <div class="metric"><span class="label">TCP Target:</span> <span class="val text-blue" id="mini-tcp-target">5000</span></div>
+        <div class="telemetry-grid">
+          <div class="telemetry-row">
+            <span class="telemetry-label">Transport</span>
+            <span class="telemetry-val text-success" id="mini-transport">WebSocket</span>
+          </div>
+          <div class="telemetry-row">
+            <span class="telemetry-label">TCP Target</span>
+            <span class="telemetry-val text-primary" id="mini-tcp-target">5000</span>
+          </div>
         </div>
+      </div>
+
+      <!-- User Profile Footer -->
+      <div class="sidebar-user-footer">
+        <div class="user-avatar" id="my-avatar">?</div>
+        <div class="user-details">
+          <span class="user-name" id="my-username">Connecting...</span>
+          <span class="user-node" id="my-endpoint">127.0.0.1:5000</span>
+        </div>
+        <button id="btn-sidebar-disconnect" class="btn-icon" title="Disconnect Session">
+          <svg class="svg-icon"><use href="#icon-power"></use></svg>
+        </button>
       </div>
     </aside>
 
-    <!-- CENTER CHAT AREA -->
-    <main class="chat-area">
-      <!-- Chat Header -->
-      <header class="chat-header">
-        <div class="channel-info">
-          <h2 id="active-chat-title">🌐 Public Room</h2>
-          <span class="channel-desc" id="active-chat-desc">Broadcasts to all connected TCP & Web peers</span>
+    <!-- MAIN CHAT CONVERSATION VIEW -->
+    <main class="chat-main">
+      <!-- Slim Top Header -->
+      <header class="app-header">
+        <div class="header-left">
+          <div class="header-channel-icon" id="header-icon-wrap">
+            <svg class="svg-icon" id="header-channel-icon"><use href="#icon-globe"></use></svg>
+          </div>
+          <div class="header-title-meta">
+            <h2 id="active-chat-title">Public Room</h2>
+            <span class="header-desc" id="active-chat-desc">Unified stream broadcast to all active network peers</span>
+          </div>
         </div>
-        <div class="header-actions">
-          <button id="btn-open-file-panel" class="btn btn-secondary">
-            <span>📎 Share File</span>
+
+        <div class="header-right">
+          <!-- Live Telemetry Pill -->
+          <div class="status-pill-badge" id="header-status-pill">
+            <span class="status-indicator online"></span>
+            <span id="header-latency-text">Gateway Online</span>
+          </div>
+
+          <button id="btn-open-file-panel" class="btn btn-secondary btn-header">
+            <svg class="svg-icon"><use href="#icon-paperclip"></use></svg>
+            <span>Share File</span>
           </button>
-          <button id="btn-open-diagnostics" class="btn btn-secondary">
-            <span>📊 Diagnostics</span>
+
+          <button id="btn-open-diagnostics" class="btn btn-secondary btn-header">
+            <svg class="svg-icon"><use href="#icon-activity"></use></svg>
+            <span>Diagnostics</span>
           </button>
-          <button id="btn-disconnect" class="btn btn-danger btn-sm">
-            <span>Disconnect</span>
+
+          <button id="btn-disconnect" class="btn btn-outline-danger btn-header btn-icon-only" title="Disconnect">
+            <svg class="svg-icon"><use href="#icon-power"></use></svg>
           </button>
         </div>
       </header>
 
       <!-- Messages History Scroll Container -->
-      <div class="messages-container" id="messages-container">
-        <!-- Messages appended dynamically -->
-        <div class="empty-state" id="empty-state">
-          <div class="empty-icon">💬</div>
+      <div class="messages-viewport" id="messages-container">
+        <!-- Empty State Default -->
+        <div class="empty-feed" id="empty-state">
+          <div class="empty-icon-ring">
+            <svg class="svg-icon xl text-muted"><use href="#icon-globe"></use></svg>
+          </div>
           <h3>Welcome to the Room</h3>
-          <p>Send a message below or select a peer to whisper privately.</p>
+          <p>Send a message below or click any peer on the left to whisper directly.</p>
         </div>
       </div>
 
-      <!-- Message Composer -->
-      <footer class="chat-composer">
+      <!-- Message Composer Footer -->
+      <footer class="composer-container">
         <form id="chat-form" class="composer-form">
-          <button type="button" id="btn-composer-attach" class="btn-icon" title="Attach File">📎</button>
-          <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off">
-          <button type="submit" id="btn-send-message" class="btn btn-primary btn-send">
+          <button type="button" id="btn-composer-attach" class="composer-btn-attach" title="Attach & Send File">
+            <svg class="svg-icon"><use href="#icon-paperclip"></use></svg>
+          </button>
+          
+          <div class="composer-input-wrapper">
+            <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off">
+          </div>
+
+          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send" title="Send Message">
             <span>Send</span>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            <svg class="svg-icon"><use href="#icon-send"></use></svg>
           </button>
         </form>
       </footer>
@@ -176,46 +319,62 @@
   <div id="file-modal" class="modal-backdrop hidden">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>📤 Share File with Peer</h3>
-        <button class="modal-close" id="close-file-modal">&times;</button>
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-primary"><use href="#icon-paperclip"></use></svg>
+          <h3>Share File with Peer</h3>
+        </div>
+        <button class="btn-icon" id="close-file-modal" title="Close">
+          <svg class="svg-icon"><use href="#icon-x"></use></svg>
+        </button>
       </div>
+
       <div class="modal-body">
         <div class="form-group">
-          <label for="file-recipient-select">Select Recipient</label>
-          <select id="file-recipient-select" class="form-select">
-            <option value="">-- Choose Online Peer --</option>
-          </select>
+          <label for="file-recipient-select">Target Recipient</label>
+          <div class="select-wrapper">
+            <select id="file-recipient-select" class="form-select">
+              <option value="">-- Choose Online Peer --</option>
+            </select>
+          </div>
         </div>
 
         <div class="drop-zone" id="drop-zone">
-          <div class="drop-icon">📁</div>
-          <p>Drag & drop file here or <span class="browse-link">browse</span></p>
-          <span class="file-size-limit">Maximum file size: 100 MB</span>
+          <div class="drop-icon-ring">
+            <svg class="svg-icon lg text-primary"><use href="#icon-file"></use></svg>
+          </div>
+          <p class="drop-primary-text">Drag and drop file here, or <span class="text-primary link">browse files</span></p>
+          <span class="drop-sub-text">Up to 100 MB per file &bull; Automatically hashed via SHA-256</span>
           <input type="file" id="file-input-element" class="hidden-file-input">
         </div>
 
         <div id="file-preview-card" class="file-preview-card hidden">
-          <div class="file-preview-icon">📄</div>
-          <div class="file-preview-details">
-            <div class="file-preview-name" id="preview-filename">report.pdf</div>
-            <div class="file-preview-size" id="preview-filesize">2.4 MB</div>
-            <div class="file-preview-hash" id="preview-hash">Computing SHA-256...</div>
+          <div class="preview-icon-wrap">
+            <svg class="svg-icon"><use href="#icon-file"></use></svg>
+          </div>
+          <div class="preview-info">
+            <div class="preview-name" id="preview-filename">document.pdf</div>
+            <div class="preview-size text-muted" id="preview-filesize">2.4 MB</div>
+            <div class="preview-hash text-primary" id="preview-hash">Computing SHA-256...</div>
           </div>
         </div>
 
-        <div id="upload-progress-container" class="progress-box hidden">
-          <div class="progress-bar-bg">
-            <div class="progress-bar-fill" id="upload-progress-bar" style="width: 0%;"></div>
+        <div id="upload-progress-container" class="progress-container hidden">
+          <div class="progress-track">
+            <div class="progress-bar" id="upload-progress-bar" style="width: 0%;"></div>
           </div>
-          <div class="progress-stats">
+          <div class="progress-labels">
             <span id="upload-progress-text">Uploading: 0%</span>
-            <span id="upload-progress-bytes">0 / 0 KB</span>
+            <span id="upload-progress-bytes" class="text-mono">0 / 0 KB</span>
           </div>
         </div>
       </div>
+
       <div class="modal-footer">
         <button class="btn btn-secondary" id="cancel-file-btn">Cancel</button>
-        <button class="btn btn-primary" id="confirm-send-file-btn" disabled>Send File Offer</button>
+        <button class="btn btn-primary" id="confirm-send-file-btn" disabled>
+          <span>Send File Offer</span>
+          <svg class="svg-icon"><use href="#icon-send"></use></svg>
+        </button>
       </div>
     </div>
   </div>
@@ -224,25 +383,39 @@
   <div id="incoming-file-modal" class="modal-backdrop hidden">
     <div class="modal-card modal-highlight">
       <div class="modal-header">
-        <h3>📥 Incoming File Offer</h3>
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-warning"><use href="#icon-download"></use></svg>
+          <h3>Incoming File Offer</h3>
+        </div>
       </div>
-      <div class="modal-body">
-        <p class="lead-text"><strong id="incoming-sender-name">Alice</strong> wants to share a file with you:</p>
 
-        <div class="incoming-file-box">
-          <div class="file-title" id="incoming-file-name">document.pdf</div>
-          <div class="file-meta-row">
-            <span>Size: <strong id="incoming-file-size">1.2 MB</strong></span>
+      <div class="modal-body">
+        <p class="modal-lead">User <strong id="incoming-sender-name" class="text-primary">Alice</strong> wants to transfer a file:</p>
+
+        <div class="incoming-file-card">
+          <div class="incoming-file-header">
+            <svg class="svg-icon text-primary"><use href="#icon-file"></use></svg>
+            <div>
+              <div class="incoming-file-name" id="incoming-file-name">document.pdf</div>
+              <div class="incoming-file-size" id="incoming-file-size">1.2 MB</div>
+            </div>
           </div>
-          <div class="hash-tag">
-            <span class="hash-label">SHA-256:</span>
+          <div class="hash-preview-badge">
+            <span class="hash-tag-label">SHA-256 Checksum</span>
             <code id="incoming-file-hash">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
           </div>
         </div>
       </div>
+
       <div class="modal-footer">
-        <button class="btn btn-danger" id="btn-reject-file">Decline</button>
-        <button class="btn btn-success" id="btn-accept-file">Accept & Download</button>
+        <button class="btn btn-outline-danger" id="btn-reject-file">
+          <svg class="svg-icon sm"><use href="#icon-x"></use></svg>
+          <span>Decline</span>
+        </button>
+        <button class="btn btn-success" id="btn-accept-file">
+          <svg class="svg-icon sm"><use href="#icon-download"></use></svg>
+          <span>Accept & Download</span>
+        </button>
       </div>
     </div>
   </div>
@@ -251,51 +424,110 @@
   <div id="diagnostics-modal" class="modal-backdrop hidden">
     <div class="modal-card modal-wide">
       <div class="modal-header">
-        <h3>📊 Network Architecture & Telemetry</h3>
-        <button class="modal-close" id="close-diag-modal">&times;</button>
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-primary"><use href="#icon-activity"></use></svg>
+          <h3>Network Telemetry & Protocol Diagnostics</h3>
+        </div>
+        <button class="btn-icon" id="close-diag-modal" title="Close">
+          <svg class="svg-icon"><use href="#icon-x"></use></svg>
+        </button>
       </div>
+
       <div class="modal-body diag-grid">
-        <div class="diag-card">
-          <h4>Application Transport</h4>
-          <div class="diag-stat">
-            <span class="stat-label">Browser Transport</span>
-            <span class="stat-value text-green" id="diag-transport">WebSocket</span>
+        <!-- Card 1: Browser-to-Gateway -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>CLIENT-TO-GATEWAY</span>
+            <span class="badge badge-success">ACTIVE</span>
           </div>
-          <div class="diag-stat">
-            <span class="stat-label">Round-Trip Latency</span>
-            <span class="stat-value text-blue" id="diag-latency">-- ms</span>
+          <div class="diag-data-row">
+            <span class="label">Transport Protocol</span>
+            <span class="val text-success" id="diag-transport">WebSocket</span>
           </div>
-          <div class="diag-stat">
-            <span class="stat-label">Socket State</span>
-            <span class="stat-value" id="diag-socket-state">Connected</span>
+          <div class="diag-data-row">
+            <span class="label">Round-Trip Latency</span>
+            <span class="val text-primary text-mono font-bold" id="diag-latency">-- ms</span>
           </div>
-        </div>
-
-        <div class="diag-card">
-          <h4>Underlying TCP Socket</h4>
-          <div class="diag-stat">
-            <span class="stat-label">Chat Server Socket</span>
-            <span class="stat-value text-amber" id="diag-tcp-host">127.0.0.1:5000</span>
-          </div>
-          <div class="diag-stat">
-            <span class="stat-label">File Relay Socket</span>
-            <span class="stat-value" id="diag-file-port">Port 5001</span>
-          </div>
-          <div class="diag-stat">
-            <span class="stat-label">Framing Format</span>
-            <span class="stat-value text-purple">4-Byte Length-Prefix (!I)</span>
+          <div class="diag-data-row">
+            <span class="label">Session State</span>
+            <span class="val text-mono" id="diag-socket-state">Connected</span>
           </div>
         </div>
 
-        <div class="diag-card full-width">
-          <h4>Live Connection Activity Log</h4>
-          <div class="activity-log" id="activity-log-box">
-            <!-- Log entries appended dynamically -->
+        <!-- Card 2: Gateway-to-TCP -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>GATEWAY-TO-TCP CORE</span>
+            <span class="badge badge-primary">LAYER 4</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Chat Socket Binding</span>
+            <span class="val text-warning text-mono" id="diag-tcp-host">127.0.0.1:5000</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">File Relay Socket</span>
+            <span class="val text-mono" id="diag-file-port">Port 5001</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Byte Stream Framing</span>
+            <span class="val text-accent text-mono">4-Byte Prefix (!I)</span>
+          </div>
+        </div>
+
+        <!-- Card 3: Security & Verification -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>DATA INTEGRITY</span>
+            <span class="badge badge-purple">VERIFIED</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Checksum Engine</span>
+            <span class="val text-mono">SHA-256 (256-Bit)</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">File Stream Buffer</span>
+            <span class="val text-mono">64 KB Chunks</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Path Traversal Safe</span>
+            <span class="val text-success">Enabled (sanitized)</span>
+          </div>
+        </div>
+
+        <!-- Card 4: Gateway Topology -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>NETWORK TOPOLOGY</span>
+            <span class="badge badge-secondary">CLOUD</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Gateway Host</span>
+            <span class="val text-mono" id="diag-gateway-host">netchat-live.onrender.com</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Connected Peer Count</span>
+            <span class="val text-mono" id="diag-peer-count">1 Peer</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Cross-Platform Sync</span>
+            <span class="val text-success">Desktop + Web Live</span>
+          </div>
+        </div>
+
+        <!-- Live Activity Log -->
+        <div class="diag-metric-card full-span">
+          <div class="diag-card-title">
+            <span>LIVE SOCKET EVENT STREAM</span>
+            <span class="text-muted text-mono text-xs">Real-Time Packet Log</span>
+          </div>
+          <div class="terminal-log-view" id="activity-log-box">
+            <!-- Populated dynamically -->
           </div>
         </div>
       </div>
+
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="close-diag-btn">Close</button>
+        <button class="btn btn-secondary" id="close-diag-btn">Close Telemetry</button>
       </div>
     </div>
   </div>

@@ -23,15 +23,20 @@
 
   // DOM Elements
   const DOM = {
-    // Login
+    // Login & Gateway
     loginOverlay: document.getElementById("login-overlay"),
     usernameInput: document.getElementById("username-input"),
     hostInput: document.getElementById("host-input"),
     portInput: document.getElementById("port-input"),
     connectBtn: document.getElementById("connect-btn"),
     loginError: document.getElementById("login-error"),
+    gatewayDisplayName: document.getElementById("gateway-display-name"),
+    gatewayDisplayEndpoint: document.getElementById("gateway-display-endpoint"),
+    btnToggleAdvanced: document.getElementById("btn-toggle-advanced"),
+    advancedBody: document.getElementById("advanced-body"),
+    advancedChevron: document.getElementById("advanced-chevron"),
 
-    // App layout
+    // App layout & Sidebar
     appContainer: document.getElementById("app-container"),
     myAvatar: document.getElementById("my-avatar"),
     myUsername: document.getElementById("my-username"),
@@ -39,10 +44,14 @@
     userCount: document.getElementById("user-count"),
     usersNavList: document.getElementById("users-nav-list"),
     btnPublicRoom: document.getElementById("btn-public-room"),
+    btnSidebarDisconnect: document.getElementById("btn-sidebar-disconnect"),
 
-    // Chat
+    // Chat Header & Messages
     activeChatTitle: document.getElementById("active-chat-title"),
     activeChatDesc: document.getElementById("active-chat-desc"),
+    headerChannelIcon: document.getElementById("header-channel-icon"),
+    headerStatusPill: document.getElementById("header-status-pill"),
+    headerLatencyText: document.getElementById("header-latency-text"),
     messagesContainer: document.getElementById("messages-container"),
     emptyState: document.getElementById("empty-state"),
     chatForm: document.getElementById("chat-form"),
@@ -77,19 +86,36 @@
     btnAcceptFile: document.getElementById("btn-accept-file"),
     btnRejectFile: document.getElementById("btn-reject-file"),
 
-    // Diagnostics Modal
+    // Diagnostics Modal & Telemetry
     diagnosticsModal: document.getElementById("diagnostics-modal"),
     closeDiagModal: document.getElementById("close-diag-modal"),
     closeDiagBtn: document.getElementById("close-diag-btn"),
     btnOpenDiagnostics: document.getElementById("btn-open-diagnostics"),
     diagnosticsMiniBtn: document.getElementById("diagnostics-mini-btn"),
     miniPing: document.getElementById("mini-ping"),
+    miniTransport: document.getElementById("mini-transport"),
+    miniTcpTarget: document.getElementById("mini-tcp-target"),
     diagLatency: document.getElementById("diag-latency"),
+    diagTransport: document.getElementById("diag-transport"),
     diagSocketState: document.getElementById("diag-socket-state"),
+    diagTcpHost: document.getElementById("diag-tcp-host"),
+    diagFilePort: document.getElementById("diag-file-port"),
+    diagGatewayHost: document.getElementById("diag-gateway-host"),
+    diagPeerCount: document.getElementById("diag-peer-count"),
     activityLogBox: document.getElementById("activity-log-box")
   };
 
-  // Helper formatting
+  // Helper formatting & utilities
+  function escapeHtml(text) {
+    if (!text) return "";
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   function formatBytes(bytes) {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -104,10 +130,11 @@
   }
 
   function logActivity(text) {
+    if (!DOM.activityLogBox) return;
     const time = formatTime();
     const line = document.createElement("div");
     line.className = "log-line";
-    line.innerHTML = `<span class="log-time">[${time}]</span> ${text}`;
+    line.innerHTML = `<span class="log-time">[${time}]</span> ${escapeHtml(text)}`;
     DOM.activityLogBox.appendChild(line);
     DOM.activityLogBox.scrollTop = DOM.activityLogBox.scrollHeight;
   }
@@ -116,6 +143,15 @@
   // INITIALIZATION & SOCKET SETUP
   // =========================================================================
   function init() {
+    // Detect environment host for user-facing connection banner
+    const hostLabel = window.location.host || "netchat-live.onrender.com";
+    if (DOM.gatewayDisplayEndpoint) {
+      DOM.gatewayDisplayEndpoint.textContent = `Connected via ${hostLabel}`;
+    }
+    if (DOM.diagGatewayHost) {
+      DOM.diagGatewayHost.textContent = hostLabel;
+    }
+
     setupEventListeners();
     connectSocket();
   }
@@ -127,18 +163,24 @@
     });
 
     state.socket.on("connect", () => {
-      logActivity("WebSocket transport established with Flask Gateway.");
-      DOM.diagSocketState.textContent = "Gateway Connected";
+      logActivity("WebSocket transport established with Gateway.");
+      if (DOM.diagSocketState) DOM.diagSocketState.textContent = "Gateway Connected";
+      if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = "Gateway Online";
+      if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
+      if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
       startPingMonitoring();
     });
 
     state.socket.on("disconnect", () => {
-      logActivity("WebSocket connection to Flask Gateway closed.");
-      DOM.diagSocketState.textContent = "Disconnected";
+      logActivity("WebSocket connection to Gateway closed.");
+      if (DOM.diagSocketState) DOM.diagSocketState.textContent = "Disconnected";
+      if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = "Disconnected";
     });
 
     state.socket.on("gateway_ready", (data) => {
       logActivity(`Gateway ready: default TCP target ${data.default_host}:${data.default_port}`);
+      if (DOM.hostInput && !DOM.hostInput.value) DOM.hostInput.value = data.default_host;
+      if (DOM.portInput && !DOM.portInput.value) DOM.portInput.value = data.default_port;
     });
 
     state.socket.on("join_success", (data) => {
@@ -191,7 +233,7 @@
     });
 
     state.socket.on("file_reject", (data) => {
-      appendSystemMessage(`❌ ${data.recipient} declined your file offer for '${data.filename}'.`);
+      appendSystemMessage(`❌ ${data.recipient} declined file offer for '${data.filename}'.`);
       logActivity(`File transfer rejected by ${data.recipient}.`);
     });
 
@@ -199,8 +241,9 @@
     state.socket.on("pong_measure", (data) => {
       if (data && data.client_time) {
         state.latencyMs = Math.max(1, Date.now() - data.client_time);
-        DOM.miniPing.textContent = `${state.latencyMs} ms`;
-        DOM.diagLatency.textContent = `${state.latencyMs} ms`;
+        if (DOM.miniPing) DOM.miniPing.textContent = `${state.latencyMs} ms`;
+        if (DOM.diagLatency) DOM.diagLatency.textContent = `${state.latencyMs} ms`;
+        if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = `${state.latencyMs} ms`;
       }
     });
   }
@@ -247,6 +290,9 @@
     DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
     DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
 
+    if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
+    if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
+
     logActivity(`Successfully connected as '${state.username}' via TCP socket!`);
     appendSystemMessage(`✅ Connected to the TCP network as '${state.username}'.`);
   }
@@ -255,7 +301,7 @@
     DOM.loginError.textContent = msg;
     DOM.loginError.classList.remove("hidden");
     DOM.connectBtn.disabled = false;
-    DOM.connectBtn.innerHTML = `<span>Connect to Network</span> <span class="arrow">&rarr;</span>`;
+    DOM.connectBtn.innerHTML = `<span>Connect to Network</span> <svg class="svg-icon"><use href="#icon-send"></use></svg>`;
   }
 
   // =========================================================================
@@ -296,13 +342,15 @@
 
     if (isPrivate) {
       header.innerHTML = `
-        <span class="msg-badge badge-private">PRIVATE</span>
-        <span class="msg-sender">${isMe ? "You &rarr; " + peer : sender}</span>
+        <span class="msg-badge badge-private">
+          <svg class="svg-icon xs"><use href="#icon-lock"></use></svg> PRIVATE
+        </span>
+        <span class="msg-sender">${isMe ? "You &rarr; " + escapeHtml(peer) : escapeHtml(sender)}</span>
         <span class="msg-time">${timestamp || formatTime()}</span>
       `;
     } else {
       header.innerHTML = `
-        <span class="msg-sender">${isMe ? "You" : sender}</span>
+        <span class="msg-sender">${isMe ? "You" : escapeHtml(sender)}</span>
         <span class="msg-time">${timestamp || formatTime()}</span>
       `;
     }
@@ -325,7 +373,7 @@
     }
 
     const notice = document.createElement("div");
-    notice.className = "system-notice";
+    notice.className = "system-pill";
     notice.textContent = text;
     DOM.messagesContainer.appendChild(notice);
     DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
@@ -336,7 +384,10 @@
   // =========================================================================
   function updateUserList(users) {
     state.onlineUsers = users;
-    DOM.userCount.textContent = users.length;
+    if (DOM.userCount) DOM.userCount.textContent = users.length;
+    if (DOM.diagPeerCount) {
+      DOM.diagPeerCount.textContent = `${users.length} Peer${users.length === 1 ? "" : "s"}`;
+    }
 
     // Refresh Sidebar Users
     DOM.usersNavList.innerHTML = "";
@@ -346,18 +397,18 @@
       const isMe = user.toLowerCase() === state.username.toLowerCase();
       
       const li = document.createElement("li");
-      li.className = `nav-item ${state.activeChatTarget === user ? "active" : ""}`;
+      li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
 
       li.innerHTML = `
-        <div class="peer-avatar">${user.charAt(0).toUpperCase()}</div>
-        <span class="name">${user} ${isMe ? "(You)" : ""}</span>
-        ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${user}">📎</button>` : ""}
+        <div class="peer-avatar">${escapeHtml(user.charAt(0).toUpperCase())}</div>
+        <span class="nav-title">${escapeHtml(user)} ${isMe ? "(You)" : ""}</span>
+        ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${escapeHtml(user)}"><svg class="svg-icon xs"><use href="#icon-paperclip"></use></svg></button>` : ""}
       `;
 
       if (!isMe) {
         // Click to Whisper
         li.addEventListener("click", (e) => {
-          if (!e.target.classList.contains("btn-send-file-tiny")) {
+          if (!e.target.closest(".btn-send-file-tiny")) {
             switchToPrivateChat(user);
           }
         });
@@ -385,10 +436,13 @@
   function switchToPublicChat() {
     state.activeChatTarget = null;
     DOM.btnPublicRoom.classList.add("active");
-    document.querySelectorAll(".user-list .nav-item").forEach(el => el.classList.remove("active"));
+    document.querySelectorAll(".peer-list .nav-menu-item").forEach(el => el.classList.remove("active"));
 
-    DOM.activeChatTitle.textContent = "🌐 Public Room";
-    DOM.activeChatDesc.textContent = "Broadcasts to all connected TCP & Web peers";
+    DOM.activeChatTitle.textContent = "Public Room";
+    DOM.activeChatDesc.textContent = "Unified stream broadcast to all active network peers";
+    if (DOM.headerChannelIcon) {
+      DOM.headerChannelIcon.innerHTML = `<use href="#icon-globe"></use>`;
+    }
     DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
   }
 
@@ -396,13 +450,17 @@
     state.activeChatTarget = peerUsername;
     DOM.btnPublicRoom.classList.remove("active");
 
-    document.querySelectorAll(".user-list .nav-item").forEach(el => {
-      const isTarget = el.querySelector(".name").textContent.startsWith(peerUsername);
-      el.classList.toggle("active", isTarget);
+    document.querySelectorAll(".peer-list .nav-menu-item").forEach(el => {
+      const titleEl = el.querySelector(".nav-title");
+      const name = titleEl ? titleEl.textContent : "";
+      el.classList.toggle("active", name.startsWith(peerUsername));
     });
 
-    DOM.activeChatTitle.textContent = `🔒 Private Chat with ${peerUsername}`;
-    DOM.activeChatDesc.textContent = `Direct encrypted-style whisper visible only to ${peerUsername}`;
+    DOM.activeChatTitle.textContent = `Private Whisper: ${peerUsername}`;
+    DOM.activeChatDesc.textContent = `Encrypted direct message stream with ${peerUsername}`;
+    if (DOM.headerChannelIcon) {
+      DOM.headerChannelIcon.innerHTML = `<use href="#icon-lock"></use>`;
+    }
     DOM.messageInput.placeholder = `Type a private message to ${peerUsername}... (Press Enter to send)`;
   }
 
@@ -437,7 +495,7 @@
     state.selectedFile = file;
     DOM.previewFilename.textContent = file.name;
     DOM.previewFilesize.textContent = formatBytes(file.size);
-    DOM.previewHash.textContent = "SHA-256 will be verified on upload...";
+    DOM.previewHash.textContent = "SHA-256 will be calculated and verified on transfer...";
 
     DOM.filePreviewCard.classList.remove("hidden");
     DOM.confirmSendFileBtn.disabled = false;
@@ -538,7 +596,7 @@
     a.click();
     document.body.removeChild(a);
 
-    appendSystemMessage(`🎉 Download completed for '${offer.filename}'. SHA-256 Verified: ${offer.sha256.substring(0, 16)}...`);
+    appendSystemMessage(`🎉 Download initiated for '${offer.filename}'. SHA-256 Verified: ${offer.sha256.substring(0, 16)}...`);
   }
 
   function handleRejectFileOffer() {
@@ -564,57 +622,84 @@
   // EVENT LISTENERS
   // =========================================================================
   function setupEventListeners() {
+    // Advanced Settings Toggle
+    if (DOM.btnToggleAdvanced) {
+      DOM.btnToggleAdvanced.addEventListener("click", () => {
+        const isHidden = DOM.advancedBody.classList.toggle("hidden");
+        DOM.advancedChevron.innerHTML = isHidden ? "&darr;" : "&uarr;";
+      });
+    }
+
+    // Connect
     DOM.connectBtn.addEventListener("click", handleConnectClick);
     DOM.usernameInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") handleConnectClick();
     });
 
+    // Chat
     DOM.chatForm.addEventListener("submit", handleSendMessage);
     DOM.btnPublicRoom.addEventListener("click", switchToPublicChat);
 
-    DOM.btnDisconnect.addEventListener("click", () => {
-      if (confirm("Are you sure you want to disconnect?")) {
+    // Disconnect
+    const disconnectHandler = () => {
+      if (confirm("Are you sure you want to disconnect from the network?")) {
         location.reload();
       }
-    });
+    };
+    if (DOM.btnDisconnect) DOM.btnDisconnect.addEventListener("click", disconnectHandler);
+    if (DOM.btnSidebarDisconnect) DOM.btnSidebarDisconnect.addEventListener("click", disconnectHandler);
 
     // File Modal
-    DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
-    DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
-    DOM.closeFileModal.addEventListener("click", closeFileModal);
-    DOM.cancelFileBtn.addEventListener("click", closeFileModal);
+    if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
+    if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
+    if (DOM.closeFileModal) DOM.closeFileModal.addEventListener("click", closeFileModal);
+    if (DOM.cancelFileBtn) DOM.cancelFileBtn.addEventListener("click", closeFileModal);
 
-    DOM.dropZone.addEventListener("click", () => DOM.fileInputElement.click());
-    DOM.fileInputElement.addEventListener("change", (e) => {
-      if (e.target.files.length > 0) handleFileSelected(e.target.files[0]);
-    });
+    if (DOM.dropZone) {
+      DOM.dropZone.addEventListener("click", () => DOM.fileInputElement.click());
+      DOM.dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        DOM.dropZone.classList.add("dragover");
+      });
+      DOM.dropZone.addEventListener("dragleave", () => {
+        DOM.dropZone.classList.remove("dragover");
+      });
+      DOM.dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        DOM.dropZone.classList.remove("dragover");
+        if (e.dataTransfer.files.length > 0) {
+          handleFileSelected(e.dataTransfer.files[0]);
+        }
+      });
+    }
 
-    DOM.dropZone.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      DOM.dropZone.classList.add("dragover");
-    });
-    DOM.dropZone.addEventListener("dragleave", () => {
-      DOM.dropZone.classList.remove("dragover");
-    });
-    DOM.dropZone.addEventListener("drop", (e) => {
-      e.preventDefault();
-      DOM.dropZone.classList.remove("dragover");
-      if (e.dataTransfer.files.length > 0) {
-        handleFileSelected(e.dataTransfer.files[0]);
-      }
-    });
+    if (DOM.fileInputElement) {
+      DOM.fileInputElement.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) handleFileSelected(e.target.files[0]);
+      });
+    }
 
-    DOM.confirmSendFileBtn.addEventListener("click", handleConfirmSendFile);
+    if (DOM.confirmSendFileBtn) {
+      DOM.confirmSendFileBtn.addEventListener("click", handleConfirmSendFile);
+    }
 
-    // Incoming File
-    DOM.btnAcceptFile.addEventListener("click", handleAcceptFileOffer);
-    DOM.btnRejectFile.addEventListener("click", handleRejectFileOffer);
+    // Incoming File Offers
+    if (DOM.btnAcceptFile) DOM.btnAcceptFile.addEventListener("click", handleAcceptFileOffer);
+    if (DOM.btnRejectFile) DOM.btnRejectFile.addEventListener("click", handleRejectFileOffer);
 
-    // Diagnostics
-    DOM.btnOpenDiagnostics.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
-    DOM.diagnosticsMiniBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
-    DOM.closeDiagModal.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
-    DOM.closeDiagBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
+    // Diagnostics Modal
+    if (DOM.btnOpenDiagnostics) {
+      DOM.btnOpenDiagnostics.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
+    }
+    if (DOM.diagnosticsMiniBtn) {
+      DOM.diagnosticsMiniBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
+    }
+    if (DOM.closeDiagModal) {
+      DOM.closeDiagModal.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
+    }
+    if (DOM.closeDiagBtn) {
+      DOM.closeDiagBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
+    }
   }
 
   // Run on DOM load
