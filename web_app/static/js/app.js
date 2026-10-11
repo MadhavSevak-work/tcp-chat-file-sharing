@@ -1,12 +1,13 @@
 /**
- * TCP NetChat — Client-side Application Controller
- * Handles WebSockets, UI state, group/private chat, file transfers, and live telemetry.
+ * NetChat Live — Application Controller
+ * Handles WebSockets, UI state, light/dark themes, responsive drawer/mobile navigation,
+ * group/private chat, smart scrolling, file transfers, and live telemetry.
  */
 
 (function () {
   "use strict";
 
-  // App State
+  // Application State
   const state = {
     socket: null,
     username: "",
@@ -18,11 +19,19 @@
     pendingOffer: null,
     latencyMs: 0,
     pingInterval: null,
-    messagesCount: 0
+    messagesCount: 0,
+    theme: "dark",
+    isConnected: false,
+    connectionStatus: "disconnected" // "connected" | "connecting" | "disconnected"
   };
 
-  // DOM Elements
+  // DOM Elements Cache
   const DOM = {
+    // Theme toggles
+    htmlRoot: document.documentElement,
+    btnLoginThemeToggle: document.getElementById("btn-login-theme-toggle"),
+    btnThemeToggle: document.getElementById("btn-theme-toggle"),
+
     // Login & Gateway
     loginOverlay: document.getElementById("login-overlay"),
     usernameInput: document.getElementById("username-input"),
@@ -32,16 +41,24 @@
     loginError: document.getElementById("login-error"),
     gatewayDisplayName: document.getElementById("gateway-display-name"),
     gatewayDisplayEndpoint: document.getElementById("gateway-display-endpoint"),
+    loginGatewayDot: document.getElementById("login-gateway-dot"),
+    loginGatewayBadge: document.getElementById("login-gateway-badge"),
     btnToggleAdvanced: document.getElementById("btn-toggle-advanced"),
     advancedBody: document.getElementById("advanced-body"),
     advancedChevron: document.getElementById("advanced-chevron"),
 
     // App layout & Sidebar
     appContainer: document.getElementById("app-container"),
+    sidebar: document.getElementById("sidebar"),
+    sidebarBackdrop: document.getElementById("sidebar-backdrop"),
+    sidebarCloseBtn: document.getElementById("sidebar-close-btn"),
+    btnMobileMenu: document.getElementById("btn-mobile-menu"),
+    sidebarStatusBadge: document.querySelector(".sidebar-brand .badge-status"),
     myAvatar: document.getElementById("my-avatar"),
     myUsername: document.getElementById("my-username"),
     myEndpoint: document.getElementById("my-endpoint"),
     userCount: document.getElementById("user-count"),
+    mobileUserCount: document.getElementById("mobile-user-count"),
     usersNavList: document.getElementById("users-nav-list"),
     btnPublicRoom: document.getElementById("btn-public-room"),
     btnSidebarDisconnect: document.getElementById("btn-sidebar-disconnect"),
@@ -51,13 +68,23 @@
     activeChatDesc: document.getElementById("active-chat-desc"),
     headerChannelIcon: document.getElementById("header-channel-icon"),
     headerStatusPill: document.getElementById("header-status-pill"),
+    headerStatusDot: document.getElementById("header-status-dot"),
+    headerStatusText: document.getElementById("header-status-text"),
     headerLatencyText: document.getElementById("header-latency-text"),
     messagesContainer: document.getElementById("messages-container"),
     emptyState: document.getElementById("empty-state"),
+    btnJumpLatest: document.getElementById("btn-jump-latest"),
     chatForm: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     btnComposerAttach: document.getElementById("btn-composer-attach"),
     btnDisconnect: document.getElementById("btn-disconnect"),
+
+    // Mobile Bottom Tab Bar
+    mobileTabBar: document.getElementById("mobile-tab-bar"),
+    tabChat: document.getElementById("tab-chat"),
+    tabPeers: document.getElementById("tab-peers"),
+    tabShare: document.getElementById("tab-share"),
+    tabDiag: document.getElementById("tab-diag"),
 
     // File Sharing Modal
     fileModal: document.getElementById("file-modal"),
@@ -98,6 +125,7 @@
     diagLatency: document.getElementById("diag-latency"),
     diagTransport: document.getElementById("diag-transport"),
     diagSocketState: document.getElementById("diag-socket-state"),
+    diagGatewayBadge: document.getElementById("diag-gateway-badge"),
     diagTcpHost: document.getElementById("diag-tcp-host"),
     diagFilePort: document.getElementById("diag-file-port"),
     diagGatewayHost: document.getElementById("diag-gateway-host"),
@@ -105,7 +133,9 @@
     activityLogBox: document.getElementById("activity-log-box")
   };
 
-  // Helper formatting & utilities
+  // =========================================================================
+  // UTILITY HELPERS
+  // =========================================================================
   function escapeHtml(text) {
     if (!text) return "";
     return String(text)
@@ -140,9 +170,193 @@
   }
 
   // =========================================================================
+  // SINGLE SOURCE OF TRUTH: CONNECTION STATUS MANAGER
+  // =========================================================================
+  function setConnectionStatus(status, label) {
+    state.connectionStatus = status; // "connected" | "connecting" | "disconnected"
+
+    const isConnected = status === "connected";
+    state.isConnected = isConnected;
+
+    // Header Status Dot
+    if (DOM.headerStatusDot) {
+      DOM.headerStatusDot.className = "status-dot " + status;
+    }
+
+    // Header Status Text
+    if (DOM.headerStatusText) {
+      if (label) {
+        DOM.headerStatusText.textContent = label;
+      } else if (isConnected) {
+        DOM.headerStatusText.textContent = "Connected";
+      } else if (status === "connecting") {
+        DOM.headerStatusText.textContent = "Connecting...";
+      } else {
+        DOM.headerStatusText.textContent = "Disconnected";
+      }
+    }
+
+    // Header Latency Text
+    if (DOM.headerLatencyText) {
+      if (isConnected && state.latencyMs > 0) {
+        DOM.headerLatencyText.textContent = `${state.latencyMs} ms`;
+        DOM.headerLatencyText.classList.remove("hidden");
+      } else {
+        DOM.headerLatencyText.textContent = "";
+        DOM.headerLatencyText.classList.add("hidden");
+      }
+    }
+
+    // Sidebar status badge
+    if (DOM.sidebarStatusBadge) {
+      DOM.sidebarStatusBadge.className = "badge-status " + (isConnected ? "online" : "offline");
+      DOM.sidebarStatusBadge.textContent = isConnected ? "ONLINE" : (status === "connecting" ? "CONNECTING" : "OFFLINE");
+    }
+
+    // Diagnostics modal badge
+    if (DOM.diagGatewayBadge) {
+      DOM.diagGatewayBadge.className = "badge " + (isConnected ? "badge-success" : "badge-secondary");
+      DOM.diagGatewayBadge.textContent = isConnected ? "ACTIVE" : (status === "connecting" ? "CONNECTING" : "OFFLINE");
+    }
+
+    // Telemetry mini card values
+    if (DOM.diagSocketState) {
+      DOM.diagSocketState.textContent = isConnected ? "TCP Socket Active" : (status === "connecting" ? "Connecting" : "Disconnected");
+    }
+  }
+
+  // =========================================================================
+  // THEME MANAGEMENT (LIGHT & DARK MODE)
+  // =========================================================================
+  function initTheme() {
+    let savedTheme = null;
+    try {
+      savedTheme = localStorage.getItem("netchat_theme");
+    } catch (e) {}
+
+    if (savedTheme === "light" || savedTheme === "dark") {
+      state.theme = savedTheme;
+    } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+      state.theme = "light";
+    } else {
+      state.theme = "dark";
+    }
+
+    applyTheme(state.theme);
+
+    // Watch for OS preference changes if no manual preference saved
+    if (window.matchMedia) {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+        try {
+          if (!localStorage.getItem("netchat_theme")) {
+            applyTheme(e.matches ? "dark" : "light");
+          }
+        } catch (err) {}
+      });
+    }
+  }
+
+  function applyTheme(theme) {
+    state.theme = theme;
+    DOM.htmlRoot.setAttribute("data-theme", theme);
+    
+    try {
+      localStorage.setItem("netchat_theme", theme);
+    } catch (e) {}
+
+    const label = theme === "light" ? "Switch to dark mode" : "Switch to light mode";
+    if (DOM.btnThemeToggle) {
+      DOM.btnThemeToggle.setAttribute("title", label);
+      DOM.btnThemeToggle.setAttribute("aria-label", label);
+    }
+    if (DOM.btnLoginThemeToggle) {
+      DOM.btnLoginThemeToggle.setAttribute("title", label);
+      DOM.btnLoginThemeToggle.setAttribute("aria-label", label);
+    }
+  }
+
+  function toggleTheme() {
+    const nextTheme = state.theme === "dark" ? "light" : "dark";
+    applyTheme(nextTheme);
+  }
+
+  // =========================================================================
+  // MOBILE NAVIGATION DRAWER & TABS
+  // =========================================================================
+  function openSidebar() {
+    if (!DOM.sidebar) return;
+    DOM.sidebar.classList.add("open");
+    if (DOM.sidebarBackdrop) {
+      DOM.sidebarBackdrop.classList.remove("hidden");
+      requestAnimationFrame(() => {
+        DOM.sidebarBackdrop.classList.add("active");
+      });
+    }
+    if (DOM.btnMobileMenu) {
+      DOM.btnMobileMenu.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  function closeSidebar() {
+    if (!DOM.sidebar) return;
+    DOM.sidebar.classList.remove("open");
+    if (DOM.sidebarBackdrop) {
+      DOM.sidebarBackdrop.classList.remove("active");
+      setTimeout(() => {
+        if (!DOM.sidebar.classList.contains("open")) {
+          DOM.sidebarBackdrop.classList.add("hidden");
+        }
+      }, 200);
+    }
+    if (DOM.btnMobileMenu) {
+      DOM.btnMobileMenu.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  function setMobileActiveTab(tabName) {
+    const tabs = [DOM.tabChat, DOM.tabPeers, DOM.tabShare, DOM.tabDiag];
+    tabs.forEach((tab) => {
+      if (tab) tab.classList.remove("active");
+    });
+
+    if (tabName === "chat" && DOM.tabChat) DOM.tabChat.classList.add("active");
+    if (tabName === "peers" && DOM.tabPeers) DOM.tabPeers.classList.add("active");
+    if (tabName === "share" && DOM.tabShare) DOM.tabShare.classList.add("active");
+    if (tabName === "diag" && DOM.tabDiag) DOM.tabDiag.classList.add("active");
+  }
+
+  // =========================================================================
+  // SMART CHAT SCROLLING
+  // =========================================================================
+  function isUserNearBottom() {
+    if (!DOM.messagesContainer) return true;
+    const threshold = 100;
+    const position = DOM.messagesContainer.scrollHeight - DOM.messagesContainer.scrollTop - DOM.messagesContainer.clientHeight;
+    return position <= threshold;
+  }
+
+  function scrollToBottom(smooth = false) {
+    if (!DOM.messagesContainer) return;
+    if (smooth) {
+      DOM.messagesContainer.scrollTo({
+        top: DOM.messagesContainer.scrollHeight,
+        behavior: "smooth"
+      });
+    } else {
+      DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
+    }
+    if (DOM.btnJumpLatest) {
+      DOM.btnJumpLatest.classList.add("hidden");
+    }
+  }
+
+  // =========================================================================
   // INITIALIZATION & SOCKET SETUP
   // =========================================================================
   function init() {
+    initTheme();
+    setConnectionStatus("disconnected", "Disconnected");
+
     // Detect environment host for user-facing connection banner
     const hostLabel = window.location.host || "netchat-live.onrender.com";
     if (DOM.gatewayDisplayEndpoint) {
@@ -164,17 +378,22 @@
 
     state.socket.on("connect", () => {
       logActivity("WebSocket transport established with Gateway.");
-      if (DOM.diagSocketState) DOM.diagSocketState.textContent = "Gateway Connected";
-      if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = "Gateway Online";
       if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
       if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
+      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot connected";
+      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "READY";
       startPingMonitoring();
     });
 
     state.socket.on("disconnect", () => {
       logActivity("WebSocket connection to Gateway closed.");
-      if (DOM.diagSocketState) DOM.diagSocketState.textContent = "Disconnected";
-      if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = "Disconnected";
+      setConnectionStatus("disconnected", "Disconnected");
+      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot disconnected";
+      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "OFFLINE";
+    });
+
+    state.socket.on("connect_error", () => {
+      setConnectionStatus("disconnected", "Disconnected");
     });
 
     state.socket.on("gateway_ready", (data) => {
@@ -212,12 +431,13 @@
     });
 
     state.socket.on("server_error", (data) => {
-      appendSystemMessage(`⚠️ Error: ${data.message}`);
+      appendSystemMessage(`Error: ${data.message}`);
       logActivity(`Server error: ${data.message}`);
     });
 
     state.socket.on("server_disconnected", (data) => {
-      appendSystemMessage(`❌ ${data.message}`);
+      setConnectionStatus("disconnected", "Disconnected");
+      appendSystemMessage(`Connection closed: ${data.message}`);
       logActivity("Underlying TCP connection dropped.");
       alert(data.message);
       location.reload();
@@ -233,7 +453,7 @@
     });
 
     state.socket.on("file_reject", (data) => {
-      appendSystemMessage(`❌ ${data.recipient} declined file offer for '${data.filename}'.`);
+      appendSystemMessage(`${data.recipient} declined file offer for '${data.filename}'.`);
       logActivity(`File transfer rejected by ${data.recipient}.`);
     });
 
@@ -243,7 +463,11 @@
         state.latencyMs = Math.max(1, Date.now() - data.client_time);
         if (DOM.miniPing) DOM.miniPing.textContent = `${state.latencyMs} ms`;
         if (DOM.diagLatency) DOM.diagLatency.textContent = `${state.latencyMs} ms`;
-        if (DOM.headerLatencyText) DOM.headerLatencyText.textContent = `${state.latencyMs} ms`;
+        
+        // Single source of truth update
+        if (state.isConnected) {
+          setConnectionStatus("connected", "Connected");
+        }
       }
     });
   }
@@ -273,6 +497,7 @@
     DOM.connectBtn.disabled = true;
     DOM.connectBtn.innerHTML = `<span>Connecting to TCP...</span>`;
     DOM.loginError.classList.add("hidden");
+    setConnectionStatus("connecting", "Connecting...");
 
     logActivity(`Requesting TCP registration for '${username}' on ${host}:${port}...`);
     state.socket.emit("join", { username, host, port });
@@ -293,11 +518,19 @@
     if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
     if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
 
-    logActivity(`Successfully connected as '${state.username}' via TCP socket!`);
-    appendSystemMessage(`✅ Connected to the TCP network as '${state.username}'.`);
+    setConnectionStatus("connected", "Connected");
+
+    logActivity(`Successfully connected as '${state.username}' via TCP socket.`);
+    appendSystemMessage(`Connected to TCP network as '${state.username}'.`);
+
+    // Focus chat input on desktop
+    if (window.innerWidth > 768 && DOM.messageInput) {
+      DOM.messageInput.focus();
+    }
   }
 
   function showLoginError(msg) {
+    setConnectionStatus("disconnected", "Disconnected");
     DOM.loginError.textContent = msg;
     DOM.loginError.classList.remove("hidden");
     DOM.connectBtn.disabled = false;
@@ -326,12 +559,16 @@
       state.socket.emit("send_chat", { content: text });
       logActivity(`Sent public broadcast message.`);
     }
+
+    scrollToBottom(true);
   }
 
   function appendChatMessage(sender, content, timestamp, isPrivate, peer) {
     if (DOM.emptyState) {
       DOM.emptyState.style.display = "none";
     }
+
+    const wasNearBottom = isUserNearBottom();
 
     const isMe = sender.toLowerCase() === state.username.toLowerCase();
     const bubble = document.createElement("div");
@@ -345,7 +582,7 @@
         <span class="msg-badge badge-private">
           <svg class="svg-icon xs"><use href="#icon-lock"></use></svg> PRIVATE
         </span>
-        <span class="msg-sender">${isMe ? "You &rarr; " + escapeHtml(peer) : escapeHtml(sender)}</span>
+        <span class="msg-sender">${isMe ? "You to " + escapeHtml(peer) : escapeHtml(sender)}</span>
         <span class="msg-time">${timestamp || formatTime()}</span>
       `;
     } else {
@@ -362,9 +599,16 @@
     bubble.appendChild(header);
     bubble.appendChild(body);
     DOM.messagesContainer.appendChild(bubble);
-    DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
 
     state.messagesCount++;
+
+    if (isMe || wasNearBottom) {
+      scrollToBottom(false);
+    } else {
+      if (DOM.btnJumpLatest) {
+        DOM.btnJumpLatest.classList.remove("hidden");
+      }
+    }
   }
 
   function appendSystemMessage(text) {
@@ -372,11 +616,16 @@
       DOM.emptyState.style.display = "none";
     }
 
+    const wasNearBottom = isUserNearBottom();
+
     const notice = document.createElement("div");
     notice.className = "system-pill";
     notice.textContent = text;
     DOM.messagesContainer.appendChild(notice);
-    DOM.messagesContainer.scrollTop = DOM.messagesContainer.scrollHeight;
+
+    if (wasNearBottom) {
+      scrollToBottom(false);
+    }
   }
 
   // =========================================================================
@@ -384,9 +633,11 @@
   // =========================================================================
   function updateUserList(users) {
     state.onlineUsers = users;
-    if (DOM.userCount) DOM.userCount.textContent = users.length;
+    const count = users.length;
+    if (DOM.userCount) DOM.userCount.textContent = count;
+    if (DOM.mobileUserCount) DOM.mobileUserCount.textContent = count;
     if (DOM.diagPeerCount) {
-      DOM.diagPeerCount.textContent = `${users.length} Peer${users.length === 1 ? "" : "s"}`;
+      DOM.diagPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
     }
 
     // Refresh Sidebar Users
@@ -395,34 +646,45 @@
 
     users.forEach((user) => {
       const isMe = user.toLowerCase() === state.username.toLowerCase();
-      
+
       const li = document.createElement("li");
       li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
+      li.setAttribute("role", "button");
+      li.setAttribute("tabindex", "0");
 
       li.innerHTML = `
         <div class="peer-avatar">${escapeHtml(user.charAt(0).toUpperCase())}</div>
         <span class="nav-title">${escapeHtml(user)} ${isMe ? "(You)" : ""}</span>
-        ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${escapeHtml(user)}"><svg class="svg-icon xs"><use href="#icon-paperclip"></use></svg></button>` : ""}
+        ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${escapeHtml(user)}" aria-label="Send file to ${escapeHtml(user)}"><svg class="svg-icon xs"><use href="#icon-paperclip"></use></svg></button>` : ""}
       `;
 
       if (!isMe) {
-        // Click to Whisper
         li.addEventListener("click", (e) => {
           if (!e.target.closest(".btn-send-file-tiny")) {
             switchToPrivateChat(user);
+            closeSidebar();
+            setMobileActiveTab("chat");
           }
         });
 
-        // Click tiny file icon to open file modal preselected
+        li.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            switchToPrivateChat(user);
+            closeSidebar();
+            setMobileActiveTab("chat");
+          }
+        });
+
         const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
         if (tinyFileBtn) {
           tinyFileBtn.addEventListener("click", (e) => {
             e.stopPropagation();
+            closeSidebar();
             openFileModal(user);
           });
         }
 
-        // Add to File Recipient Dropdown
         const opt = document.createElement("option");
         opt.value = user;
         opt.textContent = user;
@@ -444,6 +706,8 @@
       DOM.headerChannelIcon.innerHTML = `<use href="#icon-globe"></use>`;
     }
     DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
+    closeSidebar();
+    setMobileActiveTab("chat");
   }
 
   function switchToPrivateChat(peerUsername) {
@@ -474,6 +738,7 @@
     } else if (state.activeChatTarget) {
       DOM.fileRecipientSelect.value = state.activeChatTarget;
     }
+    setMobileActiveTab("share");
   }
 
   function closeFileModal() {
@@ -482,6 +747,7 @@
     DOM.filePreviewCard.classList.add("hidden");
     DOM.uploadProgressContainer.classList.add("hidden");
     DOM.confirmSendFileBtn.disabled = true;
+    setMobileActiveTab("chat");
   }
 
   function handleFileSelected(file) {
@@ -532,10 +798,9 @@
     xhr.onload = () => {
       if (xhr.status === 200) {
         const resp = JSON.parse(xhr.responseText);
-        DOM.uploadProgressText.textContent = "Upload complete! Sending offer to peer...";
+        DOM.uploadProgressText.textContent = "Upload complete. Sending offer to peer...";
         logActivity(`File '${resp.filename}' uploaded. SHA-256: ${resp.sha256.substring(0, 16)}...`);
 
-        // Emit file offer to peer over TCP Gateway
         state.socket.emit("file_offer", {
           transfer_id: resp.transfer_id,
           recipient: recipient,
@@ -544,8 +809,8 @@
           sha256: resp.sha256
         });
 
-        appendSystemMessage(`📤 Offered '${resp.filename}' (${formatBytes(resp.filesize)}) to '${recipient}'. Waiting for response...`);
-        setTimeout(closeFileModal, 900);
+        appendSystemMessage(`Offered '${resp.filename}' (${formatBytes(resp.filesize)}) to '${recipient}'. Waiting for response...`);
+        setTimeout(closeFileModal, 700);
       } else {
         alert("Upload error: " + xhr.responseText);
         DOM.confirmSendFileBtn.disabled = false;
@@ -584,10 +849,9 @@
     });
 
     DOM.incomingFileModal.classList.add("hidden");
-    appendSystemMessage(`📥 Accepted file offer from '${offer.sender}'. Downloading...`);
+    appendSystemMessage(`Accepted file offer from '${offer.sender}'. Starting download...`);
     logActivity(`Accepted file transfer '${offer.transfer_id}' from ${offer.sender}.`);
 
-    // Trigger download from secure HTTP endpoint
     const downloadUrl = `/api/download/${offer.transfer_id}`;
     const a = document.createElement("a");
     a.href = downloadUrl;
@@ -596,7 +860,7 @@
     a.click();
     document.body.removeChild(a);
 
-    appendSystemMessage(`🎉 Download initiated for '${offer.filename}'. SHA-256 Verified: ${offer.sha256.substring(0, 16)}...`);
+    appendSystemMessage(`Download initiated for '${offer.filename}'. SHA-256 verified.`);
   }
 
   function handleRejectFileOffer() {
@@ -610,37 +874,138 @@
     });
 
     DOM.incomingFileModal.classList.add("hidden");
-    appendSystemMessage(`❌ Declined file offer from '${offer.sender}'.`);
+    appendSystemMessage(`Declined file offer from '${offer.sender}'.`);
     logActivity(`Declined file offer from ${offer.sender}.`);
   }
 
   function handleFileReady(data) {
-    appendSystemMessage(`⚡ File Transfer Ready for '${data.filename}'. Transport active on Port ${data.file_port}.`);
+    appendSystemMessage(`File transfer ready for '${data.filename}'. Transport active on port ${data.file_port}.`);
   }
 
   // =========================================================================
-  // EVENT LISTENERS
+  // DIAGNOSTICS MODAL
+  // =========================================================================
+  function openDiagnosticsModal() {
+    if (DOM.diagnosticsModal) {
+      DOM.diagnosticsModal.classList.remove("hidden");
+      setMobileActiveTab("diag");
+    }
+  }
+
+  function closeDiagnosticsModal() {
+    if (DOM.diagnosticsModal) {
+      DOM.diagnosticsModal.classList.add("hidden");
+      setMobileActiveTab("chat");
+    }
+  }
+
+  // =========================================================================
+  // EVENT LISTENERS SETUP
   // =========================================================================
   function setupEventListeners() {
-    // Advanced Settings Toggle
-    if (DOM.btnToggleAdvanced) {
-      DOM.btnToggleAdvanced.addEventListener("click", () => {
-        const isHidden = DOM.advancedBody.classList.toggle("hidden");
-        DOM.advancedChevron.innerHTML = isHidden ? "&darr;" : "&uarr;";
+    // Theme Toggles
+    if (DOM.btnThemeToggle) {
+      DOM.btnThemeToggle.addEventListener("click", toggleTheme);
+    }
+    if (DOM.btnLoginThemeToggle) {
+      DOM.btnLoginThemeToggle.addEventListener("click", toggleTheme);
+    }
+
+    // Mobile Sidebar Drawer
+    if (DOM.btnMobileMenu) {
+      DOM.btnMobileMenu.addEventListener("click", () => {
+        if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
+          closeSidebar();
+        } else {
+          openSidebar();
+        }
+      });
+    }
+    if (DOM.sidebarCloseBtn) {
+      DOM.sidebarCloseBtn.addEventListener("click", closeSidebar);
+    }
+    if (DOM.sidebarBackdrop) {
+      DOM.sidebarBackdrop.addEventListener("click", closeSidebar);
+    }
+
+    // Mobile Bottom Tab Bar
+    if (DOM.tabChat) {
+      DOM.tabChat.addEventListener("click", () => {
+        closeSidebar();
+        setMobileActiveTab("chat");
+      });
+    }
+    if (DOM.tabPeers) {
+      DOM.tabPeers.addEventListener("click", () => {
+        openSidebar();
+        setMobileActiveTab("peers");
+      });
+    }
+    if (DOM.tabShare) {
+      DOM.tabShare.addEventListener("click", () => {
+        closeSidebar();
+        openFileModal();
+      });
+    }
+    if (DOM.tabDiag) {
+      DOM.tabDiag.addEventListener("click", () => {
+        closeSidebar();
+        openDiagnosticsModal();
       });
     }
 
-    // Connect
-    DOM.connectBtn.addEventListener("click", handleConnectClick);
-    DOM.usernameInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") handleConnectClick();
-    });
+    // Advanced Settings Toggle in Login
+    if (DOM.btnToggleAdvanced) {
+      DOM.btnToggleAdvanced.addEventListener("click", () => {
+        const isHidden = DOM.advancedBody.classList.toggle("hidden");
+        DOM.btnToggleAdvanced.setAttribute("aria-expanded", isHidden ? "false" : "true");
+        if (DOM.advancedChevron) {
+          DOM.advancedChevron.classList.toggle("rotated", !isHidden);
+        }
+      });
+    }
 
-    // Chat
-    DOM.chatForm.addEventListener("submit", handleSendMessage);
-    DOM.btnPublicRoom.addEventListener("click", switchToPublicChat);
+    // Connect Button & Enter key
+    if (DOM.connectBtn) {
+      DOM.connectBtn.addEventListener("click", handleConnectClick);
+    }
+    if (DOM.usernameInput) {
+      DOM.usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick();
+      });
+    }
 
-    // Disconnect
+    // Chat Submission
+    if (DOM.chatForm) {
+      DOM.chatForm.addEventListener("submit", handleSendMessage);
+    }
+    if (DOM.btnPublicRoom) {
+      DOM.btnPublicRoom.addEventListener("click", switchToPublicChat);
+      DOM.btnPublicRoom.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          switchToPublicChat();
+        }
+      });
+    }
+
+    // Jump to latest messages button
+    if (DOM.btnJumpLatest) {
+      DOM.btnJumpLatest.addEventListener("click", () => {
+        scrollToBottom(true);
+      });
+    }
+
+    // Track scroll events to toggle jump button
+    if (DOM.messagesContainer) {
+      DOM.messagesContainer.addEventListener("scroll", () => {
+        if (isUserNearBottom() && DOM.btnJumpLatest) {
+          DOM.btnJumpLatest.classList.add("hidden");
+        }
+      });
+    }
+
+    // Disconnect Action
     const disconnectHandler = () => {
       if (confirm("Are you sure you want to disconnect from the network?")) {
         location.reload();
@@ -649,14 +1014,21 @@
     if (DOM.btnDisconnect) DOM.btnDisconnect.addEventListener("click", disconnectHandler);
     if (DOM.btnSidebarDisconnect) DOM.btnSidebarDisconnect.addEventListener("click", disconnectHandler);
 
-    // File Modal
+    // File Modal Trigger & Actions
     if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
     if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
     if (DOM.closeFileModal) DOM.closeFileModal.addEventListener("click", closeFileModal);
     if (DOM.cancelFileBtn) DOM.cancelFileBtn.addEventListener("click", closeFileModal);
 
+    // File Drag & Drop
     if (DOM.dropZone) {
       DOM.dropZone.addEventListener("click", () => DOM.fileInputElement.click());
+      DOM.dropZone.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          DOM.fileInputElement.click();
+        }
+      });
       DOM.dropZone.addEventListener("dragover", (e) => {
         e.preventDefault();
         DOM.dropZone.classList.add("dragover");
@@ -689,19 +1061,59 @@
 
     // Diagnostics Modal
     if (DOM.btnOpenDiagnostics) {
-      DOM.btnOpenDiagnostics.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
+      DOM.btnOpenDiagnostics.addEventListener("click", openDiagnosticsModal);
     }
     if (DOM.diagnosticsMiniBtn) {
-      DOM.diagnosticsMiniBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.remove("hidden"));
+      DOM.diagnosticsMiniBtn.addEventListener("click", openDiagnosticsModal);
+      DOM.diagnosticsMiniBtn.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDiagnosticsModal();
+        }
+      });
     }
     if (DOM.closeDiagModal) {
-      DOM.closeDiagModal.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
+      DOM.closeDiagModal.addEventListener("click", closeDiagnosticsModal);
     }
     if (DOM.closeDiagBtn) {
-      DOM.closeDiagBtn.addEventListener("click", () => DOM.diagnosticsModal.classList.add("hidden"));
+      DOM.closeDiagBtn.addEventListener("click", closeDiagnosticsModal);
     }
+
+    // Close Modals on Backdrop Click
+    [DOM.fileModal, DOM.diagnosticsModal].forEach((modal) => {
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target === modal) {
+            modal.classList.add("hidden");
+            setMobileActiveTab("chat");
+          }
+        });
+      }
+    });
+
+    // Global Keyboard Navigation (ESC to close modals and drawer)
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
+          closeSidebar();
+          return;
+        }
+        if (DOM.fileModal && !DOM.fileModal.classList.contains("hidden")) {
+          closeFileModal();
+          return;
+        }
+        if (DOM.diagnosticsModal && !DOM.diagnosticsModal.classList.contains("hidden")) {
+          closeDiagnosticsModal();
+          return;
+        }
+      }
+    });
   }
 
-  // Run on DOM load
-  document.addEventListener("DOMContentLoaded", init);
+  // Run on DOM Ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();

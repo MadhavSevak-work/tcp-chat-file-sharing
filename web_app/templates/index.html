@@ -1,199 +1,264 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NetChat — TCP Multi-Client Chat & File Sharing Network</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="description" content="NetChat Live — TCP-Based Multi-Client Chat and File Sharing System. Real-time Layer 4 socket communication with SHA-256 integrity verification.">
+  <title>NetChat Live — TCP Multi-Client Network & File Sharing</title>
+  
+  <!-- Early Theme Detection Script (Prevents Theme Flash) -->
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem('netchat_theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', savedTheme);
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
-<body class="theme-navy">
+<body>
 
-  <!-- ==================== SVG SYMBOL DEFINITIONS ==================== -->
-  <svg style="display: none;">
+  <!-- ==================== LUCIDE SVG SYMBOL DEFINITIONS ==================== -->
+  <svg style="display: none;" aria-hidden="true">
     <defs>
-      <!-- Logo / Network -->
-      <g id="icon-network">
-        <rect x="2" y="2" width="20" height="8" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
-        <rect x="2" y="14" width="20" height="8" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
-        <line x1="6" y1="6" x2="6.01" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="6" y1="18" x2="6.01" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <!-- Application/server: Server -->
+      <g id="icon-server">
+        <rect width="20" height="8" x="2" y="2" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <rect width="20" height="8" x="2" y="14" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <line x1="6" x2="6.01" y1="6" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="6" x2="6.01" y1="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       </g>
-      <!-- Globe / Public -->
+      <!-- Public Room: Globe -->
       <g id="icon-globe">
         <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/>
-        <line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2"/>
+        <line x1="2" x2="22" y1="12" y2="12" stroke="currentColor" stroke-width="2"/>
         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" fill="none" stroke="currentColor" stroke-width="2"/>
       </g>
-      <!-- Lock / Private -->
-      <g id="icon-lock">
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2"/>
-      </g>
-      <!-- User / Users -->
-      <g id="icon-user">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" fill="none" stroke="currentColor" stroke-width="2"/>
-        <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
-      </g>
+      <!-- Online peers: Users -->
       <g id="icon-users">
-        <path d="M17 21v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
-        <path d="M7 21v-2a4 4 0 0 1 3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" fill="none" stroke="currentColor" stroke-width="2"/>
         <circle cx="9" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" fill="none" stroke="currentColor" stroke-width="2"/>
         <path d="M16 3.13a4 4 0 0 1 0 7.75" fill="none" stroke="currentColor" stroke-width="2"/>
       </g>
-      <!-- Paperclip / File -->
+      <!-- User profile: User -->
+      <g id="icon-user">
+        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="12" cy="7" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+      </g>
+      <!-- Share File & Attachment: Paperclip -->
       <g id="icon-paperclip">
-        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </g>
+      <!-- File: File -->
       <g id="icon-file">
-        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" fill="none" stroke="currentColor" stroke-width="2"/>
-        <polyline points="13 2 13 9 20 9" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M14 2v4a2 2 0 0 0 2 2h4" fill="none" stroke="currentColor" stroke-width="2"/>
       </g>
-      <!-- Send / Arrow -->
-      <g id="icon-send">
-        <line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2"/>
-        <polygon points="22 2 15 22 11 13 2 9 22 2" fill="none" stroke="currentColor" stroke-width="2"/>
-      </g>
-      <!-- Diagnostics / Activity -->
+      <!-- Diagnostics: Activity -->
       <g id="icon-activity">
-        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </g>
-      <!-- Check & X -->
-      <g id="icon-check">
-        <polyline points="20 6 9 17 4 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Theme toggle: Sun -->
+      <g id="icon-sun">
+        <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 2v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M12 20v2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="m4.93 4.93 1.41 1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="m17.66 17.66 1.41 1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M2 12h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M20 12h2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="m6.34 17.66-1.41 1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="m19.07 4.93-1.41 1.41" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       </g>
+      <!-- Theme toggle: Moon -->
+      <g id="icon-moon">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Send message: Send -->
+      <g id="icon-send">
+        <path d="m22 2-7 20-4-9-9-4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M22 2 11 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Disconnect: LogOut -->
+      <g id="icon-logout">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="16 17 21 12 16 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="21" x2="9" y1="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Close dialog: X -->
       <g id="icon-x">
-        <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <path d="M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="m6 6 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </g>
-      <!-- Disconnect / Power -->
-      <g id="icon-power">
-        <path d="M18.36 6.64a9 9 0 1 1-12.73 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <line x1="12" y1="2" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <!-- Settings: Settings -->
+      <g id="icon-settings">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" fill="none" stroke="currentColor" stroke-width="2"/>
+        <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>
       </g>
-      <!-- Sliders / Settings -->
-      <g id="icon-sliders">
-        <line x1="4" y1="21" x2="4" y2="14" stroke="currentColor" stroke-width="2"/>
-        <line x1="4" y1="10" x2="4" y2="3" stroke="currentColor" stroke-width="2"/>
-        <line x1="12" y1="21" x2="12" y2="12" stroke="currentColor" stroke-width="2"/>
-        <line x1="12" y1="8" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
-        <line x1="20" y1="21" x2="20" y2="16" stroke="currentColor" stroke-width="2"/>
-        <line x1="20" y1="12" x2="20" y2="3" stroke="currentColor" stroke-width="2"/>
-        <line x1="1" y1="14" x2="7" y2="14" stroke="currentColor" stroke-width="2"/>
-        <line x1="9" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="2"/>
-        <line x1="17" y1="16" x2="23" y2="16" stroke="currentColor" stroke-width="2"/>
+      <!-- Private Chat: Lock -->
+      <g id="icon-lock">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" fill="none" stroke="currentColor" stroke-width="2"/>
       </g>
-      <!-- Shield / Verified -->
-      <g id="icon-shield">
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill="none" stroke="currentColor" stroke-width="2"/>
-      </g>
-      <!-- Download -->
+      <!-- Download: Download -->
       <g id="icon-download">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" fill="none" stroke="currentColor" stroke-width="2"/>
-        <polyline points="7 10 12 15 17 10" fill="none" stroke="currentColor" stroke-width="2"/>
-        <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" stroke-width="2"/>
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <polyline points="7 10 12 15 17 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="12" x2="12" y1="15" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Mobile Menu: Menu -->
+      <g id="icon-menu">
+        <line x1="4" x2="20" y1="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="4" x2="20" y1="6" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <line x1="4" x2="20" y1="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </g>
+      <!-- Chevron Down -->
+      <g id="icon-chevron-down">
+        <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Arrow Down: ArrowDown -->
+      <g id="icon-arrow-down">
+        <line x1="12" x2="12" y1="5" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <polyline points="19 12 12 19 5 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </g>
     </defs>
   </svg>
 
   <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
-  <div id="login-overlay" class="modal-backdrop">
+  <div id="login-overlay" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <div class="login-card">
-      <div class="login-header">
-        <div class="logo-pill">
-          <svg class="svg-icon lg text-primary"><use href="#icon-network"></use></svg>
+      
+      <!-- Top Action Bar for Login (Theme Toggle) -->
+      <div class="login-top-bar">
+        <div class="login-system-pill">
+          <span class="status-dot connected"></span>
+          <span>NETCHAT L4 CORE</span>
         </div>
-        <h2>NetChat Network</h2>
-        <p class="subtitle">TCP Multi-Client Chat & File Sharing &bull; Computer Networks Lab Project</p>
+        <button type="button" id="btn-login-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn" title="Switch to light mode" aria-label="Switch to light mode">
+          <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+          <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+        </button>
+      </div>
+
+      <div class="login-header">
+        <div class="logo-pill" aria-hidden="true">
+          <svg class="svg-icon lg"><use href="#icon-server"></use></svg>
+        </div>
+        <h2 id="login-title">NetChat Live</h2>
+        <p class="subtitle">TCP Multi-Client Chat and File Sharing Network</p>
       </div>
 
       <div class="login-body">
-        <div id="login-error" class="alert-banner alert-error hidden"></div>
+        <div id="login-error" class="alert-banner alert-error hidden" role="alert"></div>
 
         <!-- Connection Endpoint Banner -->
         <div class="gateway-status-card">
           <div class="gateway-info">
-            <span class="status-indicator online"></span>
+            <span class="status-dot connected" id="login-gateway-dot"></span>
             <div>
               <div class="gateway-title" id="gateway-display-name">Cloud Network Gateway</div>
-              <div class="gateway-desc" id="gateway-display-endpoint">Connecting to server...</div>
+              <div class="gateway-desc" id="gateway-display-endpoint">Connecting to gateway...</div>
             </div>
           </div>
-          <span class="badge badge-success">READY</span>
+          <span class="badge badge-success" id="login-gateway-badge">READY</span>
         </div>
 
         <div class="form-group">
           <label for="username-input">Peer Nickname</label>
           <div class="input-control">
-            <svg class="input-icon"><use href="#icon-user"></use></svg>
-            <input type="text" id="username-input" placeholder="e.g. Alice, Student_1" maxlength="20" autofocus autocomplete="off">
+            <svg class="input-icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+            <input type="text" id="username-input" placeholder="e.g. Alice, Engineer_1" maxlength="20" autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
           </div>
-          <span class="field-hint">Alphanumeric, hyphens, dots, underscores (2–20 characters).</span>
+          <span class="field-hint">Alphanumeric, hyphens, dots, underscores (2-20 characters).</span>
         </div>
 
         <!-- Advanced TCP Socket Settings Toggle -->
         <div class="accordion-item">
-          <button type="button" class="accordion-header" id="btn-toggle-advanced">
-            <span>
-              <svg class="svg-icon sm"><use href="#icon-sliders"></use></svg>
-              Advanced TCP Socket Target
+          <button type="button" class="accordion-header" id="btn-toggle-advanced" aria-expanded="false" aria-controls="advanced-body">
+            <span class="accordion-header-left">
+              <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-settings"></use></svg>
+              <span>Advanced TCP Socket Target</span>
             </span>
-            <span class="accordion-chevron" id="advanced-chevron">&darr;</span>
+            <span class="accordion-chevron" id="advanced-chevron">
+              <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+            </span>
           </button>
           <div class="accordion-body hidden" id="advanced-body">
             <div class="form-row">
               <div class="form-group flex-2">
                 <label for="host-input">Internal TCP Host</label>
-                <input type="text" id="host-input" value="127.0.0.1">
+                <input type="text" id="host-input" value="127.0.0.1" autocomplete="off" spellcheck="false">
               </div>
               <div class="form-group flex-1">
                 <label for="port-input">Chat Port</label>
                 <input type="number" id="port-input" value="5000">
               </div>
             </div>
-            <span class="field-hint">Standard TCP server binding. Do not modify unless running a custom external socket broker.</span>
+            <span class="field-hint">Standard TCP server binding. Do not modify unless connecting to a custom external socket broker.</span>
           </div>
         </div>
 
-        <button id="connect-btn" class="btn btn-primary btn-block btn-lg">
+        <button id="connect-btn" class="btn btn-primary btn-block btn-lg" type="button">
           <span>Connect to Network</span>
-          <svg class="svg-icon"><use href="#icon-send"></use></svg>
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
         </button>
       </div>
 
       <div class="login-footer">
-        <span>Layer 4 TCP Sockets &bull; WebSocket Tunnel &bull; SHA-256 Hashing</span>
+        <span>Layer 4 TCP Sockets | WebSocket Tunnel | SHA-256 Checksums</span>
       </div>
     </div>
   </div>
 
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+
   <!-- ==================== MAIN APPLICATION LAYOUT ==================== -->
   <div id="app-container" class="app-layout hidden">
 
-    <!-- LEFT SIDEBAR -->
-    <aside class="sidebar">
-      <!-- Branding & System Indicator -->
+    <!-- LEFT NAVIGATION SIDEBAR (Collapsible Drawer on Mobile) -->
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar Navigation">
+      
+      <!-- Branding & Mobile Close Button -->
       <div class="sidebar-brand">
-        <div class="brand-logo">
-          <svg class="svg-icon"><use href="#icon-network"></use></svg>
+        <div class="brand-identity">
+          <div class="brand-logo" aria-hidden="true">
+            <svg class="svg-icon"><use href="#icon-server"></use></svg>
+          </div>
+          <div class="brand-text">
+            <h3>NetChat</h3>
+            <span class="brand-sub">TCP Multi-Client</span>
+          </div>
         </div>
-        <div class="brand-text">
-          <h3>NetChat</h3>
-          <span class="brand-sub">TCP Multi-Client</span>
+        <div class="sidebar-brand-actions">
+          <span class="badge-status offline" title="Network Connection Status">OFFLINE</span>
+          <button type="button" id="sidebar-close-btn" class="btn-icon mobile-only" title="Close Menu" aria-label="Close navigation sidebar">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+          </button>
         </div>
-        <span class="badge-status online" title="Gateway Online">LIVE</span>
       </div>
 
       <!-- Navigation Section -->
       <div class="sidebar-nav-group">
         <div class="nav-label">CHANNELS</div>
         <ul class="nav-menu">
-          <li class="nav-menu-item active" id="btn-public-room">
-            <svg class="svg-icon"><use href="#icon-globe"></use></svg>
+          <li class="nav-menu-item active" id="btn-public-room" role="button" tabindex="0" aria-label="Public Room">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-globe"></use></svg>
             <span class="nav-title">Public Room</span>
             <span class="nav-counter" id="public-badge">ALL</span>
           </li>
@@ -204,21 +269,21 @@
       <div class="sidebar-nav-group flex-grow">
         <div class="nav-label flex-between">
           <span>ONLINE PEERS</span>
-          <span class="peer-counter" id="user-count">0</span>
+          <span class="peer-counter" id="user-count" aria-live="polite">0</span>
         </div>
-        <ul class="nav-menu peer-list" id="users-nav-list">
+        <ul class="nav-menu peer-list" id="users-nav-list" role="list" aria-label="Online Peers List">
           <!-- Populated dynamically -->
         </ul>
       </div>
 
       <!-- Telemetry Mini-Card in Sidebar -->
-      <div class="telemetry-card" id="diagnostics-mini-btn" role="button" title="Open Network Diagnostics">
+      <div class="telemetry-card" id="diagnostics-mini-btn" role="button" tabindex="0" title="Open Network Diagnostics" aria-label="Open Network Diagnostics">
         <div class="telemetry-header">
           <span class="telemetry-title">
-            <svg class="svg-icon xs text-primary"><use href="#icon-activity"></use></svg>
-            NETWORK TELEMETRY
+            <svg class="svg-icon xs text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span>TELEMETRY</span>
           </span>
-          <span class="telemetry-ping" id="mini-ping">-- ms</span>
+          <span class="telemetry-ping text-mono" id="mini-ping">-- ms</span>
         </div>
         <div class="telemetry-grid">
           <div class="telemetry-row">
@@ -227,30 +292,36 @@
           </div>
           <div class="telemetry-row">
             <span class="telemetry-label">TCP Target</span>
-            <span class="telemetry-val text-primary" id="mini-tcp-target">5000</span>
+            <span class="telemetry-val text-primary text-mono" id="mini-tcp-target">5000</span>
           </div>
         </div>
       </div>
 
       <!-- User Profile Footer -->
       <div class="sidebar-user-footer">
-        <div class="user-avatar" id="my-avatar">?</div>
+        <div class="user-avatar" id="my-avatar" aria-hidden="true">?</div>
         <div class="user-details">
           <span class="user-name" id="my-username">Connecting...</span>
-          <span class="user-node" id="my-endpoint">127.0.0.1:5000</span>
+          <span class="user-node text-mono" id="my-endpoint">127.0.0.1:5000</span>
         </div>
-        <button id="btn-sidebar-disconnect" class="btn-icon" title="Disconnect Session">
-          <svg class="svg-icon"><use href="#icon-power"></use></svg>
+        <button id="btn-sidebar-disconnect" class="btn-icon" title="Disconnect Session" aria-label="Disconnect Session">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-logout"></use></svg>
         </button>
       </div>
     </aside>
 
     <!-- MAIN CHAT CONVERSATION VIEW -->
-    <main class="chat-main">
-      <!-- Slim Top Header -->
+    <main class="chat-main" id="chat-main-area">
+      
+      <!-- Top Header -->
       <header class="app-header">
         <div class="header-left">
-          <div class="header-channel-icon" id="header-icon-wrap">
+          <!-- Mobile Menu Drawer Toggle Button -->
+          <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+          </button>
+
+          <div class="header-channel-icon" id="header-icon-wrap" aria-hidden="true">
             <svg class="svg-icon" id="header-channel-icon"><use href="#icon-globe"></use></svg>
           </div>
           <div class="header-title-meta">
@@ -260,71 +331,108 @@
         </div>
 
         <div class="header-right">
-          <!-- Live Telemetry Pill -->
-          <div class="status-pill-badge" id="header-status-pill">
-            <span class="status-indicator online"></span>
-            <span id="header-latency-text">Gateway Online</span>
+          <!-- Live Telemetry Pill / Connection Status -->
+          <div class="status-pill-badge" id="header-status-pill" title="Connection Status" aria-live="polite">
+            <span class="status-dot disconnected" id="header-status-dot"></span>
+            <span id="header-status-text">Disconnected</span>
+            <span id="header-latency-text" class="status-latency hidden"></span>
           </div>
 
-          <button id="btn-open-file-panel" class="btn btn-secondary btn-header">
-            <svg class="svg-icon"><use href="#icon-paperclip"></use></svg>
-            <span>Share File</span>
+          <!-- Desktop Quick Action: Share File -->
+          <button id="btn-open-file-panel" class="btn btn-secondary btn-header header-btn" title="Share File with Peer">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+            <span class="btn-text">Share File</span>
           </button>
 
-          <button id="btn-open-diagnostics" class="btn btn-secondary btn-header">
-            <svg class="svg-icon"><use href="#icon-activity"></use></svg>
-            <span>Diagnostics</span>
+          <!-- Desktop Quick Action: Diagnostics -->
+          <button id="btn-open-diagnostics" class="btn btn-secondary btn-header header-btn" title="Network Diagnostics">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span class="btn-text">Diagnostics</span>
           </button>
 
-          <button id="btn-disconnect" class="btn btn-outline-danger btn-header btn-icon-only" title="Disconnect">
-            <svg class="svg-icon"><use href="#icon-power"></use></svg>
+          <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->
+          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-header btn-icon-only theme-toggle-btn header-btn" title="Switch to light mode" aria-label="Switch to light mode">
+            <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+            <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+          </button>
+
+          <!-- Connection Control (Disconnect Session) -->
+          <button id="btn-disconnect" class="btn btn-outline-danger btn-header btn-icon-only header-btn" title="Disconnect Session" aria-label="Disconnect Session">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-logout"></use></svg>
           </button>
         </div>
       </header>
 
       <!-- Messages History Scroll Container -->
-      <div class="messages-viewport" id="messages-container">
+      <div class="messages-viewport" id="messages-container" role="log" aria-live="polite" aria-label="Message stream">
+        
         <!-- Empty State Default -->
         <div class="empty-feed" id="empty-state">
-          <div class="empty-icon-ring">
-            <svg class="svg-icon xl text-muted"><use href="#icon-globe"></use></svg>
+          <div class="empty-icon-ring" aria-hidden="true">
+            <svg class="svg-icon xl"><use href="#icon-globe"></use></svg>
           </div>
-          <h3>Welcome to the Room</h3>
-          <p>Send a message below or click any peer on the left to whisper directly.</p>
+          <h3>Welcome to NetChat</h3>
+          <p>Send a broadcast message below, or click any peer on the left to whisper directly.</p>
         </div>
       </div>
+
+      <!-- Jump to Latest Floating Pill Button -->
+      <button type="button" id="btn-jump-latest" class="btn-jump-latest hidden" title="Jump to latest message" aria-label="Scroll to newest messages">
+        <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-arrow-down"></use></svg>
+        <span>New messages below</span>
+      </button>
 
       <!-- Message Composer Footer -->
       <footer class="composer-container">
         <form id="chat-form" class="composer-form">
-          <button type="button" id="btn-composer-attach" class="composer-btn-attach" title="Attach & Send File">
-            <svg class="svg-icon"><use href="#icon-paperclip"></use></svg>
+          <button type="button" id="btn-composer-attach" class="composer-btn-attach" title="Attach and Send File" aria-label="Attach file">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
           </button>
           
           <div class="composer-input-wrapper">
-            <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off">
+            <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" aria-label="Message text">
           </div>
 
-          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send" title="Send Message">
-            <span>Send</span>
-            <svg class="svg-icon"><use href="#icon-send"></use></svg>
+          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send" title="Send Message" aria-label="Send message">
+            <span class="send-text">Send</span>
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
           </button>
         </form>
       </footer>
+
+      <!-- Mobile Bottom Navigation Bar (Visible only on mobile devices) -->
+      <nav class="mobile-tab-bar" id="mobile-tab-bar" aria-label="Mobile Navigation">
+        <button type="button" class="mobile-tab-btn active" id="tab-chat" aria-label="Chat View">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-globe"></use></svg>
+          <span>Chat</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-peers" aria-label="Online Peers">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-users"></use></svg>
+          <span>Peers (<span id="mobile-user-count">0</span>)</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-share" aria-label="Share File">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          <span>Share</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-diag" aria-label="Diagnostics">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <span>Diagnostics</span>
+        </button>
+      </nav>
     </main>
 
   </div>
 
   <!-- ==================== SEND FILE MODAL ==================== -->
-  <div id="file-modal" class="modal-backdrop hidden">
+  <div id="file-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="file-modal-title">
     <div class="modal-card">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <svg class="svg-icon text-primary"><use href="#icon-paperclip"></use></svg>
-          <h3>Share File with Peer</h3>
+          <svg class="svg-icon text-primary" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          <h3 id="file-modal-title">Share File with Peer</h3>
         </div>
-        <button class="btn-icon" id="close-file-modal" title="Close">
-          <svg class="svg-icon"><use href="#icon-x"></use></svg>
+        <button class="btn-icon" id="close-file-modal" title="Close" aria-label="Close file transfer dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
         </button>
       </div>
 
@@ -338,27 +446,27 @@
           </div>
         </div>
 
-        <div class="drop-zone" id="drop-zone">
-          <div class="drop-icon-ring">
+        <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="Drop file here or click to browse">
+          <div class="drop-icon-ring" aria-hidden="true">
             <svg class="svg-icon lg text-primary"><use href="#icon-file"></use></svg>
           </div>
           <p class="drop-primary-text">Drag and drop file here, or <span class="text-primary link">browse files</span></p>
-          <span class="drop-sub-text">Up to 100 MB per file &bull; Automatically hashed via SHA-256</span>
-          <input type="file" id="file-input-element" class="hidden-file-input">
+          <span class="drop-sub-text">Up to 100 MB | Automated SHA-256 Checksum Calculation</span>
+          <input type="file" id="file-input-element" class="hidden-file-input" aria-label="Select file to upload">
         </div>
 
         <div id="file-preview-card" class="file-preview-card hidden">
-          <div class="preview-icon-wrap">
+          <div class="preview-icon-wrap" aria-hidden="true">
             <svg class="svg-icon"><use href="#icon-file"></use></svg>
           </div>
           <div class="preview-info">
             <div class="preview-name" id="preview-filename">document.pdf</div>
             <div class="preview-size text-muted" id="preview-filesize">2.4 MB</div>
-            <div class="preview-hash text-primary" id="preview-hash">Computing SHA-256...</div>
+            <div class="preview-hash text-mono text-primary text-xs" id="preview-hash">Computing SHA-256...</div>
           </div>
         </div>
 
-        <div id="upload-progress-container" class="progress-container hidden">
+        <div id="upload-progress-container" class="progress-container hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100">
           <div class="progress-track">
             <div class="progress-bar" id="upload-progress-bar" style="width: 0%;"></div>
           </div>
@@ -370,22 +478,22 @@
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="cancel-file-btn">Cancel</button>
-        <button class="btn btn-primary" id="confirm-send-file-btn" disabled>
+        <button class="btn btn-secondary" id="cancel-file-btn" type="button">Cancel</button>
+        <button class="btn btn-primary" id="confirm-send-file-btn" type="button" disabled>
           <span>Send File Offer</span>
-          <svg class="svg-icon"><use href="#icon-send"></use></svg>
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
         </button>
       </div>
     </div>
   </div>
 
   <!-- ==================== INCOMING FILE OFFER MODAL ==================== -->
-  <div id="incoming-file-modal" class="modal-backdrop hidden">
+  <div id="incoming-file-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="incoming-modal-title">
     <div class="modal-card modal-highlight">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <svg class="svg-icon text-warning"><use href="#icon-download"></use></svg>
-          <h3>Incoming File Offer</h3>
+          <svg class="svg-icon text-warning" aria-hidden="true"><use href="#icon-download"></use></svg>
+          <h3 id="incoming-modal-title">Incoming File Offer</h3>
         </div>
       </div>
 
@@ -394,42 +502,44 @@
 
         <div class="incoming-file-card">
           <div class="incoming-file-header">
-            <svg class="svg-icon text-primary"><use href="#icon-file"></use></svg>
-            <div>
+            <div class="incoming-file-icon" aria-hidden="true">
+              <svg class="svg-icon text-primary"><use href="#icon-file"></use></svg>
+            </div>
+            <div class="incoming-file-meta">
               <div class="incoming-file-name" id="incoming-file-name">document.pdf</div>
-              <div class="incoming-file-size" id="incoming-file-size">1.2 MB</div>
+              <div class="incoming-file-size text-muted" id="incoming-file-size">1.2 MB</div>
             </div>
           </div>
           <div class="hash-preview-badge">
             <span class="hash-tag-label">SHA-256 Checksum</span>
-            <code id="incoming-file-hash">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
+            <code id="incoming-file-hash" class="text-mono text-xs">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
           </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-outline-danger" id="btn-reject-file">
-          <svg class="svg-icon sm"><use href="#icon-x"></use></svg>
+        <button class="btn btn-outline-danger" id="btn-reject-file" type="button">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-x"></use></svg>
           <span>Decline</span>
         </button>
-        <button class="btn btn-success" id="btn-accept-file">
-          <svg class="svg-icon sm"><use href="#icon-download"></use></svg>
-          <span>Accept & Download</span>
+        <button class="btn btn-success" id="btn-accept-file" type="button">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-download"></use></svg>
+          <span>Accept and Download</span>
         </button>
       </div>
     </div>
   </div>
 
   <!-- ==================== NETWORK DIAGNOSTICS MODAL ==================== -->
-  <div id="diagnostics-modal" class="modal-backdrop hidden">
+  <div id="diagnostics-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="diag-modal-title">
     <div class="modal-card modal-wide">
       <div class="modal-header">
         <div class="modal-title-wrap">
-          <svg class="svg-icon text-primary"><use href="#icon-activity"></use></svg>
-          <h3>Network Telemetry & Protocol Diagnostics</h3>
+          <svg class="svg-icon text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <h3 id="diag-modal-title">Network Telemetry &amp; Protocol Diagnostics</h3>
         </div>
-        <button class="btn-icon" id="close-diag-modal" title="Close">
-          <svg class="svg-icon"><use href="#icon-x"></use></svg>
+        <button class="btn-icon" id="close-diag-modal" title="Close" aria-label="Close diagnostics dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
         </button>
       </div>
 
@@ -438,7 +548,7 @@
         <div class="diag-metric-card">
           <div class="diag-card-title">
             <span>CLIENT-TO-GATEWAY</span>
-            <span class="badge badge-success">ACTIVE</span>
+            <span class="badge badge-success" id="diag-gateway-badge">ACTIVE</span>
           </div>
           <div class="diag-data-row">
             <span class="label">Transport Protocol</span>
@@ -454,7 +564,7 @@
           </div>
         </div>
 
-        <!-- Card 2: Gateway-to-TCP -->
+        <!-- Card 2: Gateway-to-TCP Core -->
         <div class="diag-metric-card">
           <div class="diag-card-title">
             <span>GATEWAY-TO-TCP CORE</span>
@@ -478,7 +588,7 @@
         <div class="diag-metric-card">
           <div class="diag-card-title">
             <span>DATA INTEGRITY</span>
-            <span class="badge badge-purple">VERIFIED</span>
+            <span class="badge badge-secondary">VERIFIED</span>
           </div>
           <div class="diag-data-row">
             <span class="label">Checksum Engine</span>
@@ -498,7 +608,7 @@
         <div class="diag-metric-card">
           <div class="diag-card-title">
             <span>NETWORK TOPOLOGY</span>
-            <span class="badge badge-secondary">CLOUD</span>
+            <span class="badge badge-secondary">SOCKET</span>
           </div>
           <div class="diag-data-row">
             <span class="label">Gateway Host</span>
@@ -506,7 +616,7 @@
           </div>
           <div class="diag-data-row">
             <span class="label">Connected Peer Count</span>
-            <span class="val text-mono" id="diag-peer-count">1 Peer</span>
+            <span class="val text-mono" id="diag-peer-count">0 Peers</span>
           </div>
           <div class="diag-data-row">
             <span class="label">Cross-Platform Sync</span>
@@ -520,14 +630,14 @@
             <span>LIVE SOCKET EVENT STREAM</span>
             <span class="text-muted text-mono text-xs">Real-Time Packet Log</span>
           </div>
-          <div class="terminal-log-view" id="activity-log-box">
+          <div class="terminal-log-view" id="activity-log-box" role="region" aria-label="Socket packet log">
             <!-- Populated dynamically -->
           </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button class="btn btn-secondary" id="close-diag-btn">Close Telemetry</button>
+        <button class="btn btn-secondary" id="close-diag-btn" type="button">Close Telemetry</button>
       </div>
     </div>
   </div>
