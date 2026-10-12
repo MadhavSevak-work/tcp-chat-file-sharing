@@ -145,7 +145,11 @@ class TCPClientSession:
             elif msg_type == MSG_ERROR:
                 self.emit_callback("server_error", msg)
             elif msg_type == MSG_FILE_OFFER:
-                self.emit_callback("file_offer", msg)
+                offer_event = dict(msg)
+                offer_event["size"] = msg.get("size", msg.get("filesize", 0))
+                offer_event["filesize"] = offer_event["size"]
+                self.emit_callback("file_offer", offer_event)
+                self.emit_callback("incoming_file_offer", offer_event)
             elif msg_type == MSG_FILE_READY:
                 self.emit_callback("file_ready", msg)
             elif msg_type == MSG_FILE_REJECT:
@@ -177,17 +181,22 @@ class TCPClientSession:
             "content": content
         })
 
-    def send_file_offer(self, transfer_id: str, recipient: str, filename: str, filesize: int, sha256: str) -> bool:
+    def send_file_offer(self, transfer_id: str, recipient: str, filename: str, filesize: int, sha256: str, is_broadcast: bool = False) -> bool:
         """Forwards file offer to TCP server."""
         self.messages_sent += 1
-        return self._send_payload({
+        payload = {
             "type": MSG_FILE_OFFER,
             "transfer_id": transfer_id,
             "recipient": recipient,
             "filename": filename,
             "filesize": filesize,
+            "size": filesize,
             "sha256": sha256
-        })
+        }
+        if is_broadcast or recipient == "__BROADCAST__":
+            payload["is_broadcast"] = True
+            payload["target"] = "all"
+        return self._send_payload(payload)
 
     def send_file_accept(self, transfer_id: str, sender: str, filename: str, filesize: int, sha256: str) -> bool:
         """Forwards file accept to TCP server."""
@@ -211,7 +220,7 @@ class TCPClientSession:
             "filename": filename
         })
 
-    def send_file_chunk(self, transfer_id: str, chunk_index: int, total_chunks: int, chunk_data: Any, recipient: str = "") -> bool:
+    def send_file_chunk(self, transfer_id: str, chunk_index: int, total_chunks: int, chunk_data: Any, recipient: str = "", is_broadcast: bool = False) -> bool:
         """
         Wraps file chunk in the exact 4-byte length prefix required by the TCP byte-stream protocol.
         """
@@ -222,14 +231,18 @@ class TCPClientSession:
         else:
             data_str = str(chunk_data)
 
-        return self._send_payload({
+        payload = {
             "type": MSG_FILE_CHUNK,
             "transfer_id": transfer_id,
             "chunk_index": chunk_index,
             "total_chunks": total_chunks,
             "recipient": recipient,
             "data": data_str
-        })
+        }
+        if is_broadcast or recipient == "__BROADCAST__":
+            payload["is_broadcast"] = True
+            payload["target"] = "all"
+        return self._send_payload(payload)
 
     def _send_payload(self, payload: dict) -> bool:
         if not self.is_connected or not self.socket:

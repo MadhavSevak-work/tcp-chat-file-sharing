@@ -239,8 +239,21 @@ class ClientHandler(threading.Thread):
             })
 
     def _handle_file_chunk(self, msg: dict) -> None:
-        """Forwards framed file chunk to the specified recipient."""
+        """Forwards framed file chunk to the specified recipient or fans out to all active peers."""
         recipient = msg.get("recipient", "").strip()
+        target = msg.get("target", "").strip()
+        is_broadcast = (
+            recipient == "__BROADCAST__"
+            or recipient.lower() in ("__broadcast__", "all")
+            or target.lower() == "all"
+            or bool(msg.get("is_broadcast"))
+        )
+
+        if is_broadcast:
+            # Relay chunk frame directly to all active peer connections (excluding sender)
+            self.server.broadcast(msg, exclude_user=self.username)
+            return
+
         if not recipient:
             return
         target_client = self.server.get_client(recipient)
@@ -250,12 +263,19 @@ class ClientHandler(threading.Thread):
 
     def _handle_file_offer(self, msg: dict) -> None:
         recipient = msg.get("recipient", "").strip()
+        target = msg.get("target", "").strip()
         filename = sanitize_filename(msg.get("filename", ""))
-        filesize = msg.get("filesize", 0)
+        filesize = msg.get("filesize", msg.get("size", 0))
         sha256 = msg.get("sha256", "")
         transfer_id = msg.get("transfer_id", "")
+        is_broadcast = (
+            recipient == "__BROADCAST__"
+            or recipient.lower() in ("__broadcast__", "all")
+            or target.lower() == "all"
+            or bool(msg.get("is_broadcast"))
+        )
 
-        if not recipient or not filename or not transfer_id or filesize <= 0:
+        if not filename or not transfer_id or filesize <= 0 or (not recipient and not is_broadcast):
             self.send_payload({"type": MSG_ERROR, "message": "Invalid file offer parameters."})
             return
 
@@ -266,8 +286,24 @@ class ClientHandler(threading.Thread):
             })
             return
 
-        if recipient == self.username:
+        if not is_broadcast and recipient.lower() == self.username.lower():
             self.send_payload({"type": MSG_ERROR, "message": "Cannot send file to yourself."})
+            return
+
+        if is_broadcast:
+            # Fan-out offer to all active peer connections in the room (excluding sender)
+            offer_payload = {
+                "type": MSG_FILE_OFFER,
+                "sender": self.username,
+                "is_broadcast": True,
+                "filename": filename,
+                "size": filesize,
+                "filesize": filesize,
+                "sha256": sha256,
+                "transfer_id": transfer_id,
+                "timestamp": time.strftime("%H:%M:%S")
+            }
+            self.server.broadcast(offer_payload, exclude_user=self.username)
             return
 
         target_client = self.server.get_client(recipient)
@@ -282,6 +318,7 @@ class ClientHandler(threading.Thread):
             "sender": self.username,
             "filename": filename,
             "filesize": filesize,
+            "size": filesize,
             "sha256": sha256,
             "timestamp": time.strftime("%H:%M:%S")
         })

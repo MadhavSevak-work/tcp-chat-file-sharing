@@ -1534,6 +1534,40 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
   flex-shrink: 0;
 }
 
+/* Broadcast Transfer Badges */
+.broadcast-hint-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  font-size: 0.8rem;
+  font-weight: 500;
+  animation: fadeIn 0.2s ease-in-out;
+}
+.broadcast-hint-badge .badge-icon {
+  font-size: 0.95rem;
+}
+
+.broadcast-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  font-size: 0.825rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.15);
+}
+
 /* Dropzone */
 .drop-zone {
   border: 2px dashed var(--border-strong);

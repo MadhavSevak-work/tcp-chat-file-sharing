@@ -104,6 +104,7 @@
     cancelFileBtn: document.getElementById("cancel-file-btn"),
     btnOpenFilePanel: document.getElementById("btn-open-file-panel"),
     fileRecipientSelect: document.getElementById("file-recipient-select"),
+    broadcastRecipientBadge: document.getElementById("broadcast-recipient-badge"),
     dropZone: document.getElementById("drop-zone"),
     fileInputElement: document.getElementById("file-upload") || document.getElementById("file-input-element"),
     fileQueueContainer: document.getElementById("file-queue-container"),
@@ -119,6 +120,10 @@
 
     // Incoming File Modal
     incomingFileModal: document.getElementById("incoming-file-modal"),
+    incomingBroadcastBadge: document.getElementById("incoming-broadcast-badge"),
+    incomingBroadcastText: document.getElementById("incoming-broadcast-text"),
+    incomingModalTitle: document.getElementById("incoming-modal-title"),
+    incomingModalLead: document.getElementById("incoming-modal-lead"),
     incomingSenderName: document.getElementById("incoming-sender-name"),
     incomingFileName: document.getElementById("incoming-file-name"),
     incomingFileSize: document.getElementById("incoming-file-size"),
@@ -535,6 +540,14 @@
       handleIncomingFileOffer(data);
     });
 
+    state.socket.on("incoming_file_offer", (data) => {
+      handleIncomingFileOffer(data);
+    });
+
+    state.socket.on("file_chunk", (data) => {
+      handleIncomingFileChunk(data);
+    });
+
     state.socket.on("file_ready", (data) => {
       handleFileReady(data);
     });
@@ -806,7 +819,11 @@
 
     // Refresh Sidebar Users
     DOM.usersNavList.innerHTML = "";
-    DOM.fileRecipientSelect.innerHTML = `<option value="">-- Choose Online Peer --</option>`;
+    const previousSelected = DOM.fileRecipientSelect.value;
+    DOM.fileRecipientSelect.innerHTML = `
+      <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
+      <option value="">-- Choose Online Peer --</option>
+    `;
 
     users.forEach((user) => {
       const isMe = user.toLowerCase() === state.username.toLowerCase();
@@ -874,6 +891,13 @@
 
       DOM.usersNavList.appendChild(li);
     });
+
+    if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
+      DOM.fileRecipientSelect.value = previousSelected;
+    } else if (!DOM.fileRecipientSelect.value) {
+      DOM.fileRecipientSelect.value = "__BROADCAST__";
+    }
+    updateBroadcastBadge();
   }
 
   function switchToPublicChat() {
@@ -912,13 +936,23 @@
   // =========================================================================
   // FILE SHARING WORKFLOW
   // =========================================================================
+  function updateBroadcastBadge() {
+    const isBroadcast = DOM.fileRecipientSelect && DOM.fileRecipientSelect.value === "__BROADCAST__";
+    if (DOM.broadcastRecipientBadge) {
+      DOM.broadcastRecipientBadge.classList.toggle("hidden", !isBroadcast);
+    }
+  }
+
   function openFileModal(preselectedUser = null) {
     DOM.fileModal.classList.remove("hidden");
     if (preselectedUser) {
       DOM.fileRecipientSelect.value = preselectedUser;
     } else if (state.activeChatTarget) {
       DOM.fileRecipientSelect.value = state.activeChatTarget;
+    } else {
+      DOM.fileRecipientSelect.value = "__BROADCAST__";
     }
+    updateBroadcastBadge();
     setMobileActiveTab("share");
   }
 
@@ -1316,6 +1350,7 @@
               }
             }, 15000);
 
+            const isBroadcast = recipient === "__BROADCAST__";
             state.socket.emit(
               "file_chunk",
               {
@@ -1325,8 +1360,11 @@
                 total_chunks: totalChunks,
                 filename: item.file.name,
                 filesize: item.size,
+                size: item.size,
                 sha256: item.hash,
                 recipient: recipient,
+                is_broadcast: isBroadcast,
+                target: isBroadcast ? "all" : undefined,
                 data: chunkBuffer
               },
               (response) => {
@@ -1353,16 +1391,26 @@
         state.isUploadingChunk = false;
 
         // Step c: Emit file_offer signaling to recipient peer
+        const isBroadcast = recipient === "__BROADCAST__";
         state.socket.emit("file_offer", {
+          type: "file_offer",
           transfer_id: transferId,
           recipient: recipient,
+          is_broadcast: isBroadcast,
+          target: isBroadcast ? "all" : undefined,
           filename: item.file.name,
           filesize: item.size,
+          size: item.size,
           sha256: item.hash
         });
 
-        appendSystemMessage(`Offered '${item.file.name}' (${formatBytes(item.size)}) to '${recipient}'.`);
-        logActivity(`File '${item.file.name}' streamed. SHA-256: ${item.hash.substring(0, 16)}...`);
+        if (isBroadcast) {
+          appendSystemMessage(`Broadcasting '${item.file.name}' (${formatBytes(item.size)}) to entire server.`);
+          logActivity(`Public file broadcast initiated for '${item.file.name}'. SHA-256: ${item.hash.substring(0, 16)}...`);
+        } else {
+          appendSystemMessage(`Offered '${item.file.name}' (${formatBytes(item.size)}) to '${recipient}'.`);
+          logActivity(`File '${item.file.name}' streamed. SHA-256: ${item.hash.substring(0, 16)}...`);
+        }
 
         // Step d: Mark item as completed and automatically loop to next item
         item.status = "completed";
@@ -1391,32 +1439,78 @@
     }
   }
 
+  state.incomingTransfers = state.incomingTransfers || {};
+
   function handleIncomingFileOffer(data) {
+    if (!data) return;
+    if (state.pendingOffer && state.pendingOffer.transfer_id === data.transfer_id) {
+      return;
+    }
     state.pendingOffer = data;
+    const isBroadcast = Boolean(data.is_broadcast || data.recipient === "__BROADCAST__" || data.target === "all");
     DOM.incomingSenderName.textContent = data.sender;
     DOM.incomingFileName.textContent = data.filename;
-    DOM.incomingFileSize.textContent = formatBytes(data.filesize);
+    DOM.incomingFileSize.textContent = formatBytes(data.filesize || data.size || 0);
     DOM.incomingFileHash.textContent = data.sha256;
 
+    if (DOM.incomingBroadcastBadge) {
+      if (DOM.incomingBroadcastText) {
+        DOM.incomingBroadcastText.textContent = `Public File Broadcast from ${data.sender}`;
+      } else {
+        DOM.incomingBroadcastBadge.textContent = `Public File Broadcast from ${data.sender}`;
+      }
+      DOM.incomingBroadcastBadge.classList.toggle("hidden", !isBroadcast);
+    }
+    if (DOM.incomingModalTitle) {
+      DOM.incomingModalTitle.textContent = isBroadcast ? "Public File Broadcast" : "Incoming File Offer";
+    }
+    if (DOM.incomingModalLead) {
+      if (isBroadcast) {
+        DOM.incomingModalLead.innerHTML = `Public File Broadcast from <strong class="text-primary">${escapeHtml(data.sender)}</strong>:`;
+      } else {
+        DOM.incomingModalLead.innerHTML = `User <strong id="incoming-sender-name" class="text-primary">${escapeHtml(data.sender)}</strong> wants to transfer a file:`;
+      }
+    }
+
     DOM.incomingFileModal.classList.remove("hidden");
-    logActivity(`Incoming file offer from ${data.sender}: '${data.filename}' (${formatBytes(data.filesize)})`);
+    logActivity(`${isBroadcast ? "Public file broadcast" : "Incoming file offer"} from ${data.sender}: '${data.filename}' (${formatBytes(data.filesize || data.size || 0)})`);
+  }
+
+  function handleIncomingFileChunk(data) {
+    if (!data || !data.transfer_id) return;
+    const tId = data.transfer_id;
+    if (!state.incomingTransfers[tId]) {
+      state.incomingTransfers[tId] = {
+        transfer_id: tId,
+        filename: data.filename || "download.bin",
+        filesize: data.filesize || data.size || 0,
+        expectedSha: data.sha256 || "",
+        chunks: [],
+        receivedBytes: 0
+      };
+    }
+    const transfer = state.incomingTransfers[tId];
+    if (data.data) {
+      transfer.chunks[data.chunk_index] = data.data;
+    }
   }
 
   function handleAcceptFileOffer() {
     if (!state.pendingOffer) return;
     const offer = state.pendingOffer;
+    const isBroadcast = Boolean(offer.is_broadcast || offer.recipient === "__BROADCAST__" || offer.target === "all");
 
     state.socket.emit("file_accept", {
       transfer_id: offer.transfer_id,
       sender: offer.sender,
       filename: offer.filename,
-      filesize: offer.filesize,
+      filesize: offer.filesize || offer.size,
       sha256: offer.sha256
     });
 
     DOM.incomingFileModal.classList.add("hidden");
-    appendSystemMessage(`Accepted file offer from '${offer.sender}'. Starting download...`);
-    logActivity(`Accepted file transfer '${offer.transfer_id}' from ${offer.sender}.`);
+    appendSystemMessage(`Accepted ${isBroadcast ? "Public File Broadcast" : "file offer"} from '${offer.sender}'. Starting download...`);
+    logActivity(`Accepted ${isBroadcast ? "public broadcast" : "file transfer"} '${offer.transfer_id}' from ${offer.sender}.`);
 
     const downloadUrl = `/api/download/${offer.transfer_id}`;
     const a = document.createElement("a");
@@ -1633,11 +1727,11 @@
     if (DOM.btnDisconnect) DOM.btnDisconnect.addEventListener("click", disconnectHandler);
     if (DOM.btnSidebarDisconnect) DOM.btnSidebarDisconnect.addEventListener("click", disconnectHandler);
 
-    // File Modal Trigger & Actions
     if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
     if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
     if (DOM.closeFileModal) DOM.closeFileModal.addEventListener("click", closeFileModal);
     if (DOM.cancelFileBtn) DOM.cancelFileBtn.addEventListener("click", closeFileModal);
+    if (DOM.fileRecipientSelect) DOM.fileRecipientSelect.addEventListener("change", updateBroadcastBadge);
 
     // Curated Emoji Quick-bar Events & Caret Tracking
     if (DOM.messageInput) {

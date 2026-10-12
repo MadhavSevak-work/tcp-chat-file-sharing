@@ -608,8 +608,13 @@
           <label for="file-recipient-select">Target Recipient</label>
           <div class="select-wrapper">
             <select id="file-recipient-select" class="form-select">
+              <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
               <option value="">-- Choose Online Peer --</option>
             </select>
+          </div>
+          <div id="broadcast-recipient-badge" class="broadcast-hint-badge hidden">
+            <span class="badge-icon">🌐</span>
+            <span>Broadcast Transfer (All active peers will receive this file)</span>
           </div>
         </div>
 
@@ -668,7 +673,11 @@
       </div>
 
       <div class="modal-body">
-        <p class="modal-lead">User <strong id="incoming-sender-name" class="text-primary">Alice</strong> wants to transfer a file:</p>
+        <div id="incoming-broadcast-badge" class="broadcast-banner-badge hidden">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-globe"></use></svg>
+          <span id="incoming-broadcast-text">Public File Broadcast</span>
+        </div>
+        <p class="modal-lead" id="incoming-modal-lead">User <strong id="incoming-sender-name" class="text-primary">Alice</strong> wants to transfer a file:</p>
 
         <div class="incoming-file-card">
           <div class="incoming-file-header">

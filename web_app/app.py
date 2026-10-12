@@ -468,10 +468,28 @@ def handle_file_chunk(data):
 
         logger.info(f"[WebSocket Chunking] Assembled '{clean_filename}' ({final_size} bytes, SHA-256: {computed_sha[:16]}...)")
 
+    target = data.get("target", "")
+    is_broadcast = (
+        recipient == "__BROADCAST__"
+        or (isinstance(recipient, str) and recipient.lower() in ("__broadcast__", "all"))
+        or target == "all"
+        or bool(data.get("is_broadcast"))
+    )
+
     # Forward to TCP core with length prefixing if this user has an active TCP session
     session = gateway_manager.get_session(sid)
     if session and session.is_connected:
-        session.send_file_chunk(transfer_id, chunk_index, total_chunks, chunk_bytes, recipient)
+        session.send_file_chunk(
+            transfer_id,
+            chunk_index,
+            total_chunks,
+            chunk_bytes,
+            "__BROADCAST__" if is_broadcast else recipient,
+            is_broadcast=is_broadcast
+        )
+    elif is_broadcast:
+        # Pure WebSocket fallback: fan out chunk to all connected peers
+        emit("file_chunk", data, broadcast=True, include_self=False)
 
     ack = {
         "status": "ok",
@@ -484,17 +502,45 @@ def handle_file_chunk(data):
 
 
 @socketio.on("file_offer")
-
 def handle_file_offer(data):
     sid = request.sid
     session = gateway_manager.get_session(sid)
+    transfer_id = data.get("transfer_id")
+    recipient = data.get("recipient", "")
+    filename = data.get("filename")
+    filesize = data.get("filesize", data.get("size", 0))
+    sha256 = data.get("sha256")
+    target = data.get("target", "")
+    is_broadcast = (
+        recipient == "__BROADCAST__"
+        or (isinstance(recipient, str) and recipient.lower() in ("__broadcast__", "all"))
+        or target == "all"
+        or bool(data.get("is_broadcast"))
+    )
+
     if session and session.is_connected:
-        transfer_id = data.get("transfer_id")
-        recipient = data.get("recipient")
-        filename = data.get("filename")
-        filesize = data.get("filesize")
-        sha256 = data.get("sha256")
-        session.send_file_offer(transfer_id, recipient, filename, filesize, sha256)
+        session.send_file_offer(
+            transfer_id=transfer_id,
+            recipient="__BROADCAST__" if is_broadcast else recipient,
+            filename=filename,
+            filesize=filesize,
+            sha256=sha256,
+            is_broadcast=is_broadcast
+        )
+    else:
+        # Pure WebSocket fallback: fan out offer event to all connected peers
+        offer_payload = {
+            "type": "incoming_file_offer",
+            "sender": "WebUser",
+            "is_broadcast": is_broadcast,
+            "filename": filename,
+            "size": filesize,
+            "filesize": filesize,
+            "sha256": sha256,
+            "transfer_id": transfer_id
+        }
+        emit("incoming_file_offer", offer_payload, broadcast=True, include_self=False)
+        emit("file_offer", offer_payload, broadcast=True, include_self=False)
 
 
 @socketio.on("file_accept")

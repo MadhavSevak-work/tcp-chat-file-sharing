@@ -127,6 +127,110 @@ class TestFileChunkingAndFraming(unittest.TestCase):
         self.assertIn('multiple', html)
         self.assertIn('id="file-queue-container"', html)
 
+    def test_05_broadcast_recipient_dropdown_and_badges_in_html(self):
+        """Verify __BROADCAST__ option and broadcast badges in index.html."""
+        with open("web_app/templates/index.html", "r", encoding="utf-8") as f:
+            html = f.read()
+
+        self.assertIn('<option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>', html)
+        self.assertIn('id="broadcast-recipient-badge"', html)
+        self.assertIn('id="incoming-broadcast-badge"', html)
+
+    def test_06_backend_file_offer_broadcast_fan_out(self):
+        """Verify backend client_handler broadcasts file offer to all peers when recipient is __BROADCAST__."""
+        from unittest.mock import MagicMock
+        import logging
+        from server.client_handler import ClientHandler
+        from shared.constants import MSG_FILE_OFFER
+
+        # Create mock ChatServer
+        mock_server = MagicMock()
+        mock_server.clients = {}
+        mock_logger = logging.getLogger("test_logger")
+
+        # Create Alice handler
+        alice_sock = MagicMock()
+        alice = ClientHandler(mock_server, alice_sock, ("127.0.0.1", 1111), mock_logger)
+        alice.username = "Alice"
+
+        # Alice sends broadcast file offer
+        alice._process_message({
+            "type": MSG_FILE_OFFER,
+            "recipient": "__BROADCAST__",
+            "filename": "server_report.pdf",
+            "filesize": 10240,
+            "sha256": "abc123hash",
+            "transfer_id": "tf_broadcast_01"
+        })
+
+        # Verify mock_server.broadcast called excluding Alice
+        mock_server.broadcast.assert_called_once()
+        broadcast_args, broadcast_kwargs = mock_server.broadcast.call_args
+        payload = broadcast_args[0]
+        self.assertEqual(payload.get("type"), MSG_FILE_OFFER)
+        self.assertEqual(payload.get("sender"), "Alice")
+        self.assertTrue(payload.get("is_broadcast"))
+        self.assertEqual(payload.get("filename"), "server_report.pdf")
+        self.assertEqual(payload.get("filesize"), 10240)
+        self.assertEqual(payload.get("transfer_id"), "tf_broadcast_01")
+        self.assertEqual(broadcast_kwargs.get("exclude_user"), "Alice")
+
+    def test_07_backend_file_chunk_broadcast_fan_out(self):
+        """Verify backend client_handler relays file chunks to all active peers when recipient is __BROADCAST__."""
+        from unittest.mock import MagicMock
+        import logging
+        from server.client_handler import ClientHandler
+        from shared.constants import MSG_FILE_CHUNK
+
+        mock_server = MagicMock()
+        mock_server.clients = {}
+        mock_logger = logging.getLogger("test_logger")
+
+        alice_sock = MagicMock()
+        alice = ClientHandler(mock_server, alice_sock, ("127.0.0.1", 1111), mock_logger)
+        alice.username = "Alice"
+
+        chunk_msg = {
+            "type": MSG_FILE_CHUNK,
+            "recipient": "__BROADCAST__",
+            "transfer_id": "tf_broadcast_01",
+            "chunk_index": 0,
+            "total_chunks": 1,
+            "data": "CHUNK_DATA_BASE64"
+        }
+        alice._process_message(chunk_msg)
+
+        # Verify broadcast called with the chunk message excluding Alice
+        mock_server.broadcast.assert_called_once_with(chunk_msg, exclude_user="Alice")
+
+    def test_08_socketio_broadcast_file_offer_fanout(self):
+        """Verify Socket.IO clients receive incoming_file_offer when a broadcast offer is made."""
+        client1 = socketio.test_client(self.app)
+        client2 = socketio.test_client(self.app)
+        self.assertTrue(client1.is_connected())
+        self.assertTrue(client2.is_connected())
+
+        offer_payload = {
+            "transfer_id": "tf_broadcast_sio_01",
+            "recipient": "__BROADCAST__",
+            "filename": "public_notes.txt",
+            "filesize": 2048,
+            "sha256": "hash_notes_123"
+        }
+        client1.emit("file_offer", offer_payload)
+
+        # Check client2 received incoming_file_offer
+        events = client2.get_received()
+        offer_events = [e for e in events if e.get("name") in ("incoming_file_offer", "file_offer")]
+        self.assertTrue(len(offer_events) > 0)
+        received_data = offer_events[0]["args"][0]
+        self.assertTrue(received_data.get("is_broadcast"))
+        self.assertEqual(received_data.get("filename"), "public_notes.txt")
+        self.assertEqual(received_data.get("transfer_id"), "tf_broadcast_sio_01")
+
+        client1.disconnect()
+        client2.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()
