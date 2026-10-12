@@ -284,6 +284,26 @@
         </div>
       </div>
 
+      <!-- Quick Actions Section (Accessible on Mobile/Tablet in Drawer) -->
+      <div class="sidebar-nav-group mobile-drawer-actions">
+        <div class="nav-label">QUICK ACTIONS</div>
+        <ul class="nav-menu">
+          <li class="nav-menu-item" id="btn-drawer-share-file" role="button" tabindex="0" aria-label="Share File with Peer">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+            <span class="nav-title">Share File</span>
+          </li>
+          <li class="nav-menu-item" id="btn-drawer-diagnostics" role="button" tabindex="0" aria-label="Network Diagnostics">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span class="nav-title">Diagnostics</span>
+          </li>
+          <li class="nav-menu-item" id="btn-drawer-theme" role="button" tabindex="0" aria-label="Toggle Light and Dark Theme">
+            <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+            <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+            <span class="nav-title" id="drawer-theme-label">Switch Theme</span>
+          </li>
+        </ul>
+      </div>
+
       <!-- Navigation Section -->
       <div class="sidebar-nav-group">
         <div class="nav-label">CHANNELS</div>
@@ -356,6 +376,12 @@
           <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
           </button>
+
+          <!-- Mobile Compact Brand Badge -->
+          <div class="header-mobile-brand" aria-label="NetChat">
+            <svg class="svg-icon xs text-primary" aria-hidden="true"><use href="#icon-server"></use></svg>
+            <span class="header-mobile-brand-name">NetChat</span>
+          </div>
 
           <div class="header-channel-icon" id="header-icon-wrap" aria-hidden="true">
             <svg class="svg-icon" id="header-channel-icon"><use href="#icon-globe"></use></svg>

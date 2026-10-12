@@ -62,6 +62,10 @@
     usersNavList: document.getElementById("users-nav-list"),
     btnPublicRoom: document.getElementById("btn-public-room"),
     btnSidebarDisconnect: document.getElementById("btn-sidebar-disconnect"),
+    btnDrawerShareFile: document.getElementById("btn-drawer-share-file"),
+    btnDrawerDiagnostics: document.getElementById("btn-drawer-diagnostics"),
+    btnDrawerTheme: document.getElementById("btn-drawer-theme"),
+    drawerThemeLabel: document.getElementById("drawer-theme-label"),
 
     // Chat Header & Messages
     activeChatTitle: document.getElementById("active-chat-title"),
@@ -286,6 +290,9 @@
       DOM.btnLoginThemeToggle.setAttribute("title", label);
       DOM.btnLoginThemeToggle.setAttribute("aria-label", label);
     }
+    if (DOM.drawerThemeLabel) {
+      DOM.drawerThemeLabel.textContent = theme === "light" ? "Dark Mode" : "Light Mode";
+    }
   }
 
   function toggleTheme() {
@@ -299,6 +306,7 @@
   function openSidebar() {
     if (!DOM.sidebar) return;
     DOM.sidebar.classList.add("open");
+    document.body.classList.add("drawer-open");
     if (DOM.sidebarBackdrop) {
       DOM.sidebarBackdrop.classList.remove("hidden");
       requestAnimationFrame(() => {
@@ -313,6 +321,7 @@
   function closeSidebar() {
     if (!DOM.sidebar) return;
     DOM.sidebar.classList.remove("open");
+    document.body.classList.remove("drawer-open");
     if (DOM.sidebarBackdrop) {
       DOM.sidebarBackdrop.classList.remove("active");
       setTimeout(() => {
@@ -963,6 +972,55 @@
       DOM.tabDiag.addEventListener("click", () => {
         closeSidebar();
         openDiagnosticsModal();
+        setMobileActiveTab("diag");
+      });
+    }
+
+    // Drawer Quick Actions
+    if (DOM.btnDrawerShareFile) {
+      DOM.btnDrawerShareFile.addEventListener("click", () => {
+        closeSidebar();
+        openFileModal();
+      });
+      DOM.btnDrawerShareFile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          closeSidebar();
+          openFileModal();
+        }
+      });
+    }
+    if (DOM.btnDrawerDiagnostics) {
+      DOM.btnDrawerDiagnostics.addEventListener("click", () => {
+        closeSidebar();
+        openDiagnosticsModal();
+      });
+      DOM.btnDrawerDiagnostics.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          closeSidebar();
+          openDiagnosticsModal();
+        }
+      });
+    }
+    if (DOM.btnDrawerTheme) {
+      DOM.btnDrawerTheme.addEventListener("click", () => {
+        toggleTheme();
+      });
+      DOM.btnDrawerTheme.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleTheme();
+        }
+      });
+    }
+
+    // Mobile Keyboard scroll assist
+    if (DOM.messageInput) {
+      DOM.messageInput.addEventListener("focus", () => {
+        setTimeout(() => {
+          scrollToBottom(false);
+        }, 280);
       });
     }
 
