@@ -88,6 +88,9 @@
     // Chat Header & Messages
     activeChatTitle: document.getElementById("active-chat-title"),
     activeChatDesc: document.getElementById("active-chat-desc"),
+    btnCopyRoomLink: document.getElementById("btn-copy-room-link"),
+    iconCopyInvite: document.getElementById("icon-copy-invite"),
+    copyInviteText: document.getElementById("copy-invite-text"),
     headerChannelIcon: document.getElementById("header-channel-icon"),
     headerStatusPill: document.getElementById("header-status-pill"),
     headerStatusDot: document.getElementById("header-status-dot"),
@@ -96,6 +99,8 @@
     messagesContainer: document.getElementById("messages-container"),
     emptyState: document.getElementById("empty-state"),
     btnJumpLatest: document.getElementById("btn-jump-latest"),
+    typingIndicator: document.getElementById("typing-indicator"),
+    typingText: document.getElementById("typing-text"),
     chatForm: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     btnComposerAttach: document.getElementById("btn-composer-attach"),
@@ -639,6 +644,137 @@
     }
   }
 
+  // =========================================================================
+  // TYPING INDICATOR CONTROLLER
+  // =========================================================================
+  const typingState = {
+    isTyping: false,
+    timeout: null,
+    activeTypers: new Map() // username -> timeoutId
+  };
+
+  function handleInputTyping() {
+    if (!state.roomId || !state.username || !state.socket) return;
+
+    if (!typingState.isTyping) {
+      typingState.isTyping = true;
+      state.socket.emit("user_typing", {
+        room_id: state.roomId,
+        username: state.username
+      });
+    }
+
+    if (typingState.timeout) {
+      clearTimeout(typingState.timeout);
+    }
+
+    typingState.timeout = setTimeout(() => {
+      stopTyping();
+    }, 1500);
+  }
+
+  function stopTyping() {
+    if (typingState.isTyping) {
+      typingState.isTyping = false;
+      if (typingState.timeout) {
+        clearTimeout(typingState.timeout);
+        typingState.timeout = null;
+      }
+      if (state.roomId && state.username && state.socket) {
+        state.socket.emit("user_stop_typing", {
+          room_id: state.roomId,
+          username: state.username
+        });
+      }
+    }
+  }
+
+  function renderTypingIndicator() {
+    if (!DOM.typingIndicator || !DOM.typingText) return;
+    const typers = Array.from(typingState.activeTypers.keys());
+
+    if (typers.length === 0) {
+      DOM.typingIndicator.classList.add("hidden");
+      DOM.typingText.textContent = "";
+      return;
+    }
+
+    let text = "";
+    if (typers.length === 1) {
+      text = `${escapeHtml(typers[0])} is typing...`;
+    } else if (typers.length === 2) {
+      text = `${escapeHtml(typers[0])} and ${escapeHtml(typers[1])} are typing...`;
+    } else {
+      text = `${escapeHtml(typers[0])}, ${escapeHtml(typers[1])} and ${typers.length - 2} more are typing...`;
+    }
+
+    DOM.typingText.textContent = text;
+    DOM.typingIndicator.classList.remove("hidden");
+  }
+
+  // =========================================================================
+  // SHAREABLE ROOM LINK CONTROLLER
+  // =========================================================================
+  function checkUrlRoomHash() {
+    const hash = window.location.hash || "";
+    if (hash.includes("room=")) {
+      const match = hash.match(/room=([^&]+)/);
+      if (match && match[1]) {
+        try {
+          const roomId = decodeURIComponent(match[1]).trim().toLowerCase();
+          if (roomId && DOM.roomInput) {
+            DOM.roomInput.value = roomId;
+            setRoomMode("join");
+            logActivity(`Auto-filled Room ID '${roomId}' from invite URL.`);
+            if (DOM.usernameInput && !DOM.usernameInput.value) {
+              DOM.usernameInput.focus();
+            } else if (DOM.passkeyInput) {
+              DOM.passkeyInput.focus();
+            }
+          }
+        } catch (_) {}
+      }
+    }
+  }
+
+  async function copyInviteLink() {
+    if (!state.roomId) return;
+    const inviteUrl = `${window.location.origin}${window.location.pathname}#room=${encodeURIComponent(state.roomId)}`;
+
+    let copied = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(inviteUrl);
+        copied = true;
+      } catch (_) {}
+    }
+    if (!copied) {
+      const tempInput = document.createElement("input");
+      tempInput.value = inviteUrl;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      try {
+        copied = document.execCommand("copy");
+      } catch (_) {}
+      document.body.removeChild(tempInput);
+    }
+
+    if (DOM.btnCopyRoomLink) {
+      DOM.btnCopyRoomLink.classList.add("copied");
+      if (DOM.copyInviteText) DOM.copyInviteText.textContent = "Copied!";
+      if (DOM.iconCopyInvite) DOM.iconCopyInvite.innerHTML = `<use href="#icon-check"></use>`;
+
+      setTimeout(() => {
+        if (DOM.btnCopyRoomLink) {
+          DOM.btnCopyRoomLink.classList.remove("copied");
+          if (DOM.copyInviteText) DOM.copyInviteText.textContent = "Share Link";
+          if (DOM.iconCopyInvite) DOM.iconCopyInvite.innerHTML = `<use href="#icon-link"></use>`;
+        }
+      }, 2000);
+    }
+    logActivity(`Invite link copied to clipboard: ${inviteUrl}`);
+  }
+
   function init() {
     initTheme();
     setConnectionStatus("disconnected", "Disconnected");
@@ -658,6 +794,7 @@
 
     setupEventListeners();
     setRoomMode("create");
+    checkUrlRoomHash();
     connectSocket();
   }
 
@@ -734,6 +871,14 @@
       if (DOM.activeChatTitle) {
         DOM.activeChatTitle.textContent = `🔒 Room: ${data.room_id}`;
       }
+      if (DOM.btnCopyRoomLink) {
+        DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (data.room_id) {
+        try {
+          window.location.hash = "#room=" + encodeURIComponent(data.room_id);
+        } catch (_) {}
+      }
       const peerList = data.peers || data.members || [];
       if (DOM.activeChatDesc) {
         DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
@@ -752,8 +897,39 @@
       }
     });
 
+    // Real-Time Typing Indicator Socket Listeners
+    state.socket.on("user_typing", (data) => {
+      if (!data || data.room_id !== state.roomId) return;
+      if (data.username && data.username.toLowerCase() !== state.username.toLowerCase()) {
+        if (typingState.activeTypers.has(data.username)) {
+          clearTimeout(typingState.activeTypers.get(data.username));
+        }
+        const timer = setTimeout(() => {
+          typingState.activeTypers.delete(data.username);
+          renderTypingIndicator();
+        }, 3500);
+        typingState.activeTypers.set(data.username, timer);
+        renderTypingIndicator();
+      }
+    });
+
+    state.socket.on("user_stop_typing", (data) => {
+      if (!data || data.room_id !== state.roomId) return;
+      if (data.username && typingState.activeTypers.has(data.username)) {
+        clearTimeout(typingState.activeTypers.get(data.username));
+        typingState.activeTypers.delete(data.username);
+        renderTypingIndicator();
+      }
+    });
+
     state.socket.on("receive_message", async (data) => {
       if (!data) return;
+
+      if (data.sender && typingState.activeTypers.has(data.sender)) {
+        clearTimeout(typingState.activeTypers.get(data.sender));
+        typingState.activeTypers.delete(data.sender);
+        renderTypingIndicator();
+      }
 
       if (data.type === "system") {
         appendSystemMessage(data.message);
@@ -903,6 +1079,9 @@
 
     // Clear previous member roster immediately before populating the new room's roster
     updateUserList([]);
+    typingState.activeTypers.forEach((timer) => clearTimeout(timer));
+    typingState.activeTypers.clear();
+    renderTypingIndicator();
 
     // Store strictly in client memory - never persisted to localStorage or cookies!
     state.username = username;
@@ -937,6 +1116,12 @@
 
     if (DOM.activeChatTitle && state.roomId) {
       DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
+      if (DOM.btnCopyRoomLink) {
+        DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      try {
+        window.location.hash = "#room=" + encodeURIComponent(state.roomId);
+      } catch (_) {}
     }
     if (DOM.activeChatDesc) {
       DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
@@ -967,6 +1152,7 @@
   // =========================================================================
   async function handleSendMessage(e) {
     e.preventDefault();
+    stopTyping();
     toggleEmojiPopover(false);
     const text = DOM.messageInput.value.trim();
     if (!text) return;
@@ -2070,10 +2256,29 @@
       });
     }
 
-    // Chat Submission
+    // Chat Submission & Typing Listener
     if (DOM.chatForm) {
       DOM.chatForm.addEventListener("submit", handleSendMessage);
     }
+    if (DOM.messageInput) {
+      DOM.messageInput.addEventListener("input", handleInputTyping);
+      DOM.messageInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          stopTyping();
+        } else {
+          handleInputTyping();
+        }
+      });
+    }
+
+    // Copy Invite Link Button
+    if (DOM.btnCopyRoomLink) {
+      DOM.btnCopyRoomLink.addEventListener("click", copyInviteLink);
+    }
+
+    // Hashchange listener for direct room invites
+    window.addEventListener("hashchange", checkUrlRoomHash);
+
     if (DOM.btnPublicRoom) {
       DOM.btnPublicRoom.addEventListener("click", switchToPublicChat);
       DOM.btnPublicRoom.addEventListener("keydown", (e) => {

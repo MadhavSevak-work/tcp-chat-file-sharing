@@ -468,6 +468,36 @@ def handle_send_message(data):
     }, room=room_id, include_self=True)
 
 
+@socketio.on("user_typing")
+def handle_user_typing(data):
+    """Broadcasts typing notification strictly to room peers (excluding sender)."""
+    if not isinstance(data, dict):
+        return
+    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
+    username = str(data.get("username", "")).strip()
+    if not room_id or not username:
+        return
+    emit("user_typing", {
+        "room_id": room_id,
+        "username": username
+    }, room=room_id, include_self=False)
+
+
+@socketio.on("user_stop_typing")
+def handle_user_stop_typing(data):
+    """Broadcasts stop typing notification strictly to room peers (excluding sender)."""
+    if not isinstance(data, dict):
+        return
+    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
+    username = str(data.get("username", "")).strip()
+    if not room_id or not username:
+        return
+    emit("user_stop_typing", {
+        "room_id": room_id,
+        "username": username
+    }, room=room_id, include_self=False)
+
+
 @socketio.on("join")
 def handle_join(data):
     """

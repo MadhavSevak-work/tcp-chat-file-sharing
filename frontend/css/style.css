@@ -1081,6 +1081,40 @@ select:focus {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-copy-invite {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--primary-accent);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+.btn-copy-invite:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--primary-accent);
+  transform: translateY(-1px);
+}
+.btn-copy-invite.copied {
+  background-color: rgba(0, 168, 132, 0.15);
+  border-color: var(--primary-accent);
+  color: var(--primary-accent);
+}
+.btn-copy-invite.hidden {
+  display: none !important;
+}
 
 .header-right {
   display: flex;
@@ -1338,7 +1372,7 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
 
 /* Fixed Bottom Message Composer */
 .composer-container {
-  padding: 10px 16px;
+  padding: 8px 16px 10px;
   background-color: var(--bg-header);
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -1346,6 +1380,66 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
   bottom: 0;
   z-index: 10;
 }
+
+/* Subtle Live Typing Indicator */
+.typing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 4px 6px;
+  font-size: 0.735rem;
+  font-style: italic;
+  color: var(--text-muted);
+  animation: typingFadeIn 0.2s ease-out;
+  min-height: 22px;
+}
+.typing-indicator.hidden {
+  display: none !important;
+}
+.typing-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-right: 2px;
+}
+.typing-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--primary-accent);
+  opacity: 0.6;
+  animation: typingBounce 1.4s infinite ease-in-out both;
+}
+.typing-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0s;
+}
+@keyframes typingBounce {
+  0%, 80%, 100% {
+    transform: scale(0.6);
+    opacity: 0.35;
+  }
+  40% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}
+@keyframes typingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .composer-form {
   display: flex;
   align-items: center;

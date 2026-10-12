@@ -185,6 +185,61 @@ class TestWebApp(unittest.TestCase):
         c4.disconnect()
         self.assertNotIn("room2", room_members)
 
+    def test_07_typing_indicators_per_room(self):
+        """Test user_typing and user_stop_typing events are scoped strictly to the room."""
+        from web_app.app import socketio
+
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+
+        c1.emit("join_room", {"room_id": "typing_vault", "username": "Alice"})
+        c2.emit("join_room", {"room_id": "typing_vault", "username": "Bob"})
+        c3.emit("join_room", {"room_id": "other_vault", "username": "Charlie"})
+
+        # Clear join messages
+        c1.get_received()
+        c2.get_received()
+        c3.get_received()
+
+        # Alice starts typing in 'typing_vault'
+        c1.emit("user_typing", {"room_id": "typing_vault", "username": "Alice"})
+
+        rec_c1 = c1.get_received()
+        rec_c2 = c2.get_received()
+        rec_c3 = c3.get_received()
+
+        # Sender should NOT receive own typing event
+        typing_c1 = [m for m in rec_c1 if m["name"] == "user_typing"]
+        self.assertEqual(len(typing_c1), 0)
+
+        # Peer in same room receives user_typing
+        typing_c2 = [m for m in rec_c2 if m["name"] == "user_typing"]
+        self.assertEqual(len(typing_c2), 1)
+        self.assertEqual(typing_c2[0]["args"][0]["username"], "Alice")
+        self.assertEqual(typing_c2[0]["args"][0]["room_id"], "typing_vault")
+
+        # Peer in different room should NOT receive it
+        typing_c3 = [m for m in rec_c3 if m["name"] == "user_typing"]
+        self.assertEqual(len(typing_c3), 0)
+
+        # Alice stops typing
+        c1.emit("user_stop_typing", {"room_id": "typing_vault", "username": "Alice"})
+
+        rec_c2_stop = c2.get_received()
+        rec_c3_stop = c3.get_received()
+
+        stop_c2 = [m for m in rec_c2_stop if m["name"] == "user_stop_typing"]
+        self.assertEqual(len(stop_c2), 1)
+        self.assertEqual(stop_c2[0]["args"][0]["username"], "Alice")
+
+        stop_c3 = [m for m in rec_c3_stop if m["name"] == "user_stop_typing"]
+        self.assertEqual(len(stop_c3), 0)
+
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()
