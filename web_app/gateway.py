@@ -31,6 +31,7 @@ from shared.constants import (
     MSG_FILE_REJECT,
     MSG_FILE_READY,
     MSG_FILE_CANCEL,
+    MSG_FILE_CHUNK,
     SOCKET_TIMEOUT,
 )
 from shared.protocol import (
@@ -151,6 +152,8 @@ class TCPClientSession:
                 self.emit_callback("file_reject", msg)
             elif msg_type == MSG_FILE_CANCEL:
                 self.emit_callback("file_cancel", msg)
+            elif msg_type == MSG_FILE_CHUNK:
+                self.emit_callback("file_chunk", msg)
 
         if self.is_connected:
             self.is_connected = False
@@ -206,6 +209,26 @@ class TCPClientSession:
             "transfer_id": transfer_id,
             "sender": sender,
             "filename": filename
+        })
+
+    def send_file_chunk(self, transfer_id: str, chunk_index: int, total_chunks: int, chunk_data: Any, recipient: str = "") -> bool:
+        """
+        Wraps file chunk in the exact 4-byte length prefix required by the TCP byte-stream protocol.
+        """
+        import base64
+        self.messages_sent += 1
+        if isinstance(chunk_data, (bytes, bytearray)):
+            data_str = base64.b64encode(chunk_data).decode("ascii")
+        else:
+            data_str = str(chunk_data)
+
+        return self._send_payload({
+            "type": MSG_FILE_CHUNK,
+            "transfer_id": transfer_id,
+            "chunk_index": chunk_index,
+            "total_chunks": total_chunks,
+            "recipient": recipient,
+            "data": data_str
         })
 
     def _send_payload(self, payload: dict) -> bool:

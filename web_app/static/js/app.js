@@ -16,6 +16,8 @@
     activeChatTarget: null, // null = Public Room, string = Private Peer
     onlineUsers: [],
     selectedFile: null,
+    fileSha256: null,
+    isHashing: false,
     pendingOffer: null,
     latencyMs: 0,
     pingInterval: null,
@@ -100,7 +102,7 @@
     btnOpenFilePanel: document.getElementById("btn-open-file-panel"),
     fileRecipientSelect: document.getElementById("file-recipient-select"),
     dropZone: document.getElementById("drop-zone"),
-    fileInputElement: document.getElementById("file-input-element"),
+    fileInputElement: document.getElementById("file-upload") || document.getElementById("file-input-element"),
     filePreviewCard: document.getElementById("file-preview-card"),
     previewFilename: document.getElementById("preview-filename"),
     previewFilesize: document.getElementById("preview-filesize"),
@@ -916,16 +918,132 @@
     setMobileActiveTab("share");
   }
 
+  // =========================================================================
+  // INCREMENTAL SHA-256 & STREAMING FILE TRANSFER
+  // =========================================================================
+
+  class IncrementalSHA256 {
+    constructor() {
+      this.K = new Uint32Array([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+      ]);
+      this.H = new Uint32Array([
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+        0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+      ]);
+      this.buffer = new Uint8Array(64);
+      this.bufferLength = 0;
+      this.totalBytes = 0;
+      this.w = new Uint32Array(64);
+    }
+
+    _compress(block) {
+      const w = this.w;
+      for (let i = 0; i < 16; i++) {
+        const idx = i * 4;
+        w[i] = (block[idx] << 24) | (block[idx + 1] << 16) | (block[idx + 2] << 8) | block[idx + 3];
+      }
+      for (let i = 16; i < 64; i++) {
+        const s0 = (w[i - 15] >>> 7 | w[i - 15] << 25) ^ (w[i - 15] >>> 18 | w[i - 15] << 14) ^ (w[i - 15] >>> 3);
+        const s1 = (w[i - 2] >>> 17 | w[i - 2] << 15) ^ (w[i - 2] >>> 19 | w[i - 2] << 13) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+      }
+
+      let a = this.H[0], b = this.H[1], c = this.H[2], d = this.H[3];
+      let e = this.H[4], f = this.H[5], g = this.H[6], h = this.H[7];
+
+      for (let i = 0; i < 64; i++) {
+        const S1 = (e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7);
+        const ch = (e & f) ^ (~e & g);
+        const temp1 = (h + S1 + ch + this.K[i] + w[i]) | 0;
+        const S0 = (a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (S0 + maj) | 0;
+
+        h = g;
+        g = f;
+        f = e;
+        e = (d + temp1) | 0;
+        d = c;
+        c = b;
+        b = a;
+        a = (temp1 + temp2) | 0;
+      }
+
+      this.H[0] = (this.H[0] + a) | 0;
+      this.H[1] = (this.H[1] + b) | 0;
+      this.H[2] = (this.H[2] + c) | 0;
+      this.H[3] = (this.H[3] + d) | 0;
+      this.H[4] = (this.H[4] + e) | 0;
+      this.H[5] = (this.H[5] + f) | 0;
+      this.H[6] = (this.H[6] + g) | 0;
+      this.H[7] = (this.H[7] + h) | 0;
+    }
+
+    update(chunk) {
+      const data = chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk);
+      this.totalBytes += data.length;
+      let offset = 0;
+      while (offset < data.length) {
+        const needed = 64 - this.bufferLength;
+        const toCopy = Math.min(needed, data.length - offset);
+        this.buffer.set(data.subarray(offset, offset + toCopy), this.bufferLength);
+        this.bufferLength += toCopy;
+        offset += toCopy;
+        if (this.bufferLength === 64) {
+          this._compress(this.buffer);
+          this.bufferLength = 0;
+        }
+      }
+    }
+
+    digest() {
+      const totalBits = BigInt(this.totalBytes) * 8n;
+      const pad = new Uint8Array(1);
+      pad[0] = 0x80;
+      this.update(pad);
+
+      while (this.bufferLength !== 56) {
+        if (this.bufferLength < 56) {
+          const zeros = new Uint8Array(56 - this.bufferLength);
+          this.update(zeros);
+        } else {
+          const zeros = new Uint8Array(64 - this.bufferLength);
+          this.update(zeros);
+        }
+      }
+
+      const lenBuf = new Uint8Array(8);
+      const view = new DataView(lenBuf.buffer);
+      view.setBigUint64(0, totalBits, false);
+      this.update(lenBuf);
+
+      let hex = "";
+      for (let i = 0; i < 8; i++) {
+        hex += this.H[i].toString(16).padStart(8, "0");
+      }
+      return hex;
+    }
+  }
+
   function closeFileModal() {
     DOM.fileModal.classList.add("hidden");
     state.selectedFile = null;
+    state.fileSha256 = null;
     DOM.filePreviewCard.classList.add("hidden");
     DOM.uploadProgressContainer.classList.add("hidden");
     DOM.confirmSendFileBtn.disabled = true;
     setMobileActiveTab("chat");
   }
 
-  function handleFileSelected(file) {
+  async function handleFileSelected(file) {
     if (!file) return;
 
     if (file.size > 100 * 1024 * 1024) {
@@ -933,70 +1051,161 @@
       return;
     }
 
-    state.selectedFile = file;
-    DOM.previewFilename.textContent = file.name;
-    DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing SHA-256 on transfer...</span>`;
+    if (file.size === 0) {
+      alert("File is empty (0 bytes). Please select a valid file.");
+      return;
+    }
 
+    state.selectedFile = file;
+    state.fileSha256 = null;
+
+    DOM.previewFilename.textContent = file.name;
+    DOM.previewFilesize.textContent = formatBytes(file.size);
+    DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing hash... 0%</span>`;
     DOM.filePreviewCard.classList.remove("hidden");
-    DOM.confirmSendFileBtn.disabled = false;
+    DOM.confirmSendFileBtn.disabled = true;
+
+    try {
+      // Chunked non-blocking SHA-256 calculation: yields to event loop on every 1 MB block
+      // to keep WebSocket ping/pong uninterrupted and prevent thread locking
+      const HASH_SLICE_SIZE = 1024 * 1024; // 1 MB slices
+      const totalSlices = Math.ceil(file.size / HASH_SLICE_SIZE) || 1;
+      const hasher = new IncrementalSHA256();
+
+      for (let i = 0; i < totalSlices; i++) {
+        if (state.selectedFile !== file) return; // Discard if user picked another file
+
+        const start = i * HASH_SLICE_SIZE;
+        const end = Math.min(start + HASH_SLICE_SIZE, file.size);
+        const slice = file.slice(start, end);
+        const buf = await slice.arrayBuffer();
+        hasher.update(new Uint8Array(buf));
+
+        const percent = Math.min(100, Math.round((end / file.size) * 100));
+        DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing hash... ${percent}%</span>`;
+
+        // Yield to browser event loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      if (state.selectedFile !== file) return;
+      const finalHash = hasher.digest();
+      state.fileSha256 = finalHash;
+
+      DOM.previewHash.textContent = `SHA-256: ${finalHash}`;
+      DOM.confirmSendFileBtn.disabled = false;
+      logActivity(`Computed SHA-256 for '${file.name}': ${finalHash.substring(0, 16)}...`);
+    } catch (err) {
+      console.error("SHA-256 computation failed:", err);
+      DOM.previewHash.textContent = "Error computing hash. Please reselect.";
+      DOM.confirmSendFileBtn.disabled = true;
+    }
   }
 
-  function handleConfirmSendFile() {
+  async function handleConfirmSendFile() {
     const recipient = DOM.fileRecipientSelect.value;
     if (!recipient) {
       alert("Please select a recipient.");
       return;
     }
-    if (!state.selectedFile) return;
+    if (!state.selectedFile || !state.fileSha256) {
+      alert("Please wait for file hash calculation to complete.");
+      return;
+    }
 
     const file = state.selectedFile;
-    const formData = new FormData();
-    formData.append("file", file);
+    const fileHash = state.fileSha256;
+    const transferId = "tf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+    const CHUNK_SIZE = 64 * 1024; // 64 KB chunks
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
 
     DOM.uploadProgressContainer.classList.remove("hidden");
     DOM.confirmSendFileBtn.disabled = true;
-    DOM.uploadProgressText.textContent = "Uploading to server...";
+    DOM.uploadProgressBar.style.width = "0%";
+    DOM.uploadProgressText.textContent = "Streaming chunks: 0%";
+    DOM.uploadProgressBytes.textContent = `0 / ${formatBytes(file.size)}`;
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload", true);
+    try {
+      // Stream 64 KB chunks sequentially over WebSocket with backpressure acknowledgment
+      for (let i = 0; i < totalChunks; i++) {
+        if (!state.socket || !state.isConnected) {
+          throw new Error("WebSocket disconnected during chunk streaming.");
+        }
 
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const percent = Math.round((e.loaded / e.total) * 100);
-        DOM.uploadProgressBar.style.width = `${percent}%`;
-        DOM.uploadProgressText.textContent = `Uploading: ${percent}%`;
-        DOM.uploadProgressBytes.textContent = `${formatBytes(e.loaded)} / ${formatBytes(e.total)}`;
-      }
-    };
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const slice = file.slice(start, end);
+        const chunkBuffer = await slice.arrayBuffer();
 
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const resp = JSON.parse(xhr.responseText);
-        DOM.uploadProgressText.textContent = "Upload complete. Sending offer to peer...";
-        logActivity(`File '${resp.filename}' uploaded. SHA-256: ${resp.sha256.substring(0, 16)}...`);
+        // Await acknowledgment before sending next chunk
+        await new Promise((resolve, reject) => {
+          let resolved = false;
+          const ackTimeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              resolve(); // Fallback acknowledgment timeout
+            }
+          }, 15000);
 
-        state.socket.emit("file_offer", {
-          transfer_id: resp.transfer_id,
-          recipient: recipient,
-          filename: resp.filename,
-          filesize: resp.filesize,
-          sha256: resp.sha256
+          state.socket.emit(
+            "file_chunk",
+            {
+              type: "file_chunk",
+              transfer_id: transferId,
+              chunk_index: i,
+              total_chunks: totalChunks,
+              filename: file.name,
+              filesize: file.size,
+              sha256: fileHash,
+              recipient: recipient,
+              data: chunkBuffer
+            },
+            (response) => {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(ackTimeout);
+                if (response && response.status === "error") {
+                  reject(new Error(response.message || "Failed to write chunk"));
+                } else {
+                  resolve(response);
+                }
+              }
+            }
+          );
         });
 
-        appendSystemMessage(`Offered '${resp.filename}' (${formatBytes(resp.filesize)}) to '${recipient}'. Waiting for response...`);
-        setTimeout(closeFileModal, 700);
-      } else {
-        alert("Upload error: " + xhr.responseText);
-        DOM.confirmSendFileBtn.disabled = false;
+        // Update UI progress
+        const sentBytes = end;
+        const percent = Math.round((sentBytes / file.size) * 100);
+        DOM.uploadProgressBar.style.width = `${percent}%`;
+        DOM.uploadProgressText.textContent = `Streaming chunks: ${percent}%`;
+        DOM.uploadProgressBytes.textContent = `${formatBytes(sentBytes)} / ${formatBytes(file.size)}`;
+
+        // Yield slightly for smooth UI rendering
+        if (i % 4 === 0) {
+          await new Promise((r) => setTimeout(r, 0));
+        }
       }
-    };
 
-    xhr.onerror = () => {
-      alert("Network error during file upload.");
+      DOM.uploadProgressText.textContent = "Upload complete. Sending offer to peer...";
+      logActivity(`File '${file.name}' streamed. SHA-256: ${fileHash.substring(0, 16)}...`);
+
+      state.socket.emit("file_offer", {
+        transfer_id: transferId,
+        recipient: recipient,
+        filename: file.name,
+        filesize: file.size,
+        sha256: fileHash
+      });
+
+      appendSystemMessage(`Offered '${file.name}' (${formatBytes(file.size)}) to '${recipient}'. Waiting for response...`);
+      setTimeout(closeFileModal, 700);
+
+    } catch (err) {
+      alert("File transfer error: " + (err.message || err));
       DOM.confirmSendFileBtn.disabled = false;
-    };
-
-    xhr.send(formData);
+      DOM.uploadProgressText.textContent = "Transfer failed";
+    }
   }
 
   function handleIncomingFileOffer(data) {
@@ -1287,11 +1496,13 @@
 
     // File Drag & Drop
     if (DOM.dropZone) {
-      DOM.dropZone.addEventListener("click", () => DOM.fileInputElement.click());
+      DOM.dropZone.addEventListener("click", () => {
+        if (DOM.fileInputElement) DOM.fileInputElement.click();
+      });
       DOM.dropZone.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          DOM.fileInputElement.click();
+          if (DOM.fileInputElement) DOM.fileInputElement.click();
         }
       });
       DOM.dropZone.addEventListener("dragover", (e) => {
@@ -1304,7 +1515,7 @@
       DOM.dropZone.addEventListener("drop", (e) => {
         e.preventDefault();
         DOM.dropZone.classList.remove("dragover");
-        if (e.dataTransfer.files.length > 0) {
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0 && e.dataTransfer.files[0]) {
           handleFileSelected(e.dataTransfer.files[0]);
         }
       });
@@ -1312,7 +1523,13 @@
 
     if (DOM.fileInputElement) {
       DOM.fileInputElement.addEventListener("change", (e) => {
-        if (e.target.files.length > 0) handleFileSelected(e.target.files[0]);
+        if (e.target && e.target.files && e.target.files.length > 0 && e.target.files[0]) {
+          handleFileSelected(e.target.files[0]);
+        }
+        // Reset input value so user can re-select the same file if desired
+        try {
+          e.target.value = "";
+        } catch (_) {}
       });
     }
 

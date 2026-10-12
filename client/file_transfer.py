@@ -12,7 +12,7 @@ import threading
 from typing import Callable, Optional
 
 from shared.constants import CHUNK_SIZE, SOCKET_TIMEOUT
-from shared.protocol import send_msg, recv_msg, ConnectionClosedError, ProtocolError
+from shared.protocol import send_msg, recv_msg, recv_exact, ConnectionClosedError, ProtocolError
 
 
 class FileTransferWorker:
@@ -125,9 +125,8 @@ class FileTransferWorker:
             with open(part_filepath, "wb") as f:
                 while bytes_received < self.filesize and not self.is_aborted:
                     bytes_to_read = min(CHUNK_SIZE, self.filesize - bytes_received)
-                    chunk = self.sock.recv(bytes_to_read)
-                    if not chunk:
-                        break
+                    # Loop until the complete chunk buffer is received
+                    chunk = recv_exact(self.sock, bytes_to_read)
                     f.write(chunk)
                     hasher.update(chunk)
                     bytes_received += len(chunk)

@@ -126,6 +126,44 @@ def recv_msg(sock: socket.socket) -> Optional[Dict[str, Any]]:
         raise ProtocolError(f"Malformed JSON payload received: {e}")
 
 
+def send_frame(sock: socket.socket, data: bytes, lock=None) -> None:
+    """
+    Wraps raw binary data in the exact 4-byte big-endian length prefix (!I)
+    required by the TCP byte-stream protocol and transmits across the socket.
+    """
+    if not isinstance(data, (bytes, bytearray)):
+        data = bytes(data)
+    frame_length = len(data)
+    header = struct.pack("!I", frame_length)
+    packet = header + data
+    if lock:
+        with lock:
+            sock.sendall(packet)
+    else:
+        sock.sendall(packet)
+
+
+def recv_frame(sock: socket.socket, max_frame_size: int = MAX_MESSAGE_SIZE) -> Optional[bytes]:
+    """
+    Reads the full 4-byte length header (!I), then loops until the complete
+    chunk buffer is received, preventing frame boundary alignment issues.
+    """
+    try:
+        header_bytes = recv_exact(sock, HEADER_SIZE)
+    except ConnectionClosedError:
+        return None
+
+    if not header_bytes:
+        return None
+
+    payload_length = struct.unpack("!I", header_bytes)[0]
+    if payload_length > max_frame_size:
+        raise ProtocolError(f"Incoming binary frame too large: {payload_length} bytes")
+
+    return recv_exact(sock, payload_length)
+
+
+
 def validate_username(username: str) -> Tuple[bool, str]:
     """
     Validates a requested username.

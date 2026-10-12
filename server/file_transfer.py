@@ -22,7 +22,7 @@ import logging
 from typing import Dict, Optional
 
 from shared.constants import BUFFER_SIZE, CHUNK_SIZE, SOCKET_TIMEOUT
-from shared.protocol import send_msg, recv_msg, ConnectionClosedError, ProtocolError
+from shared.protocol import send_msg, recv_msg, recv_exact, ConnectionClosedError, ProtocolError
 
 
 class TransferSession:
@@ -175,10 +175,8 @@ class FileRelayServer:
         try:
             while bytes_relayed < session.filesize and not session.is_aborted:
                 bytes_to_read = min(CHUNK_SIZE, session.filesize - bytes_relayed)
-                chunk = session.sender_sock.recv(bytes_to_read)
-                if not chunk:
-                    raise ConnectionClosedError("Sender disconnected before sending entire file.")
-
+                # Ensure the TCP receiver reads the full chunk buffer to prevent frame boundary alignment issues
+                chunk = recv_exact(session.sender_sock, bytes_to_read)
                 session.receiver_sock.sendall(chunk)
                 bytes_relayed += len(chunk)
 

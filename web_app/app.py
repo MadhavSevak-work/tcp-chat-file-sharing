@@ -22,6 +22,8 @@ from shared.constants import (
     DEFAULT_CHAT_PORT,
     DEFAULT_FILE_PORT,
     MAX_FILE_SIZE,
+    MAX_WS_PAYLOAD,
+    MSG_FILE_CHUNK,
 )
 from shared.protocol import (
     validate_username,
@@ -33,7 +35,7 @@ from web_app.gateway import GatewayManager
 # Initialize Flask and SocketIO
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "tcp_chat_cn_secret_key_2026"
-app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
+app.config["MAX_CONTENT_LENGTH"] = MAX_WS_PAYLOAD
 
 # Upload directory configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -41,8 +43,15 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# Configure SocketIO with threading mode
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+# Configure SocketIO with threading mode, 105 MB payload buffer to prevent WebSocket 1009, and resilient heartbeats
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading",
+    max_http_buffer_size=MAX_WS_PAYLOAD,
+    ping_timeout=60,
+    ping_interval=25,
+)
 gateway_manager = GatewayManager()
 
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +59,8 @@ logger = logging.getLogger("WebApp")
 
 # File storage registry: transfer_id -> {filepath, filename, filesize, sha256, sender}
 file_registry = {}
+active_chunk_transfers = {}
+chunk_transfers_lock = threading.Lock()
 
 
 # ============================================================================
@@ -371,7 +382,109 @@ def handle_send_private(data):
         session.send_private(recipient, content)
 
 
+@socketio.on("file_chunk")
+def handle_file_chunk(data):
+    """
+    Receives 64 KB binary or base64 file chunk streamed over WebSocket.
+    Writes chunks sequentially to disk, tracks progress, and returns an
+    immediate acknowledgment for backpressure preservation.
+    When all chunks arrive, verifies SHA-256 and registers the file for download.
+    """
+    sid = request.sid
+    if not isinstance(data, dict):
+        return {"status": "error", "message": "Invalid chunk payload"}
+
+    transfer_id = data.get("transfer_id")
+    chunk_index = data.get("chunk_index", 0)
+    total_chunks = data.get("total_chunks", 1)
+    filename = data.get("filename", "uploaded_file.bin")
+    filesize = data.get("filesize", 0)
+    expected_sha256 = data.get("sha256", "")
+    raw_data = data.get("data")
+    recipient = data.get("recipient", "")
+
+    if not transfer_id or raw_data is None:
+        return {"status": "error", "message": "Missing transfer_id or chunk data"}
+
+    import base64
+    if isinstance(raw_data, str):
+        if "," in raw_data:
+            raw_data = raw_data.split(",", 1)[1]
+        try:
+            chunk_bytes = base64.b64decode(raw_data)
+        except Exception as e:
+            return {"status": "error", "message": f"Base64 decode error: {e}"}
+    elif isinstance(raw_data, (bytes, bytearray)):
+        chunk_bytes = bytes(raw_data)
+    else:
+        return {"status": "error", "message": "Unsupported chunk format"}
+
+    clean_filename = sanitize_filename(filename)
+    stored_filename = f"{transfer_id}_{clean_filename}"
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
+
+    with chunk_transfers_lock:
+        if transfer_id not in active_chunk_transfers:
+            # New transfer session: reset file if exists
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except Exception:
+                    pass
+            active_chunk_transfers[transfer_id] = {
+                "filepath": filepath,
+                "filename": clean_filename,
+                "filesize": filesize,
+                "sha256": expected_sha256,
+                "bytes_written": 0,
+                "chunks_received": 0,
+                "created_at": time.time()
+            }
+        entry = active_chunk_transfers[transfer_id]
+
+    try:
+        with open(filepath, "ab") as f:
+            f.write(chunk_bytes)
+        with chunk_transfers_lock:
+            entry["bytes_written"] += len(chunk_bytes)
+            entry["chunks_received"] += 1
+            is_complete = (chunk_index >= total_chunks - 1) or (filesize > 0 and entry["bytes_written"] >= filesize)
+    except Exception as e:
+        logger.error(f"[Gateway] Error writing chunk {chunk_index} for {transfer_id}: {e}")
+        return {"status": "error", "message": f"Write failed: {e}"}
+
+    if is_complete:
+        computed_sha = compute_file_sha256(filepath)
+        final_size = entry["bytes_written"]
+        file_registry[transfer_id] = {
+            "filepath": filepath,
+            "filename": clean_filename,
+            "filesize": final_size,
+            "sha256": computed_sha,
+            "created_at": time.time()
+        }
+        with chunk_transfers_lock:
+            active_chunk_transfers.pop(transfer_id, None)
+
+        logger.info(f"[WebSocket Chunking] Assembled '{clean_filename}' ({final_size} bytes, SHA-256: {computed_sha[:16]}...)")
+
+    # Forward to TCP core with length prefixing if this user has an active TCP session
+    session = gateway_manager.get_session(sid)
+    if session and session.is_connected:
+        session.send_file_chunk(transfer_id, chunk_index, total_chunks, chunk_bytes, recipient)
+
+    ack = {
+        "status": "ok",
+        "transfer_id": transfer_id,
+        "chunk_index": chunk_index,
+        "is_complete": is_complete
+    }
+    emit("file_chunk_ack", ack, room=sid)
+    return ack
+
+
 @socketio.on("file_offer")
+
 def handle_file_offer(data):
     sid = request.sid
     session = gateway_manager.get_session(sid)

@@ -25,6 +25,7 @@ from shared.constants import (
     MSG_FILE_REJECT,
     MSG_FILE_READY,
     MSG_FILE_CANCEL,
+    MSG_FILE_CHUNK,
     MAX_FILE_SIZE,
 )
 from shared.protocol import (
@@ -227,12 +228,25 @@ class ClientHandler(threading.Thread):
         elif msg_type == MSG_FILE_CANCEL:
             self._handle_file_cancel(msg)
 
+        elif msg_type in (MSG_FILE_CHUNK, "file_chunk"):
+            self._handle_file_chunk(msg)
+
         else:
             self.logger.warning(f"Unrecognized message type '{msg_type}' from {self.username}")
             self.send_payload({
                 "type": MSG_ERROR,
                 "message": f"Unrecognized message type: '{msg_type}'"
             })
+
+    def _handle_file_chunk(self, msg: dict) -> None:
+        """Forwards framed file chunk to the specified recipient."""
+        recipient = msg.get("recipient", "").strip()
+        if not recipient:
+            return
+        target_client = self.server.get_client(recipient)
+        if target_client:
+            target_client.send_payload(msg)
+
 
     def _handle_file_offer(self, msg: dict) -> None:
         recipient = msg.get("recipient", "").strip()
