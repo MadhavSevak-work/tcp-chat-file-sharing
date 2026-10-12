@@ -62,7 +62,7 @@
         <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
       </symbol>
       <!-- User profile: User -->
-      <symbol id="icon-user" viewBox="0 0 24 24">
+      <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
         <circle cx="12" cy="7" r="4"/>
       </symbol>
@@ -224,10 +224,7 @@
 
         <div class="form-group">
           <label for="username-input">Peer Nickname</label>
-          <div class="input-control">
-            <svg class="input-icon" aria-hidden="true"><use href="#icon-user"></use></svg>
-            <input type="text" id="username-input" placeholder="e.g. Alice, Engineer_1" maxlength="20" autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
-          </div>
+          <input type="text" id="username-input" placeholder="e.g. Alice, Engineer_1" maxlength="20" autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
           <span class="field-hint">Alphanumeric, hyphens, dots, underscores (2-20 characters).</span>
         </div>
 
