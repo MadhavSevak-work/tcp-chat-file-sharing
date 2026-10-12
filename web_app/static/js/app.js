@@ -438,14 +438,56 @@
   // =========================================================================
   // INITIALIZATION & SOCKET SETUP
   // =========================================================================
+
+  // Configurable Render backend target
+  // Can be set globally via window.NETCHAT_BACKEND_URL or defaults to Render production domain
+  const BACKEND_URL = (typeof window !== "undefined" && window.NETCHAT_BACKEND_URL)
+    || ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && window.location.port === "5050"
+      ? window.location.origin
+      : "https://netchat-live.onrender.com");
+
+  let reconnectAttemptsCount = 0;
+
+  function updateWakeupBanner(isWaking, message) {
+    if (DOM.loginGatewayDot) {
+      DOM.loginGatewayDot.className = "status-dot " + (isWaking ? "connecting" : (state.isConnected ? "connected" : "disconnected"));
+    }
+    if (DOM.loginGatewayBadge) {
+      DOM.loginGatewayBadge.className = "badge " + (isWaking ? "badge-warning" : (state.isConnected ? "badge-success" : "badge-secondary"));
+      DOM.loginGatewayBadge.textContent = isWaking ? "WAKING UP..." : (state.isConnected ? "READY" : "OFFLINE");
+    }
+    if (DOM.gatewayDisplayEndpoint) {
+      let host = "netchat-live.onrender.com";
+      try { host = new URL(BACKEND_URL).host; } catch (_) {}
+      DOM.gatewayDisplayEndpoint.textContent = isWaking
+        ? (message || "Connecting to Render server... backend may take 30s to wake up")
+        : (state.isConnected ? `Connected: ${host}` : `Target: ${host}`);
+    }
+
+    if (DOM.loginError) {
+      if (isWaking) {
+        DOM.loginError.className = "alert-banner alert-warning";
+        DOM.loginError.innerHTML = `<strong>Notice:</strong> Connecting to Render server... free-tier backend may take ~30s to wake up from idle state.`;
+        DOM.loginError.classList.remove("hidden");
+      } else if (DOM.loginError.classList.contains("alert-warning")) {
+        DOM.loginError.classList.add("hidden");
+        DOM.loginError.className = "alert-banner alert-error hidden";
+      }
+    }
+  }
+
   function init() {
     initTheme();
     setConnectionStatus("disconnected", "Disconnected");
 
     // Detect environment host for user-facing connection banner
-    const hostLabel = window.location.host || "netchat-live.onrender.com";
+    let hostLabel = "netchat-live.onrender.com";
+    try {
+      hostLabel = new URL(BACKEND_URL).host;
+    } catch (_) {}
+
     if (DOM.gatewayDisplayEndpoint) {
-      DOM.gatewayDisplayEndpoint.textContent = `Connected via ${hostLabel}`;
+      DOM.gatewayDisplayEndpoint.textContent = `Target: ${hostLabel}`;
     }
     if (DOM.diagGatewayHost) {
       DOM.diagGatewayHost.textContent = hostLabel;
@@ -456,13 +498,19 @@
   }
 
   function connectSocket() {
-    state.socket = io({
+    updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+
+    state.socket = io(BACKEND_URL, {
       transports: ["websocket", "polling"],
-      reconnection: true
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000
     });
 
     state.socket.on("connect", () => {
-      logActivity("WebSocket transport established with Gateway.");
+      logActivity(`WebSocket transport established with Gateway (${BACKEND_URL}).`);
+      reconnectAttemptsCount = 0;
+      updateWakeupBanner(false);
       if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
       if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
       if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot connected";
@@ -477,9 +525,23 @@
       if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "OFFLINE";
     });
 
-    state.socket.on("connect_error", () => {
-      setConnectionStatus("disconnected", "Disconnected");
+    state.socket.on("connect_error", (error) => {
+      reconnectAttemptsCount++;
+      logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount}): Render backend waking up...`);
+      setConnectionStatus("disconnected", "Connecting...");
+      updateWakeupBanner(true, `Connecting to Render server (attempt ${reconnectAttemptsCount})... backend may take 30s to wake up`);
     });
+
+    if (state.socket.io) {
+      state.socket.io.on("reconnect_attempt", (attempt) => {
+        updateWakeupBanner(true, `Reconnecting to Render server (attempt ${attempt})... waking up`);
+      });
+
+      state.socket.io.on("reconnect", () => {
+        logActivity("Reconnected to Render backend successfully!");
+        updateWakeupBanner(false);
+      });
+    }
 
     state.socket.on("gateway_ready", (data) => {
       logActivity(`Gateway ready (${data.gateway}). Loopback socket target: ${data.default_host}:${data.default_port}`);
@@ -589,6 +651,12 @@
 
     if (!username) {
       showLoginError("Please enter a username.");
+      return;
+    }
+
+    if (!state.socket || !state.socket.connected) {
+      showLoginError("Render backend is still waking up from idle state (~30s). Please wait a moment and try again.");
+      updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
       return;
     }
 
@@ -1512,7 +1580,7 @@
     appendSystemMessage(`Accepted ${isBroadcast ? "Public File Broadcast" : "file offer"} from '${offer.sender}'. Starting download...`);
     logActivity(`Accepted ${isBroadcast ? "public broadcast" : "file transfer"} '${offer.transfer_id}' from ${offer.sender}.`);
 
-    const downloadUrl = `/api/download/${offer.transfer_id}`;
+    const downloadUrl = `${BACKEND_URL}/api/download/${offer.transfer_id}`;
     const a = document.createElement("a");
     a.href = downloadUrl;
     a.download = offer.filename;

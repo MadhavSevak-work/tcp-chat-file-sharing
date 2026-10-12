@@ -52,6 +52,14 @@ socketio = SocketIO(
     ping_timeout=60,
     ping_interval=25,
 )
+
+# Optional flask_cors integration if package is available
+try:
+    from flask_cors import CORS
+    CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
+except ImportError:
+    pass
+
 gateway_manager = GatewayManager()
 
 logging.basicConfig(level=logging.INFO)
@@ -109,6 +117,32 @@ def get_client_ip() -> str:
 
 
 # ============================================================================
+# CORS HEADERS & PREFLIGHT HANDLING (CROSS-ORIGIN CLIENT SUPPORT)
+# ============================================================================
+
+@app.before_request
+def handle_preflight():
+    """Handle CORS preflight OPTIONS requests for all endpoints."""
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Range"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
+
+
+@app.after_request
+def add_cors_headers(response):
+    """Enforce CORS headers across all HTTP responses (status, health, files)."""
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Range"
+    response.headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Length, Content-Range"
+    return response
+
+
+# ============================================================================
 # HTTP ROUTES
 # ============================================================================
 
@@ -118,13 +152,28 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/api/status")
+@app.route("/health", methods=["GET", "OPTIONS"])
+@app.route("/api/health", methods=["GET", "OPTIONS"])
+def health_check():
+    """Cloud health check probe endpoint for Render / AWS / Vercel uptime pings."""
+    stats = gateway_manager.get_stats()
+    return jsonify({
+        "status": "healthy",
+        "gateway": "online",
+        "tcp_chat_port": DEFAULT_CHAT_PORT,
+        "tcp_file_port": DEFAULT_FILE_PORT,
+        "active_web_sessions": stats.get("active_gateway_sessions", 0),
+        "timestamp": time.time()
+    }), 200
+
+
+@app.route("/api/status", methods=["GET", "OPTIONS"])
 def api_status():
     """Returns network diagnostics and gateway status."""
     stats = gateway_manager.get_stats()
     return jsonify({
         "status": "online",
-        "gateway_port": 5050,
+        "gateway_port": int(os.environ.get("PORT", 5050)),
         "tcp_server_host": DEFAULT_HOST,
         "tcp_chat_port": DEFAULT_CHAT_PORT,
         "tcp_file_port": DEFAULT_FILE_PORT,
@@ -205,12 +254,20 @@ def upload_file():
     })
 
 
-@app.route("/api/download/<transfer_id>")
+@app.route("/api/download/<transfer_id>", methods=["GET", "OPTIONS"])
 def download_file(transfer_id):
     """
     Secure endpoint to download uploaded files with path traversal protection.
     Enforces attachment header and application/octet-stream content type to block in-browser HTML/SVG execution.
+    Includes full CORS headers for cross-origin downloads from Vercel.
     """
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Range"
+        return response
+
     record = file_registry.get(transfer_id)
     if not record or not os.path.exists(record["filepath"]):
         return jsonify({"status": "error", "message": "File not found or expired."}), 404
@@ -230,6 +287,10 @@ def download_file(transfer_id):
     response.headers["Content-Disposition"] = f'attachment; filename="{clean_dl_name}"'
     response.headers["Content-Type"] = "application/octet-stream"
     response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Range"
+    response.headers["Access-Control-Expose-Headers"] = "Content-Disposition, Content-Length"
     return response
 
 
@@ -586,9 +647,9 @@ def create_app():
 
 if __name__ == "__main__":
     host = "0.0.0.0"
-    port = 5050
+    port = int(os.environ.get("PORT", 5050))
     print("=" * 60)
-    print(f"Starting Web Gateway Server on http://localhost:{port}")
+    print(f"Starting Web Gateway Server on http://0.0.0.0:{port}")
     print(f"Bridges browser clients to TCP Chat Server on Port {DEFAULT_CHAT_PORT}")
     print("=" * 60)
     socketio.run(app, host=host, port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)

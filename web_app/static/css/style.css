@@ -370,6 +370,11 @@ html, body {
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
 }
+.badge-warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
 
 /* ==================== FORM CONTROLS ==================== */
 .form-group {
@@ -442,6 +447,11 @@ select:focus {
   background-color: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.3);
   color: var(--color-error);
+}
+.alert-warning {
+  background-color: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
 }
 
 /* ==================== LOGIN / CONNECT OVERLAY ==================== */

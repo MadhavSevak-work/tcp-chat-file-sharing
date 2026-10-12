@@ -18,7 +18,8 @@ from shared.constants import DEFAULT_CHAT_PORT
 def main():
     parser = argparse.ArgumentParser(description="Web Gateway for TCP Chat & File Sharing")
     parser.add_argument("--host", default="0.0.0.0", help="HTTP bind host (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=5050, help="HTTP web port (default: 5050)")
+    default_port = int(os.environ.get("PORT", 5050))
+    parser.add_argument("--port", type=int, default=default_port, help=f"HTTP web port (default: {default_port})")
     args = parser.parse_args()
 
     if hasattr(sys.stdout, "reconfigure"):

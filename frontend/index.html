@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="description" content="NetChat Live — TCP-Based Multi-Client Chat and File Sharing System. Real-time Layer 4 socket communication with SHA-256 integrity verification.">
+  <title>NetChat Live — TCP Multi-Client Chat & File Sharing (Computer Networks Lab)</title>
+  
+  <!-- Early Theme Detection Script (Prevents Theme Flash) -->
+  <script>
+    (function () {
+      try {
+        var savedTheme = localStorage.getItem('netchat_theme');
+        if (savedTheme === 'light' || savedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', savedTheme);
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+          document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- ==================== LUCIDE & BRAND SVG SYMBOL DEFINITIONS ==================== -->
+  <svg style="display: none;" aria-hidden="true">
+    <defs>
+      <!-- Custom NetChat Brand Nexus Logo -->
+      <symbol id="icon-netchat-brand" viewBox="0 0 24 24">
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="12" cy="12" r="2.8" fill="currentColor"/>
+        <path d="M12 2v7.2m0 5.6V22M3 7l6 3.5m6 3.5l6 3.5M21 7l-6 3.5m-6 3.5l-6 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </symbol>
+      <!-- Application/server: Server -->
+      <symbol id="icon-server" viewBox="0 0 24 24">
+        <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
+        <rect width="20" height="8" x="2" y="14" rx="2" ry="2"/>
+        <line x1="6" x2="6.01" y1="6" y2="6"/>
+        <line x1="6" x2="6.01" y1="18" y2="18"/>
+      </symbol>
+      <!-- Public Room: Globe -->
+      <symbol id="icon-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/>
+        <path d="M2 12h20"/>
+      </symbol>
+      <!-- Online peers: Users -->
+      <symbol id="icon-users" viewBox="0 0 24 24">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </symbol>
+      <!-- User profile: User -->
+      <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+        <circle cx="12" cy="7" r="4"/>
+      </symbol>
+      <!-- Share File & Attachment: Paperclip -->
+      <symbol id="icon-paperclip" viewBox="0 0 24 24">
+        <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+      </symbol>
+      <!-- Emoji / Reactions: Smile -->
+      <symbol id="icon-smile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" x2="9.01" y1="9" y2="9"/>
+        <line x1="15" x2="15.01" y1="9" y2="9"/>
+      </symbol>
+      <!-- File Document: File -->
+      <symbol id="icon-file" viewBox="0 0 24 24">
+        <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
+        <path d="M14 2v4a2 2 0 0 0 2 2h4"/>
+      </symbol>
+      <!-- Diagnostics & Telemetry: Activity -->
+      <symbol id="icon-activity" viewBox="0 0 24 24">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+      </symbol>
+      <!-- Theme toggle: Sun -->
+      <symbol id="icon-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2"/>
+        <path d="M12 20v2"/>
+        <path d="m4.93 4.93 1.41 1.41"/>
+        <path d="m17.66 17.66 1.41 1.41"/>
+        <path d="M2 12h2"/>
+        <path d="M20 12h2"/>
+        <path d="m6.34 17.66-1.41 1.41"/>
+        <path d="m19.07 4.93-1.41 1.41"/>
+      </symbol>
+      <!-- Theme toggle: Moon -->
+      <symbol id="icon-moon" viewBox="0 0 24 24">
+        <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+      </symbol>
+      <!-- Send message: Send -->
+      <symbol id="icon-send" viewBox="0 0 24 24">
+        <path d="m22 2-7 20-4-9-9-4Z"/>
+        <path d="M22 2 11 13"/>
+      </symbol>
+      <!-- Disconnect: Unplug -->
+      <symbol id="icon-unplug" viewBox="0 0 24 24">
+        <path d="m19 5 3-3"/>
+        <path d="m2 22 3-3"/>
+        <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z"/>
+        <path d="M7.5 13.5 10 11"/>
+        <path d="M10.5 16.5 13 14"/>
+        <path d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z"/>
+      </symbol>
+      <!-- Reconnect: RefreshCw -->
+      <symbol id="icon-refresh-cw" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+        <path d="M21 3v5h-5"/>
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+        <path d="M8 16H3v5"/>
+      </symbol>
+      <!-- Close dialog / Decline: X -->
+      <symbol id="icon-x" viewBox="0 0 24 24">
+        <path d="M18 6 6 18"/>
+        <path d="m6 6 12 12"/>
+      </symbol>
+      <!-- Settings: Settings -->
+      <symbol id="icon-settings" viewBox="0 0 24 24">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </symbol>
+      <!-- File Upload: Upload -->
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" x2="12" y1="3" y2="15"/>
+      </symbol>
+      <!-- File Download: Download -->
+      <symbol id="icon-download" viewBox="0 0 24 24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" x2="12" y1="15" y2="3"/>
+      </symbol>
+      <!-- Accept / Confirmed: Check -->
+      <symbol id="icon-check" viewBox="0 0 24 24">
+        <polyline points="20 6 9 17 4 12"/>
+      </symbol>
+      <!-- Loading: LoaderCircle -->
+      <symbol id="icon-loader-circle" viewBox="0 0 24 24">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </symbol>
+      <!-- Back navigation: ArrowLeft -->
+      <symbol id="icon-arrow-left" viewBox="0 0 24 24">
+        <path d="m12 19-7-7 7-7"/>
+        <path d="M19 12H5"/>
+      </symbol>
+      <!-- Expand / Collapse: ChevronDown -->
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6"/>
+      </symbol>
+      <!-- Expand / Collapse: ChevronRight -->
+      <symbol id="icon-chevron-right" viewBox="0 0 24 24">
+        <path d="m9 18 6-6-6-6"/>
+      </symbol>
+      <!-- Private Chat: Lock -->
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </symbol>
+      <!-- Mobile Menu: Menu -->
+      <symbol id="icon-menu" viewBox="0 0 24 24">
+        <line x1="4" x2="20" y1="12" y2="12"/>
+        <line x1="4" x2="20" y1="6" y2="6"/>
+        <line x1="4" x2="20" y1="18" y2="18"/>
+      </symbol>
+      <!-- Scroll down: ArrowDown -->
+      <symbol id="icon-arrow-down" viewBox="0 0 24 24">
+        <line x1="12" x2="12" y1="5" y2="19"/>
+        <polyline points="19 12 12 19 5 12"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
+  <div id="login-overlay" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <div class="login-card">
+      
+      <!-- Top Action Bar for Login (Theme Toggle) -->
+      <div class="login-top-bar">
+        <div class="login-system-pill">
+          <span class="status-dot connected"></span>
+          <span>NETCHAT L4 CORE</span>
+        </div>
+        <button type="button" id="btn-login-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn" title="Switch to light mode" aria-label="Switch to light mode">
+          <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+          <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+        </button>
+      </div>
+
+      <div class="login-header">
+        <div class="app-brand" aria-label="NetChat Live">
+          <div class="brand-symbol-wrap">
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
+          </div>
+          <div class="brand-text-wrap">
+            <span class="app-brand-text">NetChat</span>
+            <span class="brand-live-badge">LIVE</span>
+          </div>
+        </div>
+        <p class="subtitle">Next-Gen TCP Sockets · SHA-256 Checksums · Real-Time Gateway</p>
+      </div>
+
+      <div class="login-body">
+        <div id="login-error" class="alert-banner alert-error hidden" role="alert"></div>
+
+        <!-- Connection Endpoint Banner -->
+        <div class="gateway-status-card">
+          <div class="gateway-info">
+            <span class="status-dot connecting" id="login-gateway-dot"></span>
+            <div>
+              <div class="gateway-title" id="gateway-display-name">Render Backend Gateway</div>
+              <div class="gateway-display-endpoint" id="gateway-display-endpoint">Connecting to Render server... (may take 30s to wake up)</div>
+            </div>
+          </div>
+          <span class="badge badge-secondary" id="login-gateway-badge">CONNECTING</span>
+        </div>
+
+        <div class="form-group">
+          <label for="username-input">Peer Nickname</label>
+          <input type="text" id="username-input" placeholder="e.g. Alice, Engineer_1" maxlength="20" autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+          <span class="field-hint">Alphanumeric, hyphens, dots, underscores (2-20 characters).</span>
+        </div>
+
+        <button id="connect-btn" class="btn btn-primary btn-block btn-lg" type="button">
+          <span>Connect to Network</span>
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
+        </button>
+      </div>
+
+      <div class="login-footer">
+        <span>Layer 4 TCP Sockets | WebSocket Tunnel | SHA-256 Checksums</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Sidebar Backdrop Overlay -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+
+  <!-- ==================== MAIN APPLICATION LAYOUT ==================== -->
+  <div id="app-container" class="app-layout hidden">
+
+    <!-- LEFT NAVIGATION SIDEBAR (Collapsible Drawer on Mobile) -->
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar Navigation">
+      
+      <!-- Branding & Mobile Close Button -->
+      <div class="sidebar-brand">
+        <div class="app-brand" aria-label="NetChat Live">
+          <div class="brand-symbol-wrap">
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
+          </div>
+          <div class="brand-text-wrap">
+            <span class="app-brand-text">NetChat</span>
+            <span class="brand-live-badge">LIVE</span>
+          </div>
+        </div>
+        <div class="sidebar-brand-actions">
+          <span class="badge-status offline" title="Network Connection Status" id="sidebar-status-badge">
+            <span class="status-dot disconnected"></span>
+            <span class="badge-text">OFFLINE</span>
+          </span>
+          <button type="button" id="sidebar-close-btn" class="btn-icon mobile-only" title="Close Menu" aria-label="Close navigation sidebar">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Actions Section (Accessible on Mobile/Tablet in Drawer) -->
+      <div class="sidebar-nav-group mobile-drawer-actions">
+        <div class="nav-label">QUICK ACTIONS</div>
+        <ul class="nav-menu">
+          <li class="nav-menu-item" id="btn-drawer-share-file" role="button" tabindex="0" aria-label="Share File with Peer">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+            <span class="nav-title">Share File</span>
+          </li>
+          <li class="nav-menu-item" id="btn-drawer-diagnostics" role="button" tabindex="0" aria-label="Network Diagnostics">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span class="nav-title">Diagnostics</span>
+          </li>
+          <li class="nav-menu-item" id="btn-drawer-theme" role="button" tabindex="0" aria-label="Toggle Light and Dark Theme">
+            <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+            <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+            <span class="nav-title" id="drawer-theme-label">Switch Theme</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Navigation Section -->
+      <div class="sidebar-nav-group">
+        <div class="nav-label">CHANNELS</div>
+        <ul class="nav-menu">
+          <li class="nav-menu-item active" id="btn-public-room" role="button" tabindex="0" aria-label="Public Room">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-globe"></use></svg>
+            <span class="nav-title">Public Room</span>
+            <span class="nav-counter" id="public-badge">ALL</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Online Peers Section -->
+      <div class="sidebar-nav-group flex-grow">
+        <div class="nav-label flex-between">
+          <span class="nav-label-with-icon">
+            <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-users"></use></svg>
+            <span>ONLINE PEERS</span>
+          </span>
+          <span class="peer-counter" id="user-count" aria-live="polite">0</span>
+        </div>
+        <ul class="nav-menu peer-list" id="users-nav-list" role="list" aria-label="Online Peers List">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Telemetry Mini-Card in Sidebar -->
+      <div class="telemetry-card" id="diagnostics-mini-btn" role="button" tabindex="0" title="Open Network Diagnostics" aria-label="Open Network Diagnostics">
+        <div class="telemetry-header">
+          <span class="telemetry-title">
+            <svg class="svg-icon xs text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span>TELEMETRY</span>
+          </span>
+          <span class="telemetry-ping text-mono" id="mini-ping">-- ms</span>
+        </div>
+        <div class="telemetry-grid">
+          <div class="telemetry-row">
+            <span class="telemetry-label">Transport</span>
+            <span class="telemetry-val text-success" id="mini-transport">WebSocket</span>
+          </div>
+          <div class="telemetry-row">
+            <span class="telemetry-label">TCP Target</span>
+            <span class="telemetry-val text-primary text-mono" id="mini-tcp-target">5000</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- User Profile Footer -->
+      <div class="sidebar-user-footer">
+        <div class="user-avatar" id="my-avatar" aria-hidden="true">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-user"></use></svg>
+        </div>
+        <div class="user-details">
+          <span class="user-name" id="my-username">Connecting...</span>
+          <span class="user-node text-mono" id="my-endpoint">127.0.0.1:5000</span>
+        </div>
+        <button id="btn-sidebar-disconnect" class="btn-icon" title="Disconnect Session" aria-label="Disconnect Session">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CHAT CONVERSATION VIEW -->
+    <main class="chat-main" id="chat-main-area">
+      
+      <!-- Top Header -->
+      <header class="app-header">
+        <div class="header-left">
+          <!-- Mobile Menu Drawer Toggle Button -->
+          <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+          </button>
+
+          <!-- Mobile Compact Brand Badge -->
+          <div class="header-mobile-brand" aria-label="NetChat Live">
+            <div class="brand-symbol-wrap">
+              <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
+            </div>
+            <div class="brand-text-wrap">
+              <span class="app-brand-text">NetChat</span>
+              <span class="brand-live-badge">LIVE</span>
+            </div>
+          </div>
+
+          <div class="header-channel-icon" id="header-icon-wrap" aria-hidden="true">
+            <svg class="svg-icon" id="header-channel-icon"><use href="#icon-globe"></use></svg>
+          </div>
+          <div class="header-title-meta">
+            <h2 id="active-chat-title">Public Room</h2>
+            <span class="header-desc" id="active-chat-desc">Unified stream broadcast to all active network peers</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <!-- Live Telemetry Pill / Connection Status -->
+          <div class="status-pill-badge" id="header-status-pill" title="Connection Status" aria-live="polite">
+            <span class="status-dot disconnected" id="header-status-dot"></span>
+            <span id="header-status-text">Disconnected</span>
+            <span id="header-latency-text" class="status-latency hidden"></span>
+          </div>
+
+          <!-- Desktop Quick Action: Share File -->
+          <button id="btn-open-file-panel" class="btn btn-secondary header-btn" title="Share File with Peer" aria-label="Share File with Peer">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+            <span class="btn-text">Share File</span>
+          </button>
+
+          <!-- Desktop Quick Action: Diagnostics -->
+          <button id="btn-open-diagnostics" class="btn btn-secondary header-btn" title="Network Diagnostics" aria-label="Network Diagnostics">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
+            <span class="btn-text">Diagnostics</span>
+          </button>
+
+          <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->
+          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn" title="Switch to light mode" aria-label="Switch to light mode">
+            <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
+            <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+          </button>
+
+          <!-- Connection Control (Disconnect Session) -->
+          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn" title="Disconnect Session" aria-label="Disconnect Session">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Messages History Scroll Container -->
+      <div class="messages-viewport" id="messages-container" role="log" aria-live="polite" aria-label="Message stream">
+        
+        <!-- Empty State Default -->
+        <div class="empty-feed" id="empty-state">
+          <div class="empty-icon-ring" aria-hidden="true">
+            <svg class="svg-icon xl"><use href="#icon-netchat-brand"></use></svg>
+          </div>
+          <div class="empty-badge">
+            <span class="status-dot connected"></span>
+            <span>LAYER 4 STREAM ONLINE</span>
+          </div>
+          <h3>Public Broadcast Stream</h3>
+          <p>Real-time TCP packets are streaming via WebSocket gateway. Transmit a broadcast message below, or whisper directly to any peer.</p>
+          <div class="empty-quick-hints">
+            <span class="hint-chip"><kbd>Enter</kbd> to Send</span>
+            <span class="hint-chip">SHA-256 Verification</span>
+            <span class="hint-chip">100 MB File Transfers</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jump to Latest Floating Pill Button -->
+      <button type="button" id="btn-jump-latest" class="btn-jump-latest hidden" title="Jump to latest message" aria-label="Scroll to newest messages">
+        <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-arrow-down"></use></svg>
+        <span>New messages below</span>
+      </button>
+
+      <!-- Message Composer Footer -->
+      <footer class="composer-container">
+        <!-- Floating Emoji Quick-bar Popover -->
+        <div id="emoji-popover" class="emoji-popover hidden" role="dialog" aria-label="Emoji picker" aria-hidden="true">
+          <div class="emoji-grid" id="emoji-grid">
+            <button type="button" class="emoji-btn" data-emoji="👍" aria-label="Thumbs up">👍</button>
+            <button type="button" class="emoji-btn" data-emoji="❤️" aria-label="Red heart">❤️</button>
+            <button type="button" class="emoji-btn" data-emoji="😂" aria-label="Face with tears of joy">😂</button>
+            <button type="button" class="emoji-btn" data-emoji="🔥" aria-label="Fire">🔥</button>
+            <button type="button" class="emoji-btn" data-emoji="🎉" aria-label="Party popper">🎉</button>
+            <button type="button" class="emoji-btn" data-emoji="👏" aria-label="Clapping hands">👏</button>
+            <button type="button" class="emoji-btn" data-emoji="🚀" aria-label="Rocket">🚀</button>
+            <button type="button" class="emoji-btn" data-emoji="👀" aria-label="Eyes">👀</button>
+            <button type="button" class="emoji-btn" data-emoji="💯" aria-label="Hundred points">💯</button>
+            <button type="button" class="emoji-btn" data-emoji="🙏" aria-label="Folded hands">🙏</button>
+            <button type="button" class="emoji-btn" data-emoji="✨" aria-label="Sparkles">✨</button>
+            <button type="button" class="emoji-btn" data-emoji="⚡" aria-label="High voltage">⚡</button>
+          </div>
+        </div>
+
+        <form id="chat-form" class="composer-form">
+          <button type="button" id="btn-composer-attach" class="composer-btn-attach" title="Attach and Send File" aria-label="Attach file">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          </button>
+
+          <button type="button" id="btn-composer-emoji" class="composer-btn-emoji" title="Insert Emoji" aria-label="Insert emoji" aria-expanded="false" aria-controls="emoji-popover">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-smile"></use></svg>
+          </button>
+          
+          <div class="composer-input-wrapper">
+            <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" aria-label="Message text">
+            <span class="composer-kbd-hint" aria-hidden="true">Enter ↵</span>
+          </div>
+
+          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send" title="Send Message" aria-label="Send message">
+            <span class="send-text">Send</span>
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
+          </button>
+        </form>
+      </footer>
+
+      <!-- Mobile Bottom Navigation Bar (Visible only on mobile devices) -->
+      <nav class="mobile-tab-bar" id="mobile-tab-bar" aria-label="Mobile Navigation">
+        <button type="button" class="mobile-tab-btn active" id="tab-chat" aria-label="Chat View">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-globe"></use></svg>
+          <span>Chat</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-peers" aria-label="Online Peers">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-users"></use></svg>
+          <span>Peers (<span id="mobile-user-count">0</span>)</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-share" aria-label="Share File">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          <span>Share</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" id="tab-diag" aria-label="Diagnostics">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <span>Diagnostics</span>
+        </button>
+      </nav>
+    </main>
+
+    <!-- RIGHT PANEL (Optional/Collapsible Network Diagnostics on Desktop) -->
+    <aside class="right-panel hidden" id="right-panel" aria-label="Network Diagnostics Panel">
+      <div class="right-panel-header">
+        <div class="right-panel-title">
+          <svg class="svg-icon sm text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <span>Diagnostics</span>
+        </div>
+        <button type="button" id="btn-close-right-panel" class="btn-icon" title="Close Panel" aria-label="Close diagnostics panel">
+          <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+
+      <div class="right-panel-body">
+        <div class="panel-section">
+          <div class="panel-section-title">SOCKET STATUS</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Session</span>
+              <span class="val text-success font-bold" id="rp-status">Connected</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Round-Trip Latency</span>
+              <span class="val text-primary text-mono font-bold" id="rp-latency">-- ms</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Transport Gateway</span>
+              <span class="val text-mono" id="rp-transport">WebSocket</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">TCP BROKER TARGET</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Chat Socket</span>
+              <span class="val text-mono" id="rp-tcp-host">127.0.0.1:5000</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">File Relay Socket</span>
+              <span class="val text-mono" id="rp-file-port">Port 5001</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Frame Protocol</span>
+              <span class="val text-mono text-xs text-primary">4-Byte Prefix (!I)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">DATA INTEGRITY</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Checksum Engine</span>
+              <span class="val text-mono">SHA-256</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Buffer Chunk Size</span>
+              <span class="val text-mono">64 KB Chunks</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Online Peers</span>
+              <span class="val text-mono font-bold" id="rp-peer-count">0 Peers</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">REAL-TIME SOCKET LOG</div>
+          <div class="terminal-log-view rp-log" id="rp-activity-log"></div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ==================== SEND FILE MODAL ==================== -->
+  <div id="file-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="file-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-primary" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          <h3 id="file-modal-title">Share File with Peer</h3>
+        </div>
+        <button class="btn-icon" id="close-file-modal" title="Close" aria-label="Close file transfer dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="file-recipient-select">Target Recipient</label>
+          <div class="select-wrapper">
+            <select id="file-recipient-select" class="form-select">
+              <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
+              <option value="">-- Choose Online Peer --</option>
+            </select>
+          </div>
+          <div id="broadcast-recipient-badge" class="broadcast-hint-badge hidden">
+            <span class="badge-icon">🌐</span>
+            <span>Broadcast Transfer (All active peers will receive this file)</span>
+          </div>
+        </div>
+
+        <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-label="Drop file here or click to browse">
+          <div class="drop-icon-ring" aria-hidden="true">
+            <svg class="svg-icon lg text-primary"><use href="#icon-upload"></use></svg>
+          </div>
+          <p class="drop-primary-text">Drag and drop file(s) here, or <span class="text-primary link">browse files</span></p>
+          <span class="drop-sub-text">Up to 100 MB each | Sequential Client Transfer Queue</span>
+          <input type="file" id="file-upload" class="hidden" multiple aria-label="Select files to upload">
+        </div>
+
+        <!-- Transfer Queue Container -->
+        <div id="file-queue-container" class="file-queue-container hidden" role="region" aria-label="Upload Queue"></div>
+
+        <div id="file-preview-card" class="file-preview-card hidden">
+          <div class="preview-icon-wrap" aria-hidden="true">
+            <svg class="svg-icon"><use href="#icon-file"></use></svg>
+          </div>
+          <div class="preview-info">
+            <div class="preview-name" id="preview-filename">document.pdf</div>
+            <div class="preview-size text-muted" id="preview-filesize">2.4 MB</div>
+            <div class="preview-hash text-mono text-primary text-xs" id="preview-hash">Computing SHA-256...</div>
+          </div>
+        </div>
+
+        <div id="upload-progress-container" class="progress-container hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-track">
+            <div class="progress-bar" id="upload-progress-bar" style="width: 0%;"></div>
+          </div>
+          <div class="progress-labels">
+            <span id="upload-progress-text">Uploading: 0%</span>
+            <span id="upload-progress-bytes" class="text-mono">0 / 0 KB</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-file-btn" type="button">Cancel</button>
+        <button class="btn btn-primary" id="confirm-send-file-btn" type="button" disabled>
+          <span>Send File Offer</span>
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== INCOMING FILE OFFER MODAL ==================== -->
+  <div id="incoming-file-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="incoming-modal-title">
+    <div class="modal-card modal-highlight">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-warning" aria-hidden="true"><use href="#icon-download"></use></svg>
+          <h3 id="incoming-modal-title">Incoming File Offer</h3>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <div id="incoming-broadcast-badge" class="broadcast-banner-badge hidden">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-globe"></use></svg>
+          <span id="incoming-broadcast-text">Public File Broadcast</span>
+        </div>
+        <p class="modal-lead" id="incoming-modal-lead">User <strong id="incoming-sender-name" class="text-primary">Alice</strong> wants to transfer a file:</p>
+
+        <div class="incoming-file-card">
+          <div class="incoming-file-header">
+            <div class="incoming-file-icon" aria-hidden="true">
+              <svg class="svg-icon text-primary"><use href="#icon-file"></use></svg>
+            </div>
+            <div class="incoming-file-meta">
+              <div class="incoming-file-name" id="incoming-file-name">document.pdf</div>
+              <div class="incoming-file-size text-muted" id="incoming-file-size">1.2 MB</div>
+            </div>
+          </div>
+          <div class="hash-preview-badge">
+            <span class="hash-tag-label">SHA-256 Checksum</span>
+            <code id="incoming-file-hash" class="text-mono text-xs">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-outline-danger" id="btn-reject-file" type="button" title="Decline file offer" aria-label="Decline file offer">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-x"></use></svg>
+          <span>Decline</span>
+        </button>
+        <button class="btn btn-success" id="btn-accept-file" type="button" title="Accept and download file" aria-label="Accept and download file">
+          <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-check"></use></svg>
+          <span>Accept and Download</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== NETWORK DIAGNOSTICS MODAL ==================== -->
+  <div id="diagnostics-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="diag-modal-title">
+    <div class="modal-card modal-wide">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <svg class="svg-icon text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <h3 id="diag-modal-title">Network Telemetry &amp; Protocol Diagnostics</h3>
+        </div>
+        <button class="btn-icon" id="close-diag-modal" title="Close" aria-label="Close diagnostics dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+
+      <div class="modal-body diag-grid">
+        <!-- Card 1: Browser-to-Gateway -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>CLIENT-TO-GATEWAY</span>
+            <span class="badge badge-success" id="diag-gateway-badge">ACTIVE</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Transport Protocol</span>
+            <span class="val text-success" id="diag-transport">WebSocket</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Round-Trip Latency</span>
+            <span class="val text-primary text-mono font-bold" id="diag-latency">-- ms</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Session State</span>
+            <span class="val text-mono" id="diag-socket-state">Connected</span>
+          </div>
+        </div>
+
+        <!-- Card 2: Gateway-to-TCP Core -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>GATEWAY-TO-TCP CORE</span>
+            <span class="badge badge-primary">LAYER 4</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Chat Socket Binding</span>
+            <span class="val text-warning text-mono" id="diag-tcp-host">127.0.0.1:5000</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">File Relay Socket</span>
+            <span class="val text-mono" id="diag-file-port">Port 5001</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Byte Stream Framing</span>
+            <span class="val text-accent text-mono">4-Byte Prefix (!I)</span>
+          </div>
+        </div>
+
+        <!-- Card 3: Security & Verification -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>DATA INTEGRITY</span>
+            <span class="badge badge-secondary">VERIFIED</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Checksum Engine</span>
+            <span class="val text-mono">SHA-256 (256-Bit)</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">File Stream Buffer</span>
+            <span class="val text-mono">64 KB Chunks</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Path Traversal Safe</span>
+            <span class="val text-success">Enabled (sanitized)</span>
+          </div>
+        </div>
+
+        <!-- Card 4: Gateway Topology -->
+        <div class="diag-metric-card">
+          <div class="diag-card-title">
+            <span>NETWORK TOPOLOGY</span>
+            <span class="badge badge-secondary">SOCKET</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Gateway Host</span>
+            <span class="val text-mono" id="diag-gateway-host">netchat-live.onrender.com</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Connected Peer Count</span>
+            <span class="val text-mono" id="diag-peer-count">0 Peers</span>
+          </div>
+          <div class="diag-data-row">
+            <span class="label">Cross-Platform Sync</span>
+            <span class="val text-success">Desktop + Web Live</span>
+          </div>
+        </div>
+
+        <!-- Live Activity Log -->
+        <div class="diag-metric-card full-span">
+          <div class="diag-card-title">
+            <span>LIVE SOCKET EVENT STREAM</span>
+            <span class="text-muted text-mono text-xs">Real-Time Packet Log</span>
+          </div>
+          <div class="terminal-log-view" id="activity-log-box" role="region" aria-label="Socket packet log">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="close-diag-btn" type="button">Close Telemetry</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
