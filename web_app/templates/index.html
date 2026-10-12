@@ -617,10 +617,13 @@
           <div class="drop-icon-ring" aria-hidden="true">
             <svg class="svg-icon lg text-primary"><use href="#icon-upload"></use></svg>
           </div>
-          <p class="drop-primary-text">Drag and drop file here, or <span class="text-primary link">browse files</span></p>
-          <span class="drop-sub-text">Up to 100 MB | Automated SHA-256 Checksum Calculation</span>
-          <input type="file" id="file-upload" class="hidden" aria-label="Select file to upload">
+          <p class="drop-primary-text">Drag and drop file(s) here, or <span class="text-primary link">browse files</span></p>
+          <span class="drop-sub-text">Up to 100 MB each | Sequential Client Transfer Queue</span>
+          <input type="file" id="file-upload" class="hidden" multiple aria-label="Select files to upload">
         </div>
+
+        <!-- Transfer Queue Container -->
+        <div id="file-queue-container" class="file-queue-container hidden" role="region" aria-label="Upload Queue"></div>
 
         <div id="file-preview-card" class="file-preview-card hidden">
           <div class="preview-icon-wrap" aria-hidden="true">

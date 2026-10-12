@@ -18,6 +18,9 @@
     selectedFile: null,
     fileSha256: null,
     isHashing: false,
+    uploadQueue: [], // Sequential transfer queue array
+    isProcessingQueue: false,
+    isUploadingChunk: false,
     pendingOffer: null,
     latencyMs: 0,
     pingInterval: null,
@@ -103,6 +106,7 @@
     fileRecipientSelect: document.getElementById("file-recipient-select"),
     dropZone: document.getElementById("drop-zone"),
     fileInputElement: document.getElementById("file-upload") || document.getElementById("file-input-element"),
+    fileQueueContainer: document.getElementById("file-queue-container"),
     filePreviewCard: document.getElementById("file-preview-card"),
     previewFilename: document.getElementById("preview-filename"),
     previewFilesize: document.getElementById("preview-filesize"),
@@ -919,7 +923,7 @@
   }
 
   // =========================================================================
-  // INCREMENTAL SHA-256 & STREAMING FILE TRANSFER
+  // INCREMENTAL SHA-256 & SEQUENTIAL TRANSFER QUEUE ENGINE
   // =========================================================================
 
   class IncrementalSHA256 {
@@ -1033,72 +1037,205 @@
     }
   }
 
+  async function computeFileSHA256NonBlocking(file, onProgress) {
+    const HASH_SLICE_SIZE = 1024 * 1024; // 1 MB slices
+    const totalSlices = Math.ceil(file.size / HASH_SLICE_SIZE) || 1;
+    const hasher = new IncrementalSHA256();
+
+    for (let i = 0; i < totalSlices; i++) {
+      const start = i * HASH_SLICE_SIZE;
+      const end = Math.min(start + HASH_SLICE_SIZE, file.size);
+      const slice = file.slice(start, end);
+      const buf = await slice.arrayBuffer();
+      hasher.update(new Uint8Array(buf));
+
+      const percent = Math.min(100, Math.round((end / file.size) * 100));
+      if (typeof onProgress === "function") {
+        onProgress(percent);
+      }
+
+      // Non-blocking yield to event loop: keeps WebSocket ping/pong and UI alive
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    return hasher.digest();
+  }
+
+  function setQueue(updater) {
+    if (typeof updater === "function") {
+      state.uploadQueue = updater(state.uploadQueue);
+    } else {
+      state.uploadQueue = updater;
+    }
+    renderQueueUI();
+  }
+
   function closeFileModal() {
+    if (state.isProcessingQueue) {
+      if (!confirm("File transfers are currently in progress. Close and abort remaining queue?")) {
+        return;
+      }
+    }
     DOM.fileModal.classList.add("hidden");
+    state.uploadQueue = [];
+    state.isProcessingQueue = false;
+    state.isUploadingChunk = false;
     state.selectedFile = null;
     state.fileSha256 = null;
-    DOM.filePreviewCard.classList.add("hidden");
-    DOM.uploadProgressContainer.classList.add("hidden");
-    DOM.confirmSendFileBtn.disabled = true;
+    renderQueueUI();
     setMobileActiveTab("chat");
   }
 
-  async function handleFileSelected(file) {
-    if (!file) return;
+  function handleFilesSelected(files) {
+    if (!files || files.length === 0) return;
 
-    if (file.size > 100 * 1024 * 1024) {
-      alert("File exceeds maximum allowed size of 100 MB.");
-      return;
-    }
-
-    if (file.size === 0) {
-      alert("File is empty (0 bytes). Please select a valid file.");
-      return;
-    }
-
-    state.selectedFile = file;
-    state.fileSha256 = null;
-
-    DOM.previewFilename.textContent = file.name;
-    DOM.previewFilesize.textContent = formatBytes(file.size);
-    DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing hash... 0%</span>`;
-    DOM.filePreviewCard.classList.remove("hidden");
-    DOM.confirmSendFileBtn.disabled = true;
-
-    try {
-      // Chunked non-blocking SHA-256 calculation: yields to event loop on every 1 MB block
-      // to keep WebSocket ping/pong uninterrupted and prevent thread locking
-      const HASH_SLICE_SIZE = 1024 * 1024; // 1 MB slices
-      const totalSlices = Math.ceil(file.size / HASH_SLICE_SIZE) || 1;
-      const hasher = new IncrementalSHA256();
-
-      for (let i = 0; i < totalSlices; i++) {
-        if (state.selectedFile !== file) return; // Discard if user picked another file
-
-        const start = i * HASH_SLICE_SIZE;
-        const end = Math.min(start + HASH_SLICE_SIZE, file.size);
-        const slice = file.slice(start, end);
-        const buf = await slice.arrayBuffer();
-        hasher.update(new Uint8Array(buf));
-
-        const percent = Math.min(100, Math.round((end / file.size) * 100));
-        DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing hash... ${percent}%</span>`;
-
-        // Yield to browser event loop
-        await new Promise((resolve) => setTimeout(resolve, 0));
+    const newItems = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.size > 100 * 1024 * 1024) {
+        alert(`'${file.name}' exceeds the maximum allowed size of 100 MB and was skipped.`);
+        continue;
+      }
+      if (file.size === 0) {
+        alert(`'${file.name}' is empty (0 bytes) and was skipped.`);
+        continue;
       }
 
-      if (state.selectedFile !== file) return;
-      const finalHash = hasher.digest();
-      state.fileSha256 = finalHash;
+      // Prevent exact duplicate file entries in queue
+      const alreadyInQueue = state.uploadQueue.some(
+        (q) => q.name === file.name && q.size === file.size && q.status !== "failed"
+      );
+      if (alreadyInQueue) continue;
 
-      DOM.previewHash.textContent = `SHA-256: ${finalHash}`;
-      DOM.confirmSendFileBtn.disabled = false;
-      logActivity(`Computed SHA-256 for '${file.name}': ${finalHash.substring(0, 16)}...`);
-    } catch (err) {
-      console.error("SHA-256 computation failed:", err);
-      DOM.previewHash.textContent = "Error computing hash. Please reselect.";
-      DOM.confirmSendFileBtn.disabled = true;
+      newItems.push({
+        id: "q_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7) + "_" + i,
+        file: file,
+        name: file.name,
+        size: file.size,
+        hash: null,
+        status: "pending", // 'pending' | 'hashing' | 'uploading' | 'completed' | 'failed'
+        progress: 0,
+        error: null
+      });
+    }
+
+    if (newItems.length > 0) {
+      // Safe addition: if an active chunk stream is in progress, files are appended
+      // to the queue without interrupting or restarting the current streaming item
+      setQueue((prev) => [...prev, ...newItems]);
+      if (state.isUploadingChunk) {
+        logActivity(`Queued ${newItems.length} additional file(s) for transfer.`);
+      }
+    }
+  }
+
+  // Backward compatibility alias for single file selection
+  function handleFileSelected(file) {
+    if (file) handleFilesSelected([file]);
+  }
+
+  function removeFromQueue(itemId) {
+    const item = state.uploadQueue.find((q) => q.id === itemId);
+    if (!item) return;
+
+    if (item.status === "hashing" || item.status === "uploading") {
+      alert("Cannot remove file while transfer is in progress.");
+      return;
+    }
+
+    setQueue((prev) => prev.filter((q) => q.id !== itemId));
+  }
+
+  function renderQueueUI() {
+    if (!DOM.fileQueueContainer) return;
+
+    if (state.uploadQueue.length === 0) {
+      DOM.fileQueueContainer.classList.add("hidden");
+      DOM.fileQueueContainer.innerHTML = "";
+      if (DOM.filePreviewCard) DOM.filePreviewCard.classList.add("hidden");
+      if (DOM.uploadProgressContainer) DOM.uploadProgressContainer.classList.add("hidden");
+      if (DOM.confirmSendFileBtn) {
+        DOM.confirmSendFileBtn.disabled = true;
+        const btnSpan = DOM.confirmSendFileBtn.querySelector("span");
+        if (btnSpan) btnSpan.textContent = "Send File Offer";
+      }
+      return;
+    }
+
+    DOM.fileQueueContainer.classList.remove("hidden");
+    if (DOM.filePreviewCard) DOM.filePreviewCard.classList.add("hidden");
+    if (DOM.uploadProgressContainer) DOM.uploadProgressContainer.classList.add("hidden");
+
+    const total = state.uploadQueue.length;
+    const completed = state.uploadQueue.filter((q) => q.status === "completed").length;
+    const totalBytes = state.uploadQueue.reduce((acc, q) => acc + q.size, 0);
+    const hasPending = state.uploadQueue.some((q) => q.status === "pending" || q.status === "failed");
+
+    const headerHtml = `
+      <div class="queue-header-summary">
+        <span>Queue: ${completed} of ${total} transferred</span>
+        <span class="text-mono">${formatBytes(totalBytes)}</span>
+      </div>
+    `;
+
+    const itemsHtml = state.uploadQueue
+      .map((item) => {
+        const isRemovable = item.status === "pending" && !state.isProcessingQueue;
+        const statusLabel =
+          item.status === "hashing"
+            ? `HASHING ${item.progress}%`
+            : item.status === "uploading"
+            ? `STREAMING ${item.progress}%`
+            : item.status.toUpperCase();
+
+        return `
+          <div class="queue-item-card status-${item.status}" id="queue-card-${item.id}">
+            <div class="queue-item-row">
+              <div class="queue-item-icon" aria-hidden="true">
+                <svg class="svg-icon xs"><use href="#icon-file"></use></svg>
+              </div>
+              <div class="queue-item-info">
+                <div class="queue-item-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                <div class="queue-item-meta">
+                  <span>${formatBytes(item.size)}</span>
+                  <span class="queue-badge badge-${item.status}">${statusLabel}</span>
+                </div>
+              </div>
+              ${
+                isRemovable
+                  ? `<button type="button" class="queue-item-btn-remove" data-id="${item.id}" title="Remove file" aria-label="Remove ${escapeHtml(item.name)}">
+                      <svg class="svg-icon xs"><use href="#icon-x"></use></svg>
+                    </button>`
+                  : ""
+              }
+            </div>
+            ${item.hash ? `<div class="queue-item-hash text-mono text-xs">SHA-256: ${item.hash.substring(0, 24)}...</div>` : ""}
+            ${
+              item.status === "hashing" || item.status === "uploading" || item.status === "completed"
+                ? `<div class="queue-item-progress-track">
+                    <div class="queue-item-progress-bar" style="width: ${item.progress}%;"></div>
+                  </div>`
+                : ""
+            }
+          </div>
+        `;
+      })
+      .join("");
+
+    DOM.fileQueueContainer.innerHTML = headerHtml + itemsHtml;
+
+    if (DOM.confirmSendFileBtn) {
+      DOM.confirmSendFileBtn.disabled = !hasPending || state.isProcessingQueue;
+      const btnSpan = DOM.confirmSendFileBtn.querySelector("span");
+      if (btnSpan) {
+        if (state.isProcessingQueue) {
+          btnSpan.textContent = "Processing Queue...";
+        } else if (total > 1) {
+          btnSpan.textContent = `Send ${total} Files`;
+        } else {
+          btnSpan.textContent = "Send File Offer";
+        }
+      }
     }
   }
 
@@ -1108,103 +1245,149 @@
       alert("Please select a recipient.");
       return;
     }
-    if (!state.selectedFile || !state.fileSha256) {
-      alert("Please wait for file hash calculation to complete.");
+
+    if (state.isProcessingQueue) return;
+
+    const hasPending = state.uploadQueue.some((q) => q.status === "pending" || q.status === "failed");
+    if (!hasPending) {
+      alert("All files in the queue have already been transferred.");
       return;
     }
 
-    const file = state.selectedFile;
-    const fileHash = state.fileSha256;
-    const transferId = "tf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
-    const CHUNK_SIZE = 64 * 1024; // 64 KB chunks
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
+    state.isProcessingQueue = true;
+    renderQueueUI();
 
-    DOM.uploadProgressContainer.classList.remove("hidden");
-    DOM.confirmSendFileBtn.disabled = true;
-    DOM.uploadProgressBar.style.width = "0%";
-    DOM.uploadProgressText.textContent = "Streaming chunks: 0%";
-    DOM.uploadProgressBytes.textContent = `0 / ${formatBytes(file.size)}`;
+    // =========================================================================
+    // SEQUENTIAL QUEUE EXECUTION ENGINE
+    // Processes files one by one strictly:
+    // a. Compute SHA-256 for item i
+    // b. Stream 64 KB chunks over WebSocket
+    // c. Wait for server/peer completion ACK / emit file_offer
+    // d. Mark item as completed and automatically trigger upload for next item
+    // =========================================================================
+    while (true) {
+      // Pick the next pending or failed item in the queue
+      const item = state.uploadQueue.find((q) => q.status === "pending" || q.status === "failed");
+      if (!item) break; // All queued items completed!
 
-    try {
-      // Stream 64 KB chunks sequentially over WebSocket with backpressure acknowledgment
-      for (let i = 0; i < totalChunks; i++) {
-        if (!state.socket || !state.isConnected) {
-          throw new Error("WebSocket disconnected during chunk streaming.");
-        }
+      try {
+        // Step a: Compute non-blocking SHA-256 for current item
+        item.status = "hashing";
+        item.progress = 0;
+        renderQueueUI();
 
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, file.size);
-        const slice = file.slice(start, end);
-        const chunkBuffer = await slice.arrayBuffer();
-
-        // Await acknowledgment before sending next chunk
-        await new Promise((resolve, reject) => {
-          let resolved = false;
-          const ackTimeout = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              resolve(); // Fallback acknowledgment timeout
-            }
-          }, 15000);
-
-          state.socket.emit(
-            "file_chunk",
-            {
-              type: "file_chunk",
-              transfer_id: transferId,
-              chunk_index: i,
-              total_chunks: totalChunks,
-              filename: file.name,
-              filesize: file.size,
-              sha256: fileHash,
-              recipient: recipient,
-              data: chunkBuffer
-            },
-            (response) => {
-              if (!resolved) {
-                resolved = true;
-                clearTimeout(ackTimeout);
-                if (response && response.status === "error") {
-                  reject(new Error(response.message || "Failed to write chunk"));
-                } else {
-                  resolve(response);
-                }
-              }
-            }
-          );
+        const fileHash = await computeFileSHA256NonBlocking(item.file, (percent) => {
+          item.progress = percent;
+          renderQueueUI();
         });
 
-        // Update UI progress
-        const sentBytes = end;
-        const percent = Math.round((sentBytes / file.size) * 100);
-        DOM.uploadProgressBar.style.width = `${percent}%`;
-        DOM.uploadProgressText.textContent = `Streaming chunks: ${percent}%`;
-        DOM.uploadProgressBytes.textContent = `${formatBytes(sentBytes)} / ${formatBytes(file.size)}`;
-
-        // Yield slightly for smooth UI rendering
-        if (i % 4 === 0) {
-          await new Promise((r) => setTimeout(r, 0));
+        if (!fileHash) {
+          throw new Error("SHA-256 computation failed");
         }
+        item.hash = fileHash;
+
+        // Step b: Stream 64 KB chunks over WebSocket with backpressure
+        item.status = "uploading";
+        item.progress = 0;
+        renderQueueUI();
+
+        state.isUploadingChunk = true;
+        const transferId = "tf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9);
+        const CHUNK_SIZE = 64 * 1024;
+        const totalChunks = Math.ceil(item.size / CHUNK_SIZE) || 1;
+
+        for (let i = 0; i < totalChunks; i++) {
+          if (!state.socket || !state.isConnected) {
+            throw new Error("WebSocket disconnected during transfer.");
+          }
+
+          const start = i * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, item.size);
+          const slice = item.file.slice(start, end);
+          const chunkBuffer = await slice.arrayBuffer();
+
+          // Wait for ACK callback from server before next chunk
+          await new Promise((resolve, reject) => {
+            let resolved = false;
+            const ackTimeout = setTimeout(() => {
+              if (!resolved) {
+                resolved = true;
+                resolve(); // Fallback timeout
+              }
+            }, 15000);
+
+            state.socket.emit(
+              "file_chunk",
+              {
+                type: "file_chunk",
+                transfer_id: transferId,
+                chunk_index: i,
+                total_chunks: totalChunks,
+                filename: item.file.name,
+                filesize: item.size,
+                sha256: item.hash,
+                recipient: recipient,
+                data: chunkBuffer
+              },
+              (response) => {
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(ackTimeout);
+                  if (response && response.status === "error") {
+                    reject(new Error(response.message || "Failed to write chunk"));
+                  } else {
+                    resolve(response);
+                  }
+                }
+              }
+            );
+          });
+
+          item.progress = Math.round((end / item.size) * 100);
+          renderQueueUI();
+
+          if (i % 4 === 0) {
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+        state.isUploadingChunk = false;
+
+        // Step c: Emit file_offer signaling to recipient peer
+        state.socket.emit("file_offer", {
+          transfer_id: transferId,
+          recipient: recipient,
+          filename: item.file.name,
+          filesize: item.size,
+          sha256: item.hash
+        });
+
+        appendSystemMessage(`Offered '${item.file.name}' (${formatBytes(item.size)}) to '${recipient}'.`);
+        logActivity(`File '${item.file.name}' streamed. SHA-256: ${item.hash.substring(0, 16)}...`);
+
+        // Step d: Mark item as completed and automatically loop to next item
+        item.status = "completed";
+        item.progress = 100;
+        renderQueueUI();
+
+      } catch (err) {
+        console.error(`Error transferring '${item.name}':`, err);
+        state.isUploadingChunk = false;
+        item.status = "failed";
+        item.error = err.message || "Transfer error";
+        renderQueueUI();
+        appendSystemMessage(`Failed to send '${item.name}': ${err.message || "Error"}`);
       }
+    }
 
-      DOM.uploadProgressText.textContent = "Upload complete. Sending offer to peer...";
-      logActivity(`File '${file.name}' streamed. SHA-256: ${fileHash.substring(0, 16)}...`);
+    state.isProcessingQueue = false;
+    renderQueueUI();
 
-      state.socket.emit("file_offer", {
-        transfer_id: transferId,
-        recipient: recipient,
-        filename: file.name,
-        filesize: file.size,
-        sha256: fileHash
-      });
-
-      appendSystemMessage(`Offered '${file.name}' (${formatBytes(file.size)}) to '${recipient}'. Waiting for response...`);
-      setTimeout(closeFileModal, 700);
-
-    } catch (err) {
-      alert("File transfer error: " + (err.message || err));
-      DOM.confirmSendFileBtn.disabled = false;
-      DOM.uploadProgressText.textContent = "Transfer failed";
+    const allCompleted = state.uploadQueue.every((q) => q.status === "completed");
+    if (allCompleted) {
+      appendSystemMessage(`All ${state.uploadQueue.length} queued file(s) transferred successfully.`);
+      setTimeout(() => {
+        closeFileModal();
+      }, 1200);
     }
   }
 
@@ -1494,7 +1677,7 @@
       toggleEmojiPopover(false);
     });
 
-    // File Drag & Drop
+    // File Drag & Drop (Supports Multiple Files)
     if (DOM.dropZone) {
       DOM.dropZone.addEventListener("click", () => {
         if (DOM.fileInputElement) DOM.fileInputElement.click();
@@ -1515,21 +1698,31 @@
       DOM.dropZone.addEventListener("drop", (e) => {
         e.preventDefault();
         DOM.dropZone.classList.remove("dragover");
-        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0 && e.dataTransfer.files[0]) {
-          handleFileSelected(e.dataTransfer.files[0]);
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          handleFilesSelected(Array.from(e.dataTransfer.files));
         }
       });
     }
 
     if (DOM.fileInputElement) {
       DOM.fileInputElement.addEventListener("change", (e) => {
-        if (e.target && e.target.files && e.target.files.length > 0 && e.target.files[0]) {
-          handleFileSelected(e.target.files[0]);
+        if (e.target && e.target.files && e.target.files.length > 0) {
+          handleFilesSelected(Array.from(e.target.files));
         }
-        // Reset input value so user can re-select the same file if desired
+        // Reset input value so user can re-select the same file(s) if desired
         try {
           e.target.value = "";
         } catch (_) {}
+      });
+    }
+
+    // Queue Item Removal delegation
+    if (DOM.fileQueueContainer) {
+      DOM.fileQueueContainer.addEventListener("click", (e) => {
+        const btn = e.target.closest(".queue-item-btn-remove");
+        if (btn && btn.dataset.id) {
+          removeFromQueue(btn.dataset.id);
+        }
       });
     }
 

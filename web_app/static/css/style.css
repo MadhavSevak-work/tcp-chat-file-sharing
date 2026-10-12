@@ -1623,6 +1623,149 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
   font-size: 0.7rem;
 }
 
+/* Transfer Queue Container & Items */
+.file-queue-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.queue-header-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0 2px 4px 2px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.queue-item-card {
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.queue-item-card.status-pending {
+  border-color: var(--border-subtle);
+}
+.queue-item-card.status-hashing {
+  border-color: #F59E0B;
+}
+.queue-item-card.status-uploading {
+  border-color: var(--primary-accent);
+}
+.queue-item-card.status-completed {
+  border-color: #10B981;
+}
+.queue-item-card.status-failed {
+  border-color: #EF4444;
+}
+.queue-item-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.queue-item-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-accent);
+  flex-shrink: 0;
+}
+.queue-item-info {
+  flex: 1;
+  min-width: 0;
+}
+.queue-item-title {
+  font-size: 0.825rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.queue-badge {
+  font-size: 0.675rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  text-transform: uppercase;
+}
+.queue-badge.badge-pending {
+  background-color: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+.queue-badge.badge-hashing {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #F59E0B;
+}
+.queue-badge.badge-uploading {
+  background-color: rgba(0, 168, 132, 0.15);
+  color: var(--primary-accent);
+}
+.queue-badge.badge-completed {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+}
+.queue-badge.badge-failed {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+}
+.queue-item-btn-remove {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+.queue-item-btn-remove:hover {
+  color: #EF4444;
+}
+.queue-item-hash {
+  font-size: 0.675rem;
+  color: var(--primary-accent);
+  word-break: break-all;
+}
+.queue-item-progress-track {
+  height: 4px;
+  background-color: var(--border-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+.queue-item-progress-bar {
+  height: 100%;
+  background-color: var(--primary-accent);
+  transition: width 0.15s ease;
+}
+.queue-item-card.status-completed .queue-item-progress-bar {
+  background-color: #10B981;
+}
+
 /* Upload Progress Bar */
 .progress-container {
   margin-top: 14px;

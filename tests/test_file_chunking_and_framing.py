@@ -118,12 +118,14 @@ class TestFileChunkingAndFraming(unittest.TestCase):
             server_sock.close()
 
     def test_04_html_file_input_element_attributes(self):
-        """Verify the file input element in index.html has id='file-upload' and class='hidden'."""
+        """Verify the file input element in index.html has id='file-upload', class='hidden', multiple, and queue container."""
         with open("web_app/templates/index.html", "r", encoding="utf-8") as f:
             html = f.read()
 
         self.assertIn('id="file-upload"', html)
         self.assertIn('class="hidden"', html)
+        self.assertIn('multiple', html)
+        self.assertIn('id="file-queue-container"', html)
 
 
 if __name__ == "__main__":
