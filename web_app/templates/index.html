@@ -70,6 +70,13 @@
       <symbol id="icon-paperclip" viewBox="0 0 24 24">
         <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
       </symbol>
+      <!-- Emoji / Reactions: Smile -->
+      <symbol id="icon-smile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+        <line x1="9" x2="9.01" y1="9" y2="9"/>
+        <line x1="15" x2="15.01" y1="9" y2="9"/>
+      </symbol>
       <!-- File Document: File -->
       <symbol id="icon-file" viewBox="0 0 24 24">
         <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>
@@ -473,9 +480,31 @@
 
       <!-- Message Composer Footer -->
       <footer class="composer-container">
+        <!-- Floating Emoji Quick-bar Popover -->
+        <div id="emoji-popover" class="emoji-popover hidden" role="dialog" aria-label="Emoji picker" aria-hidden="true">
+          <div class="emoji-grid" id="emoji-grid">
+            <button type="button" class="emoji-btn" data-emoji="👍" aria-label="Thumbs up">👍</button>
+            <button type="button" class="emoji-btn" data-emoji="❤️" aria-label="Red heart">❤️</button>
+            <button type="button" class="emoji-btn" data-emoji="😂" aria-label="Face with tears of joy">😂</button>
+            <button type="button" class="emoji-btn" data-emoji="🔥" aria-label="Fire">🔥</button>
+            <button type="button" class="emoji-btn" data-emoji="🎉" aria-label="Party popper">🎉</button>
+            <button type="button" class="emoji-btn" data-emoji="👏" aria-label="Clapping hands">👏</button>
+            <button type="button" class="emoji-btn" data-emoji="🚀" aria-label="Rocket">🚀</button>
+            <button type="button" class="emoji-btn" data-emoji="👀" aria-label="Eyes">👀</button>
+            <button type="button" class="emoji-btn" data-emoji="💯" aria-label="Hundred points">💯</button>
+            <button type="button" class="emoji-btn" data-emoji="🙏" aria-label="Folded hands">🙏</button>
+            <button type="button" class="emoji-btn" data-emoji="✨" aria-label="Sparkles">✨</button>
+            <button type="button" class="emoji-btn" data-emoji="⚡" aria-label="High voltage">⚡</button>
+          </div>
+        </div>
+
         <form id="chat-form" class="composer-form">
           <button type="button" id="btn-composer-attach" class="composer-btn-attach" title="Attach and Send File" aria-label="Attach file">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          </button>
+
+          <button type="button" id="btn-composer-emoji" class="composer-btn-emoji" title="Insert Emoji" aria-label="Insert emoji" aria-expanded="false" aria-controls="emoji-popover">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-smile"></use></svg>
           </button>
           
           <div class="composer-input-wrapper">

@@ -81,6 +81,9 @@
     chatForm: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     btnComposerAttach: document.getElementById("btn-composer-attach"),
+    btnComposerEmoji: document.getElementById("btn-composer-emoji"),
+    emojiPopover: document.getElementById("emoji-popover"),
+    emojiGrid: document.getElementById("emoji-grid"),
     btnDisconnect: document.getElementById("btn-disconnect"),
 
     // Mobile Bottom Tab Bar
@@ -609,6 +612,7 @@
   // =========================================================================
   function handleSendMessage(e) {
     e.preventDefault();
+    toggleEmojiPopover(false);
     const text = DOM.messageInput.value.trim();
     if (!text) return;
 
@@ -628,6 +632,66 @@
     }
 
     scrollToBottom(true);
+  }
+
+  // =========================================================================
+  // CURATED EMOJI QUICK-BAR (Zero External Libraries, Secure Connect Theme)
+  // =========================================================================
+  const CURATED_EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '👏', '🚀', '👀', '💯', '🙏', '✨', '⚡'];
+  let lastCaretStart = null;
+  let lastCaretEnd = null;
+
+  function updateInputCaret() {
+    if (DOM.messageInput) {
+      lastCaretStart = DOM.messageInput.selectionStart;
+      lastCaretEnd = DOM.messageInput.selectionEnd;
+    }
+  }
+
+  function toggleEmojiPopover(force) {
+    if (!DOM.emojiPopover) return;
+    const isHidden = DOM.emojiPopover.classList.contains("hidden");
+    const shouldOpen = typeof force === "boolean" ? force : isHidden;
+
+    if (shouldOpen) {
+      DOM.emojiPopover.classList.remove("hidden");
+      DOM.emojiPopover.setAttribute("aria-hidden", "false");
+      if (DOM.btnComposerEmoji) {
+        DOM.btnComposerEmoji.classList.add("active");
+        DOM.btnComposerEmoji.setAttribute("aria-expanded", "true");
+      }
+    } else {
+      DOM.emojiPopover.classList.add("hidden");
+      DOM.emojiPopover.setAttribute("aria-hidden", "true");
+      if (DOM.btnComposerEmoji) {
+        DOM.btnComposerEmoji.classList.remove("active");
+        DOM.btnComposerEmoji.setAttribute("aria-expanded", "false");
+      }
+    }
+  }
+
+  function insertEmoji(emoji) {
+    const input = DOM.messageInput;
+    if (!input) return;
+
+    let start = typeof lastCaretStart === "number" ? lastCaretStart : input.selectionStart;
+    let end = typeof lastCaretEnd === "number" ? lastCaretEnd : input.selectionEnd;
+
+    if (start === null || start === undefined) start = input.value.length;
+    if (end === null || end === undefined) end = input.value.length;
+
+    const text = input.value;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+
+    input.value = before + emoji + after;
+    const newPos = start + emoji.length;
+    lastCaretStart = newPos;
+    lastCaretEnd = newPos;
+
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   function appendChatMessage(sender, content, timestamp, isPrivate, peer) {
@@ -1143,6 +1207,44 @@
     if (DOM.closeFileModal) DOM.closeFileModal.addEventListener("click", closeFileModal);
     if (DOM.cancelFileBtn) DOM.cancelFileBtn.addEventListener("click", closeFileModal);
 
+    // Curated Emoji Quick-bar Events & Caret Tracking
+    if (DOM.messageInput) {
+      DOM.messageInput.addEventListener("keyup", updateInputCaret);
+      DOM.messageInput.addEventListener("mouseup", updateInputCaret);
+      DOM.messageInput.addEventListener("select", updateInputCaret);
+      DOM.messageInput.addEventListener("blur", updateInputCaret);
+    }
+
+    if (DOM.btnComposerEmoji) {
+      DOM.btnComposerEmoji.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleEmojiPopover();
+      });
+    }
+
+    if (DOM.emojiGrid) {
+      DOM.emojiGrid.addEventListener("click", (e) => {
+        const btn = e.target.closest(".emoji-btn");
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const emoji = btn.dataset.emoji || btn.textContent.trim();
+        if (emoji) {
+          insertEmoji(emoji);
+          toggleEmojiPopover(false);
+        }
+      });
+    }
+
+    // Close Emoji Popover on Outside Click
+    document.addEventListener("click", (e) => {
+      if (!DOM.emojiPopover || DOM.emojiPopover.classList.contains("hidden")) return;
+      if (DOM.emojiPopover.contains(e.target)) return;
+      if (DOM.btnComposerEmoji && DOM.btnComposerEmoji.contains(e.target)) return;
+      toggleEmojiPopover(false);
+    });
+
     // File Drag & Drop
     if (DOM.dropZone) {
       DOM.dropZone.addEventListener("click", () => DOM.fileInputElement.click());
@@ -1225,9 +1327,14 @@
       }
     });
 
-    // Global Keyboard Navigation (ESC to close modals and drawer)
+    // Global Keyboard Navigation (ESC to close modals, drawer, and emoji picker)
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
+        if (DOM.emojiPopover && !DOM.emojiPopover.classList.contains("hidden")) {
+          toggleEmojiPopover(false);
+          DOM.messageInput?.focus();
+          return;
+        }
         if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
           closeSidebar();
           return;
