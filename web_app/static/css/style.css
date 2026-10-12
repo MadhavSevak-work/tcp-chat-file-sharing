@@ -182,17 +182,28 @@ html, body {
   height: 17px;
   stroke: currentColor;
   fill: none;
-  stroke-width: 2;
+  stroke-width: 1.85;
   stroke-linecap: round;
   stroke-linejoin: round;
   flex-shrink: 0;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   vertical-align: middle;
 }
 .svg-icon.xs { width: 13px; height: 13px; stroke-width: 2; }
-.svg-icon.sm { width: 15px; height: 15px; stroke-width: 2; }
-.svg-icon.lg { width: 22px; height: 22px; stroke-width: 2; }
-.svg-icon.xl { width: 32px; height: 32px; stroke-width: 1.8; }
+.svg-icon.sm { width: 15px; height: 15px; stroke-width: 1.9; }
+.svg-icon.lg { width: 22px; height: 22px; stroke-width: 1.8; }
+.svg-icon.xl { width: 32px; height: 32px; stroke-width: 1.75; }
+
+/* Spinning animation for LoaderCircle */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.spinning {
+  animation: spin 0.9s linear infinite;
+}
 
 /* Theme Toggle Icons */
 .theme-icon-sun  { display: var(--theme-icon-sun-display) !important; }
@@ -248,11 +259,18 @@ html, body {
 .badge-status {
   display: inline-flex;
   align-items: center;
-  font-size: 0.65rem;
+  gap: 6px;
+  font-size: 0.68rem;
   font-weight: 700;
-  padding: 2px 6px;
+  font-family: var(--font-mono);
+  padding: 3px 7px;
   border-radius: var(--radius-xs);
   letter-spacing: 0.5px;
+  line-height: 1;
+}
+.badge-status .status-dot {
+  width: 6px;
+  height: 6px;
 }
 .badge-status.online {
   background-color: var(--accent-subtle);
@@ -262,6 +280,11 @@ html, body {
 .badge-status.offline {
   background-color: var(--bg-elevated);
   color: var(--color-disconnected);
+  border: 1px solid var(--border-subtle);
+}
+.badge-status.connecting {
+  background-color: rgba(201, 159, 74, 0.12);
+  color: var(--color-connecting);
   border: 1px solid var(--border-subtle);
 }
 
@@ -515,27 +538,44 @@ input::placeholder {
   letter-spacing: 0.5px;
 }
 
+/* Unified Application Brand (Logo & Wordmark) */
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  user-select: none;
+}
+.app-brand-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--primary-accent);
+  stroke-width: 1.9;
+  flex-shrink: 0;
+}
+.app-brand-text {
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
 .login-header {
   text-align: center;
   margin-bottom: 20px;
 }
-.login-header .logo-pill {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-sm);
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--primary-accent);
-  display: inline-flex;
-  align-items: center;
+.login-header .app-brand {
   justify-content: center;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
-.login-header h2 {
+.login-header .app-brand-icon {
+  width: 22px;
+  height: 22px;
+}
+.login-header .app-brand-text {
   font-size: 1.25rem;
-  font-weight: 700;
   letter-spacing: -0.3px;
-  margin-bottom: 4px;
 }
 .login-header .subtitle {
   font-size: 0.8rem;
@@ -649,33 +689,13 @@ input::placeholder {
   border-bottom: 1px solid var(--border-subtle);
   background-color: var(--bg-sidebar);
 }
-.brand-identity {
-  display: flex;
+.sidebar-brand .app-brand {
+  flex-shrink: 0;
+}
+.nav-label-with-icon {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-}
-.brand-logo {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--primary-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.brand-text h3 {
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-  line-height: 1.15;
-}
-.brand-sub {
-  font-size: 0.675rem;
-  color: var(--text-muted);
-  display: block;
-  letter-spacing: 0.2px;
+  gap: 6px;
 }
 .sidebar-brand-actions {
   display: flex;
@@ -756,7 +776,7 @@ input::placeholder {
   font-family: var(--font-mono);
 }
 
-/* Peer Avatar */
+/* Peer Avatar (Neutral circle containing initial) */
 .peer-avatar {
   width: 22px;
   height: 22px;
@@ -766,10 +786,13 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--primary-accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  text-transform: uppercase;
   flex-shrink: 0;
+  user-select: none;
 }
 .btn-send-file-tiny {
   background: none;
@@ -854,13 +877,19 @@ input::placeholder {
   border-radius: 50%;
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  color: var(--primary-accent);
-  font-weight: 700;
+  color: var(--text-primary);
+  font-weight: 600;
   font-size: 0.85rem;
+  font-family: var(--font-sans);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  text-transform: uppercase;
+  user-select: none;
+}
+.user-avatar .svg-icon {
+  color: var(--text-muted);
 }
 .user-details {
   flex: 1;
@@ -961,15 +990,16 @@ input::placeholder {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  height: 34px;
   font-size: 0.75rem;
   font-family: var(--font-sans);
   font-weight: 500;
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  padding: 4px 10px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  line-height: 1.2;
+  line-height: 1;
 }
 .status-latency {
   font-family: var(--font-mono);
@@ -977,6 +1007,44 @@ input::placeholder {
   color: var(--primary-accent);
   padding-left: 5px;
   border-left: 1px solid var(--border-subtle);
+}
+
+/* Header Toolbar Action Buttons (Unified Height & Sizing) */
+.header-btn {
+  height: 34px;
+  line-height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.header-btn:hover:not(:disabled) {
+  background-color: var(--bg-elevated);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.header-btn.btn-icon-only {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+#btn-disconnect.header-btn:hover:not(:disabled) {
+  color: var(--color-error);
+  border-color: rgba(224, 108, 117, 0.4);
+  background-color: rgba(224, 108, 117, 0.08);
 }
 
 /* Messages Viewport */

@@ -207,10 +207,23 @@
       }
     }
 
-    // Sidebar status badge
+    // Sidebar status badge (CSS status dot + readable text)
     if (DOM.sidebarStatusBadge) {
-      DOM.sidebarStatusBadge.className = "badge-status " + (isConnected ? "online" : "offline");
-      DOM.sidebarStatusBadge.textContent = isConnected ? "ONLINE" : (status === "connecting" ? "CONNECTING" : "OFFLINE");
+      DOM.sidebarStatusBadge.className = "badge-status " + (isConnected ? "online" : (status === "connecting" ? "connecting" : "offline"));
+      DOM.sidebarStatusBadge.innerHTML = `<span class="status-dot ${status}"></span><span class="badge-text">${isConnected ? "ONLINE" : (status === "connecting" ? "CONNECTING" : "OFFLINE")}</span>`;
+    }
+
+    // Header connection control (Unplug for disconnect, RefreshCw for reconnect)
+    if (DOM.btnDisconnect) {
+      if (isConnected) {
+        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>`;
+        DOM.btnDisconnect.setAttribute("title", "Disconnect Session");
+        DOM.btnDisconnect.setAttribute("aria-label", "Disconnect Session");
+      } else {
+        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon" aria-hidden="true"><use href="#icon-refresh-cw"></use></svg>`;
+        DOM.btnDisconnect.setAttribute("title", "Reconnect to Network");
+        DOM.btnDisconnect.setAttribute("aria-label", "Reconnect to network");
+      }
     }
 
     // Diagnostics modal badge
@@ -495,7 +508,7 @@
     }
 
     DOM.connectBtn.disabled = true;
-    DOM.connectBtn.innerHTML = `<span>Connecting to TCP...</span>`;
+    DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Connecting to TCP...</span>`;
     DOM.loginError.classList.add("hidden");
     setConnectionStatus("connecting", "Connecting...");
 
@@ -534,7 +547,7 @@
     DOM.loginError.textContent = msg;
     DOM.loginError.classList.remove("hidden");
     DOM.connectBtn.disabled = false;
-    DOM.connectBtn.innerHTML = `<span>Connect to Network</span> <svg class="svg-icon"><use href="#icon-send"></use></svg>`;
+    DOM.connectBtn.innerHTML = `<span>Connect to Network</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
   }
 
   // =========================================================================
@@ -760,8 +773,7 @@
 
     state.selectedFile = file;
     DOM.previewFilename.textContent = file.name;
-    DOM.previewFilesize.textContent = formatBytes(file.size);
-    DOM.previewHash.textContent = "SHA-256 will be calculated and verified on transfer...";
+    DOM.previewHash.innerHTML = `<svg class="svg-icon xs spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Computing SHA-256 on transfer...</span>`;
 
     DOM.filePreviewCard.classList.remove("hidden");
     DOM.confirmSendFileBtn.disabled = false;
@@ -1005,9 +1017,13 @@
       });
     }
 
-    // Disconnect Action
+    // Disconnect / Reconnect Action
     const disconnectHandler = () => {
-      if (confirm("Are you sure you want to disconnect from the network?")) {
+      if (state.isConnected) {
+        if (confirm("Are you sure you want to disconnect from the network?")) {
+          location.reload();
+        }
+      } else {
         location.reload();
       }
     };

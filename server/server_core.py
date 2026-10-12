@@ -98,7 +98,7 @@ class ChatServer:
         self._broadcast_user_list()
         self.broadcast({
             "type": MSG_SYSTEM,
-            "message": f"👉 '{username}' has joined the room.",
+            "message": f"'{username}' has joined the room.",
             "event": "USER_JOINED",
             "username": username
         }, exclude_user=username)
@@ -118,7 +118,7 @@ class ChatServer:
             self._broadcast_user_list()
             self.broadcast({
                 "type": MSG_SYSTEM,
-                "message": f"👋 '{username}' has left the room.",
+                "message": f"'{username}' has left the room.",
                 "event": "USER_LEFT",
                 "username": username
             })
@@ -184,7 +184,7 @@ class ChatServer:
         # 1. Inform clients while server is still officially active
         self.broadcast({
             "type": MSG_SYSTEM,
-            "message": "⚠️ The server is shutting down. Connection will be terminated.",
+            "message": "The server is shutting down. Connection will be terminated.",
             "event": "SERVER_SHUTDOWN"
         })
 
