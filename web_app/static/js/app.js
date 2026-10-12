@@ -719,33 +719,85 @@
   }
 
   // =========================================================================
-  // SHAREABLE ROOM LINK CONTROLLER
+  // SHAREABLE ROOM LINK CONTROLLER (AUTO-PIN & DIRECT INVITE)
   // =========================================================================
   function checkUrlRoomHash() {
-    const hash = window.location.hash || "";
-    if (hash.includes("room=")) {
-      const match = hash.match(/room=([^&]+)/);
-      if (match && match[1]) {
-        try {
-          const roomId = decodeURIComponent(match[1]).trim().toLowerCase();
-          if (roomId && DOM.roomInput) {
-            DOM.roomInput.value = roomId;
-            setRoomMode("join");
-            logActivity(`Auto-filled Room ID '${roomId}' from invite URL.`);
-            if (DOM.usernameInput && !DOM.usernameInput.value) {
-              DOM.usernameInput.focus();
-            } else if (DOM.passkeyInput) {
-              DOM.passkeyInput.focus();
-            }
-          }
-        } catch (_) {}
+    const rawHash = window.location.hash ? window.location.hash.substring(1) : "";
+    if (!rawHash) return;
+
+    let params;
+    try {
+      params = new URLSearchParams(rawHash);
+    } catch (_) {
+      return;
+    }
+
+    const roomParam = (params.get("room") || "").trim().toLowerCase();
+    const pinParam = (params.get("pin") || "").trim();
+
+    if (roomParam && pinParam) {
+      // 1. Auto-fill the "Room ID" and "Room PIN" input fields in the Join Modal
+      if (DOM.roomInput) DOM.roomInput.value = roomParam;
+      if (DOM.passkeyInput) DOM.passkeyInput.value = pinParam;
+
+      // Ensure mode is set to join
+      setRoomMode("join");
+
+      // 2. Visually hide the "Room ID" and "Room PIN" fields so user only sees Nickname
+      const roomGroup = DOM.roomInput ? DOM.roomInput.closest(".form-group") : null;
+      const passkeyGroup = DOM.passkeyInput ? DOM.passkeyInput.closest(".form-group") : null;
+      if (roomGroup) roomGroup.style.display = "none";
+      if (passkeyGroup) passkeyGroup.style.display = "none";
+
+      const modeTabs = document.querySelector(".room-mode-tabs");
+      if (modeTabs) modeTabs.style.display = "none";
+
+      // Display an invite confirmation banner
+      let inviteBanner = document.getElementById("invite-room-banner");
+      if (!inviteBanner) {
+        inviteBanner = document.createElement("div");
+        inviteBanner.id = "invite-room-banner";
+        inviteBanner.className = "alert-banner alert-info";
+        const usernameGroup = DOM.usernameInput ? DOM.usernameInput.closest(".form-group") : null;
+        if (usernameGroup && usernameGroup.parentNode) {
+          usernameGroup.parentNode.insertBefore(inviteBanner, usernameGroup);
+        }
       }
+      inviteBanner.innerHTML = `<strong>Room Invite:</strong> Joining room <code>${escapeHtml(roomParam)}</code> (Encryption PIN loaded)`;
+      inviteBanner.style.display = "block";
+
+      if (DOM.connectBtnText) {
+        DOM.connectBtnText.textContent = `Join ${roomParam}`;
+      }
+
+      // 3. Prompt user ONLY for their Username
+      if (DOM.usernameInput) {
+        DOM.usernameInput.focus();
+      }
+
+      // 4. Clear the hash from the browser address bar immediately so PIN is not left sitting on screen
+      try {
+        history.replaceState(null, null, ' ');
+      } catch (_) {}
+
+      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN. Address bar hash cleared.`);
+    } else if (roomParam) {
+      if (DOM.roomInput) DOM.roomInput.value = roomParam;
+      setRoomMode("join");
+      if (DOM.usernameInput && !DOM.usernameInput.value) {
+        DOM.usernameInput.focus();
+      } else if (DOM.passkeyInput) {
+        DOM.passkeyInput.focus();
+      }
+      logActivity(`Auto-filled Room ID '${roomParam}' from invite URL.`);
     }
   }
 
   async function copyInviteLink() {
     if (!state.roomId) return;
-    const inviteUrl = `${window.location.origin}${window.location.pathname}#room=${encodeURIComponent(state.roomId)}`;
+    const roomId = state.roomId;
+    const roomPin = state.roomPasskey || "";
+    const inviteUrl = window.location.origin + '/#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
 
     let copied = false;
     if (navigator.clipboard && navigator.clipboard.writeText) {
