@@ -158,6 +158,25 @@
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   }
 
+  const AVATAR_GRADIENTS = [
+    "linear-gradient(135deg, #7c3aed, #06b6d4)",
+    "linear-gradient(135deg, #06b6d4, #10b981)",
+    "linear-gradient(135deg, #8b5cf6, #ec4899)",
+    "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+    "linear-gradient(135deg, #6366f1, #06b6d4)",
+    "linear-gradient(135deg, #0ea5e9, #10b981)"
+  ];
+
+  function getAvatarGradient(name) {
+    if (!name) return AVATAR_GRADIENTS[0];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % AVATAR_GRADIENTS.length;
+    return AVATAR_GRADIENTS[idx];
+  }
+
   function formatTime() {
     const now = new Date();
     return now.toTimeString().split(" ")[0];
@@ -535,6 +554,8 @@
 
     DOM.myUsername.textContent = state.username;
     DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
+    DOM.myAvatar.style.background = getAvatarGradient(state.username);
+    DOM.myAvatar.style.color = "#ffffff";
     DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
 
     if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
@@ -674,8 +695,9 @@
       li.setAttribute("role", "button");
       li.setAttribute("tabindex", "0");
 
+      const avatarBg = getAvatarGradient(user);
       li.innerHTML = `
-        <div class="peer-avatar">${escapeHtml(user.charAt(0).toUpperCase())}</div>
+        <div class="peer-avatar" style="background: ${avatarBg}; color: #ffffff;">${escapeHtml(user.charAt(0).toUpperCase())}</div>
         <span class="nav-title">${escapeHtml(user)} ${isMe ? "(You)" : ""}</span>
         ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${escapeHtml(user)}" aria-label="Send file to ${escapeHtml(user)}"><svg class="svg-icon xs"><use href="#icon-paperclip"></use></svg></button>` : ""}
       `;

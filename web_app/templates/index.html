@@ -26,15 +26,21 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
 
-  <!-- ==================== LUCIDE SVG SYMBOL DEFINITIONS ==================== -->
+  <!-- ==================== LUCIDE & BRAND SVG SYMBOL DEFINITIONS ==================== -->
   <svg style="display: none;" aria-hidden="true">
     <defs>
+      <!-- Custom NetChat Brand Nexus Logo -->
+      <symbol id="icon-netchat-brand" viewBox="0 0 24 24">
+        <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <circle cx="12" cy="12" r="2.8" fill="currentColor"/>
+        <path d="M12 2v7.2m0 5.6V22M3 7l6 3.5m6 3.5l6 3.5M21 7l-6 3.5m-6 3.5l-6 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </symbol>
       <!-- Application/server: Server -->
       <symbol id="icon-server" viewBox="0 0 24 24">
         <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/>
@@ -189,11 +195,16 @@
       </div>
 
       <div class="login-header">
-        <div class="app-brand" aria-label="NetChat">
-          <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
-          <span class="app-brand-text">NetChat</span>
+        <div class="app-brand" aria-label="NetChat Live">
+          <div class="brand-symbol-wrap">
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+          </div>
+          <div class="brand-text-wrap">
+            <span class="app-brand-text">NetChat</span>
+            <span class="brand-live-badge">LIVE</span>
+          </div>
         </div>
-        <p class="subtitle">TCP Multi-Client Chat and File Sharing Network</p>
+        <p class="subtitle">Next-Gen TCP Sockets · SHA-256 Checksums · Real-Time Gateway</p>
       </div>
 
       <div class="login-body">
@@ -269,9 +280,14 @@
       
       <!-- Branding & Mobile Close Button -->
       <div class="sidebar-brand">
-        <div class="app-brand" aria-label="NetChat">
-          <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
-          <span class="app-brand-text">NetChat</span>
+        <div class="app-brand" aria-label="NetChat Live">
+          <div class="brand-symbol-wrap">
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+          </div>
+          <div class="brand-text-wrap">
+            <span class="app-brand-text">NetChat</span>
+            <span class="brand-live-badge">LIVE</span>
+          </div>
         </div>
         <div class="sidebar-brand-actions">
           <span class="badge-status offline" title="Network Connection Status" id="sidebar-status-badge">
@@ -378,9 +394,14 @@
           </button>
 
           <!-- Mobile Compact Brand Badge -->
-          <div class="header-mobile-brand" aria-label="NetChat">
-            <svg class="svg-icon xs text-primary" aria-hidden="true"><use href="#icon-server"></use></svg>
-            <span class="header-mobile-brand-name">NetChat</span>
+          <div class="header-mobile-brand" aria-label="NetChat Live">
+            <div class="brand-symbol-wrap">
+              <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+            </div>
+            <div class="brand-text-wrap">
+              <span class="app-brand-text">NetChat</span>
+              <span class="brand-live-badge">LIVE</span>
+            </div>
           </div>
 
           <div class="header-channel-icon" id="header-icon-wrap" aria-hidden="true">
@@ -431,10 +452,19 @@
         <!-- Empty State Default -->
         <div class="empty-feed" id="empty-state">
           <div class="empty-icon-ring" aria-hidden="true">
-            <svg class="svg-icon xl"><use href="#icon-globe"></use></svg>
+            <svg class="svg-icon xl"><use href="#icon-netchat-brand"></use></svg>
           </div>
-          <h3>Welcome to NetChat</h3>
-          <p>Send a broadcast message below, or click any peer on the left to whisper directly.</p>
+          <div class="empty-badge">
+            <span class="status-dot connected"></span>
+            <span>LAYER 4 STREAM ONLINE</span>
+          </div>
+          <h3>Public Broadcast Stream</h3>
+          <p>Real-time TCP packets are streaming via WebSocket gateway. Transmit a broadcast message below, or whisper directly to any peer.</p>
+          <div class="empty-quick-hints">
+            <span class="hint-chip"><kbd>Enter</kbd> to Send</span>
+            <span class="hint-chip">SHA-256 Verification</span>
+            <span class="hint-chip">100 MB File Transfers</span>
+          </div>
         </div>
       </div>
 
@@ -453,6 +483,7 @@
           
           <div class="composer-input-wrapper">
             <input type="text" id="message-input" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" aria-label="Message text">
+            <span class="composer-kbd-hint" aria-hidden="true">Enter ↵</span>
           </div>
 
           <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send" title="Send Message" aria-label="Send message">
