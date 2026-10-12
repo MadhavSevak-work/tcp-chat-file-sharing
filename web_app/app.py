@@ -10,6 +10,7 @@ import sys
 import time
 import uuid
 import logging
+import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 
@@ -52,6 +53,51 @@ file_registry = {}
 
 
 # ============================================================================
+# SECURITY & RATE LIMITING HELPERS
+# ============================================================================
+
+class SlidingWindowRateLimiter:
+    """Thread-safe in-memory sliding window rate limiter."""
+    def __init__(self, max_requests: int, window_seconds: float):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.records = {}
+        self.lock = threading.Lock()
+
+    def is_allowed(self, key: str) -> bool:
+        now = time.time()
+        with self.lock:
+            timestamps = self.records.get(key, [])
+            cutoff = now - self.window_seconds
+            timestamps = [t for t in timestamps if t > cutoff]
+            if len(timestamps) >= self.max_requests:
+                self.records[key] = timestamps
+                return False
+            timestamps.append(now)
+            self.records[key] = timestamps
+            return True
+
+    def reset(self, key: str) -> None:
+        with self.lock:
+            self.records.pop(key, None)
+
+
+# TASK 4: Connection throttling: max 5 connection attempts per IP per minute (60s)
+ip_connection_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=60.0)
+
+# TASK 4: Message throttling: max 5 incoming chat messages per active socket per second (1.0s)
+socket_message_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=1.0)
+
+
+def get_client_ip() -> str:
+    """Extract client IP address accounting for proxies."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+
+# ============================================================================
 # HTTP ROUTES
 # ============================================================================
 
@@ -82,6 +128,7 @@ def upload_file():
     """
     HTTP endpoint for secure browser file upload.
     Validates file, computes SHA-256 hash, and registers the transfer.
+    Enforces 64 KB chunk writing and strictly rejects streams exceeding 100 MB without RAM exhaustion.
     """
     if "file" not in request.files:
         return jsonify({"status": "error", "message": "No file part in request."}), 400
@@ -96,16 +143,34 @@ def upload_file():
     stored_filename = f"{transfer_id}_{clean_filename}"
     filepath = os.path.join(app.config["UPLOAD_FOLDER"], stored_filename)
 
-    # Save to disk
-    file.save(filepath)
-    filesize = os.path.getsize(filepath)
+    # Save to disk in 64 KB chunks while strictly checking size to prevent RAM/disk exhaustion
+    bytes_written = 0
+    try:
+        with open(filepath, "wb") as f:
+            while True:
+                chunk = file.stream.read(64 * 1024)
+                if not chunk:
+                    break
+                bytes_written += len(chunk)
+                if bytes_written > MAX_FILE_SIZE:
+                    f.close()
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+                    return jsonify({
+                        "status": "error",
+                        "message": f"File exceeds maximum allowed size ({MAX_FILE_SIZE // (1024*1024)} MB)."
+                    }), 400
+                f.write(chunk)
+    except Exception as e:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({"status": "error", "message": f"Upload failed: {e}"}), 500
 
-    if filesize > MAX_FILE_SIZE:
-        os.remove(filepath)
-        return jsonify({
-            "status": "error",
-            "message": f"File exceeds maximum allowed size ({MAX_FILE_SIZE // (1024*1024)} MB)."
-        }), 400
+    filesize = bytes_written
+    if filesize == 0:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({"status": "error", "message": "File cannot be empty."}), 400
 
     # Compute SHA-256
     sha256 = compute_file_sha256(filepath)
@@ -131,20 +196,30 @@ def upload_file():
 
 @app.route("/api/download/<transfer_id>")
 def download_file(transfer_id):
-    """Secure endpoint to download uploaded files with path traversal protection."""
+    """
+    Secure endpoint to download uploaded files with path traversal protection.
+    Enforces attachment header and application/octet-stream content type to block in-browser HTML/SVG execution.
+    """
     record = file_registry.get(transfer_id)
     if not record or not os.path.exists(record["filepath"]):
         return jsonify({"status": "error", "message": "File not found or expired."}), 404
 
     directory = os.path.dirname(record["filepath"])
     filename = os.path.basename(record["filepath"])
+    clean_dl_name = sanitize_filename(record["filename"])
 
-    return send_from_directory(
+    response = send_from_directory(
         directory,
         filename,
         as_attachment=True,
-        download_name=record["filename"]
+        download_name=clean_dl_name,
+        mimetype="application/octet-stream"
     )
+    # Explicitly enforce Content-Disposition and octet-stream Content-Type headers
+    response.headers["Content-Disposition"] = f'attachment; filename="{clean_dl_name}"'
+    response.headers["Content-Type"] = "application/octet-stream"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 # ============================================================================
@@ -154,7 +229,18 @@ def download_file(transfer_id):
 @socketio.on("connect")
 def handle_connect():
     sid = request.sid
-    logger.info(f"[SocketIO] Client connected: {sid}")
+    client_ip = get_client_ip()
+
+    # TASK 4: Connection Throttling (max 5 new connection attempts per IP per minute)
+    if not ip_connection_limiter.is_allowed(client_ip):
+        logger.warning(f"[RateLimit] Throttled connection attempt from IP: {client_ip}")
+        emit("error", {
+            "type": "error",
+            "message": "Connection rate limit exceeded. Please wait."
+        })
+        return False
+
+    logger.info(f"[SocketIO] Client connected: {sid} (IP: {client_ip})")
     emit("gateway_ready", {
         "gateway": "TCP-WebSocket Gateway v1.0",
         "default_host": DEFAULT_HOST,
@@ -167,6 +253,7 @@ def handle_disconnect():
     sid = request.sid
     logger.info(f"[SocketIO] Client disconnected: {sid}")
     gateway_manager.remove_session(sid)
+    socket_message_limiter.reset(sid)
 
 
 @socketio.on("join")
@@ -174,15 +261,41 @@ def handle_join(data):
     """
     Browser client requests to join the chat system.
     Establishes the real TCP socket connection on behalf of this user.
+    Enforces immutable loopback target (SSRF hardening), IP throttling, and unique nicknames.
     """
     sid = request.sid
+    client_ip = get_client_ip()
     username = data.get("username", "").strip()
-    host = data.get("host", DEFAULT_HOST).strip()
-    port = int(data.get("port", DEFAULT_CHAT_PORT))
 
+    # TASK 1: Immutable internal socket target (SSRF prevention)
+    # Strictly ignore or reject any custom TCP IP/port parameters sent by the client
+    host = DEFAULT_HOST
+    port = DEFAULT_CHAT_PORT
+
+    # TASK 4: Connection Throttling check
+    if not ip_connection_limiter.is_allowed(client_ip):
+        logger.warning(f"[RateLimit] Throttled join attempt from IP: {client_ip}")
+        emit("join_error", {
+            "type": "error",
+            "code": "RATE_LIMIT_EXCEEDED",
+            "message": "Connection rate limit exceeded. Please wait."
+        })
+        return
+
+    # Username syntax validation
     is_valid, val_msg = validate_username(username)
     if not is_valid:
-        emit("join_error", {"message": val_msg})
+        emit("join_error", {"type": "error", "code": "INVALID_USERNAME", "message": val_msg})
+        return
+
+    # TASK 5: Nickname Collision Prevention in Gateway Registry
+    if gateway_manager.is_nickname_taken(val_msg):
+        logger.warning(f"[Gateway] Nickname collision detected for '{val_msg}'")
+        emit("join_error", {
+            "type": "error",
+            "code": "NICKNAME_TAKEN",
+            "message": "Nickname already in use. Please choose another."
+        })
         return
 
     # Callback executed by the background TCP thread to push messages to this browser
@@ -209,7 +322,12 @@ def handle_join(data):
         })
     else:
         logger.warning(f"[Gateway] TCP connection failed for '{username}': {msg}")
-        emit("join_error", {"message": msg})
+        is_taken = "already in use" in msg.lower() or "nickname" in msg.lower()
+        emit("join_error", {
+            "type": "error",
+            "code": "NICKNAME_TAKEN" if is_taken else "CONNECT_FAILED",
+            "message": "Nickname already in use. Please choose another." if is_taken else msg
+        })
 
 
 @socketio.on("send_chat")
@@ -217,6 +335,14 @@ def handle_send_chat(data):
     sid = request.sid
     content = data.get("content", "").strip()
     if not content:
+        return
+
+    # TASK 4: Restrict incoming chat messages to maximum 5 per second
+    if not socket_message_limiter.is_allowed(sid):
+        emit("error", {
+            "type": "error",
+            "message": "Rate limit exceeded. Please wait."
+        })
         return
 
     session = gateway_manager.get_session(sid)
@@ -230,6 +356,14 @@ def handle_send_private(data):
     recipient = data.get("recipient", "").strip()
     content = data.get("content", "").strip()
     if not content or not recipient:
+        return
+
+    # TASK 4: Restrict incoming private messages to maximum 5 per second
+    if not socket_message_limiter.is_allowed(sid):
+        emit("error", {
+            "type": "error",
+            "message": "Rate limit exceeded. Please wait."
+        })
         return
 
     session = gateway_manager.get_session(sid)

@@ -156,10 +156,22 @@ def sanitize_filename(filename: str) -> str:
     Strips directory paths and path traversal sequences ('../', '..\\')
     to prevent unauthorized filesystem overwrites.
     """
+    if not filename:
+        return "received_file"
+    # Remove null bytes
+    clean = str(filename).replace("\x00", "")
+    # Normalize Windows and Unix path separators
+    clean = clean.replace("\\", "/")
+    # Repeatedly remove any relative traversal patterns
+    clean = re.sub(r'(?:\.\./)+', '', clean)
     # Extract only the base name
-    base = os.path.basename(filename)
-    # Remove null bytes and hazardous characters
-    cleaned = re.sub(r'[\\/*?:"<>|]', "", base).strip()
+    base = os.path.basename(clean)
+    # Remove path separators and hazardous filesystem characters
+    cleaned = re.sub(r'[\\/*?:"<>|\x00]', "", base).strip()
+    # Strip any leading dots or whitespace
+    while cleaned.startswith(".."):
+        cleaned = cleaned[2:].strip()
+    cleaned = cleaned.strip(". ")
     return cleaned if cleaned else "received_file"
 
 

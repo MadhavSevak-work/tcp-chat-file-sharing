@@ -159,6 +159,20 @@ class ClientHandler(threading.Thread):
         msg_type = msg.get("type")
         timestamp = time.strftime("%H:%M:%S")
 
+        # Rate limit incoming messages to max 5 per second
+        if msg_type in (MSG_CHAT, MSG_PRIVATE_CHAT):
+            now = time.time()
+            if not hasattr(self, "message_times"):
+                self.message_times = []
+            self.message_times = [t for t in self.message_times if now - t < 1.0]
+            if len(self.message_times) >= 5:
+                self.send_payload({
+                    "type": MSG_ERROR,
+                    "message": "Rate limit exceeded. Please wait."
+                })
+                return
+            self.message_times.append(now)
+
         if msg_type == MSG_CHAT:
             content = msg.get("content", "").strip()
             if not content:

@@ -198,13 +198,20 @@
 
   function logActivity(text) {
     const time = formatTime();
-    const lineHtml = `<div class="log-line"><span class="log-time">[${time}]</span> ${escapeHtml(text)}</div>`;
+    const line = document.createElement("div");
+    line.className = "log-line";
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "log-time";
+    timeSpan.textContent = `[${time}] `;
+    line.appendChild(timeSpan);
+    line.appendChild(document.createTextNode(String(text)));
+
     if (DOM.activityLogBox) {
-      DOM.activityLogBox.insertAdjacentHTML("beforeend", lineHtml);
+      DOM.activityLogBox.appendChild(line);
       DOM.activityLogBox.scrollTop = DOM.activityLogBox.scrollHeight;
     }
     if (DOM.rpActivityLog) {
-      DOM.rpActivityLog.insertAdjacentHTML("beforeend", lineHtml);
+      DOM.rpActivityLog.appendChild(line.cloneNode(true));
       DOM.rpActivityLog.scrollTop = DOM.rpActivityLog.scrollHeight;
     }
   }
@@ -464,9 +471,16 @@
     });
 
     state.socket.on("gateway_ready", (data) => {
-      logActivity(`Gateway ready: default TCP target ${data.default_host}:${data.default_port}`);
-      if (DOM.hostInput && !DOM.hostInput.value) DOM.hostInput.value = data.default_host;
-      if (DOM.portInput && !DOM.portInput.value) DOM.portInput.value = data.default_port;
+      logActivity(`Gateway ready (${data.gateway}). Loopback socket target: ${data.default_host}:${data.default_port}`);
+      if (DOM.gatewayDisplayEndpoint) {
+        DOM.gatewayDisplayEndpoint.textContent = `Loopback Target: ${data.default_host}:${data.default_port}`;
+      }
+    });
+
+    state.socket.on("error", (data) => {
+      const msg = data && data.message ? data.message : "Security rate limit exceeded.";
+      appendSystemMessage(msg);
+      logActivity(`[Security Warning] ${msg}`);
     });
 
     state.socket.on("join_success", (data) => {
@@ -553,8 +567,6 @@
   // =========================================================================
   function handleConnectClick() {
     const username = DOM.usernameInput.value.trim();
-    const host = DOM.hostInput.value.trim() || "127.0.0.1";
-    const port = parseInt(DOM.portInput.value.trim(), 10) || 5000;
 
     if (!username) {
       showLoginError("Please enter a username.");
@@ -566,8 +578,8 @@
     DOM.loginError.classList.add("hidden");
     setConnectionStatus("connecting", "Connecting...");
 
-    logActivity(`Requesting TCP registration for '${username}' on ${host}:${port}...`);
-    state.socket.emit("join", { username, host, port });
+    logActivity(`Requesting secure TCP registration for '${username}' on 127.0.0.1:5000...`);
+    state.socket.emit("join", { username });
   }
 
   function handleJoinSuccess(data) {
@@ -709,18 +721,30 @@
     header.className = "msg-header";
 
     if (isPrivate) {
-      header.innerHTML = `
-        <span class="msg-badge badge-private">
-          <svg class="svg-icon xs"><use href="#icon-lock"></use></svg> PRIVATE
-        </span>
-        <span class="msg-sender">${isMe ? "You to " + escapeHtml(peer) : escapeHtml(sender)}</span>
-        <span class="msg-time">${timestamp || formatTime()}</span>
-      `;
+      const badge = document.createElement("span");
+      badge.className = "msg-badge badge-private";
+      badge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> PRIVATE`;
+      header.appendChild(badge);
+
+      const senderEl = document.createElement("span");
+      senderEl.className = "msg-sender";
+      senderEl.textContent = isMe ? `You to ${peer}` : sender;
+      header.appendChild(senderEl);
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "msg-time";
+      timeEl.textContent = timestamp || formatTime();
+      header.appendChild(timeEl);
     } else {
-      header.innerHTML = `
-        <span class="msg-sender">${isMe ? "You" : escapeHtml(sender)}</span>
-        <span class="msg-time">${timestamp || formatTime()}</span>
-      `;
+      const senderEl = document.createElement("span");
+      senderEl.className = "msg-sender";
+      senderEl.textContent = isMe ? "You" : sender;
+      header.appendChild(senderEl);
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "msg-time";
+      timeEl.textContent = timestamp || formatTime();
+      header.appendChild(timeEl);
     }
 
     const body = document.createElement("div");
@@ -787,11 +811,27 @@
       li.setAttribute("tabindex", "0");
 
       const avatarBg = getAvatarGradient(user);
-      li.innerHTML = `
-        <div class="peer-avatar" style="background: ${avatarBg}; color: #ffffff;">${escapeHtml(user.charAt(0).toUpperCase())}</div>
-        <span class="nav-title">${escapeHtml(user)} ${isMe ? "(You)" : ""}</span>
-        ${!isMe ? `<button class="btn-send-file-tiny" title="Send File to ${escapeHtml(user)}" aria-label="Send file to ${escapeHtml(user)}"><svg class="svg-icon xs"><use href="#icon-paperclip"></use></svg></button>` : ""}
-      `;
+      const avatarEl = document.createElement("div");
+      avatarEl.className = "peer-avatar";
+      avatarEl.style.background = avatarBg;
+      avatarEl.style.color = "#ffffff";
+      avatarEl.textContent = user.charAt(0).toUpperCase();
+
+      const titleEl = document.createElement("span");
+      titleEl.className = "nav-title";
+      titleEl.textContent = `${user} ${isMe ? "(You)" : ""}`;
+
+      li.appendChild(avatarEl);
+      li.appendChild(titleEl);
+
+      if (!isMe) {
+        const fileBtn = document.createElement("button");
+        fileBtn.className = "btn-send-file-tiny";
+        fileBtn.title = `Send File to ${user}`;
+        fileBtn.setAttribute("aria-label", `Send file to ${user}`);
+        fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
+        li.appendChild(fileBtn);
+      }
 
       if (!isMe) {
         li.addEventListener("click", (e) => {

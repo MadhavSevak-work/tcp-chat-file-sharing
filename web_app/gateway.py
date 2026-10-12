@@ -243,9 +243,23 @@ class GatewayManager:
         self.sessions: Dict[str, TCPClientSession] = {}
         self.lock = threading.Lock()
 
+    def is_nickname_taken(self, username: str) -> bool:
+        """Case-insensitive check for active connected nickname in gateway registry."""
+        if not username:
+            return False
+        with self.lock:
+            target = username.strip().lower()
+            return any(s.username.lower() == target for s in self.sessions.values())
+
     def create_session(self, sid: str, username: str, host: str, port: int,
                        emit_callback: Callable[[str, dict], None]) -> Tuple[bool, str, Optional[TCPClientSession]]:
         with self.lock:
+            # Check for duplicate active nickname across active web sessions
+            target = username.strip().lower()
+            for s in self.sessions.values():
+                if s.username.lower() == target and s.sid != sid:
+                    return False, "Nickname already in use. Please choose another.", None
+
             # Check if this sid already has an active session
             if sid in self.sessions:
                 self.sessions[sid].close()
