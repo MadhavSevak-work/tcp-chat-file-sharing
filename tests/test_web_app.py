@@ -20,6 +20,8 @@ class TestWebApp(unittest.TestCase):
         self.app = app
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
+        from web_app.app import ip_connection_limiter
+        ip_connection_limiter.reset("127.0.0.1")
 
     def test_01_index_route(self):
         """GET / should render the HTML single-page application."""
@@ -102,6 +104,86 @@ class TestWebApp(unittest.TestCase):
         c1.disconnect()
         c2.disconnect()
         c3.disconnect()
+
+    def test_06_room_peers_scoped_isolation(self):
+        """Test that peer lists and updates are strictly isolated per room."""
+        from web_app.app import socketio, room_members, socket_to_room
+
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+        c4 = socketio.test_client(self.app)
+
+        # Clear initial connect messages
+        for c in (c1, c2, c3, c4):
+            c.get_received()
+
+        # madhu and madhav join 'room1'
+        c1.emit("join_room", {"room_id": "room1", "username": "madhu"})
+        c2.emit("join_room", {"room_id": "room1", "username": "madhav"})
+
+        # tanu1 and tanu2 join 'room2'
+        c3.emit("join_room", {"room_id": "room2", "username": "tanu1"})
+        c4.emit("join_room", {"room_id": "room2", "username": "tanu2"})
+
+        rec_c1 = c1.get_received()
+        rec_c2 = c2.get_received()
+        rec_c3 = c3.get_received()
+        rec_c4 = c4.get_received()
+
+        # Check room_peers_update events
+        peers_c1_updates = [m["args"][0] for m in rec_c1 if m["name"] == "room_peers_update"]
+        peers_c2_updates = [m["args"][0] for m in rec_c2 if m["name"] == "room_peers_update"]
+        peers_c3_updates = [m["args"][0] for m in rec_c3 if m["name"] == "room_peers_update"]
+        peers_c4_updates = [m["args"][0] for m in rec_c4 if m["name"] == "room_peers_update"]
+
+        # Latest peers for c1 and c2 must only be madhu and madhav
+        latest_c1_peers = sorted(peers_c1_updates[-1]["peers"])
+        latest_c2_peers = sorted(peers_c2_updates[-1]["peers"])
+        self.assertEqual(latest_c1_peers, ["madhav", "madhu"])
+        self.assertEqual(latest_c2_peers, ["madhav", "madhu"])
+        self.assertEqual(peers_c1_updates[-1]["room_id"], "room1")
+
+        # Latest peers for c3 and c4 must only be tanu1 and tanu2
+        latest_c3_peers = sorted(peers_c3_updates[-1]["peers"])
+        latest_c4_peers = sorted(peers_c4_updates[-1]["peers"])
+        self.assertEqual(latest_c3_peers, ["tanu1", "tanu2"])
+        self.assertEqual(latest_c4_peers, ["tanu1", "tanu2"])
+        self.assertEqual(peers_c3_updates[-1]["room_id"], "room2")
+
+        # None of c1's updates should contain tanu1 or tanu2
+        for upd in peers_c1_updates:
+            self.assertNotIn("tanu1", upd["peers"])
+            self.assertNotIn("tanu2", upd["peers"])
+
+        # None of c3's updates should contain madhu or madhav
+        for upd in peers_c3_updates:
+            self.assertNotIn("madhu", upd["peers"])
+            self.assertNotIn("madhav", upd["peers"])
+
+        # Disconnect madhav (c2) from room1
+        c2.disconnect()
+
+        # c1 should receive room_peers_update showing only madhu
+        rec_c1_after = c1.get_received()
+        disconnect_upd = [m["args"][0] for m in rec_c1_after if m["name"] == "room_peers_update"]
+        self.assertTrue(len(disconnect_upd) >= 1)
+        self.assertEqual(disconnect_upd[-1]["peers"], ["madhu"])
+
+        # c3 and c4 in room2 should NOT have received any updates about c2 leaving
+        rec_c3_after = c3.get_received()
+        rec_c4_after = c4.get_received()
+        self.assertEqual(len([m for m in rec_c3_after if m["name"] == "room_peers_update"]), 0)
+        self.assertEqual(len([m for m in rec_c4_after if m["name"] == "room_peers_update"]), 0)
+
+        # Disconnect remaining
+        c1.disconnect()
+        self.assertNotIn("room1", room_members)
+        self.assertIn("room2", room_members)
+
+        c3.disconnect()
+        c4.disconnect()
+        self.assertNotIn("room2", room_members)
 
 
 if __name__ == "__main__":

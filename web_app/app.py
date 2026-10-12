@@ -69,7 +69,8 @@ logger = logging.getLogger("WebApp")
 file_registry = {}
 active_chunk_transfers = {}
 chunk_transfers_lock = threading.Lock()
-active_rooms = {}
+room_members = {}       # room_id -> { socket_id: username, ... }
+socket_to_room = {}     # socket_id -> room_id
 room_lock = threading.Lock()
 
 
@@ -329,22 +330,32 @@ def handle_disconnect():
     gateway_manager.remove_session(sid)
     socket_message_limiter.reset(sid)
 
-    # Clean up client from active E2EE rooms
+    # Clean up user's room membership strictly per room
     with room_lock:
-        for r_id, mems in list(active_rooms.items()):
-            if sid in mems:
-                departed_user = mems.pop(sid)
-                members_remaining = list(mems.values())
+        r_id = socket_to_room.pop(sid, None)
+        if r_id and r_id in room_members:
+            departed_user = room_members[r_id].pop(sid, None)
+            peers_remaining = list(room_members[r_id].values())
+
+            # Emit the updated peer list strictly to room=room_id
+            emit("room_peers_update", {
+                "room_id": r_id,
+                "peers": peers_remaining
+            }, room=r_id)
+
+            if departed_user:
                 emit("receive_message", {
                     "type": "system",
                     "sender": "System",
                     "room_id": r_id,
                     "message": f"🔒 {departed_user} left the encrypted room.",
-                    "members": members_remaining,
+                    "peers": peers_remaining,
                     "timestamp": time.time()
                 }, room=r_id)
-                if not mems:
-                    active_rooms.pop(r_id, None)
+
+            # If the room becomes empty, delete the room key from room_members
+            if not room_members[r_id]:
+                room_members.pop(r_id, None)
 
 
 # ============================================================================
@@ -354,7 +365,7 @@ def handle_disconnect():
 @socketio.on("join_room")
 def handle_join_room(data):
     """
-    Manages E2EE room membership.
+    Manages strictly scoped E2EE room membership.
     The backend joins the client socket to the requested room channel
     without access to the room passkey or cryptographic material.
     """
@@ -369,33 +380,62 @@ def handle_join_room(data):
         emit("room_error", {"message": "Both Room ID and Username are required."})
         return
 
-    # Join the Flask-SocketIO channel
-    join_room(room_id)
-
+    # If socket was previously in a different room, clean up old room first
     with room_lock:
-        if room_id not in active_rooms:
-            active_rooms[room_id] = {}
-        active_rooms[room_id][sid] = username
-        members = list(active_rooms[room_id].values())
+        old_room = socket_to_room.get(sid)
+        if old_room and old_room != room_id:
+            leave_room(old_room)
+            if old_room in room_members and sid in room_members[old_room]:
+                old_user = room_members[old_room].pop(sid, None)
+                old_peers = list(room_members[old_room].values())
+                emit("room_peers_update", {
+                    "room_id": old_room,
+                    "peers": old_peers
+                }, room=old_room)
+                emit("receive_message", {
+                    "type": "system",
+                    "sender": "System",
+                    "room_id": old_room,
+                    "message": f"🔒 {old_user} left the room.",
+                    "peers": old_peers,
+                    "timestamp": time.time()
+                }, room=old_room)
+                if not room_members[old_room]:
+                    room_members.pop(old_room, None)
+
+        # Join the Flask-SocketIO channel
+        join_room(room_id)
+
+        if room_id not in room_members:
+            room_members[room_id] = {}
+        room_members[room_id][sid] = username
+        socket_to_room[sid] = room_id
+        peers = list(room_members[room_id].values())
 
     # Zero-retention logging - do not log passwords or sensitive keys
-    logger.info(f"[E2EE Relay] Peer '{username}' joined room '{room_id}' (Total peers: {len(members)})")
+    logger.info(f"[E2EE Relay] Peer '{username}' joined room '{room_id}' (Room peers: {len(peers)})")
 
     # Acknowledge to joining user
     emit("room_joined", {
         "room_id": room_id,
         "username": username,
-        "members": members,
+        "peers": peers,
         "e2ee": True
     }, room=sid)
 
-    # Broadcast system event to other room peers
+    # Emit an updated member list strictly to that room
+    emit("room_peers_update", {
+        "room_id": room_id,
+        "peers": peers
+    }, room=room_id)
+
+    # Broadcast system event strictly to other room peers
     emit("receive_message", {
         "type": "system",
         "sender": "System",
         "room_id": room_id,
         "message": f"🔒 {username} entered the encrypted room.",
-        "members": members,
+        "peers": peers,
         "timestamp": time.time()
     }, room=room_id, include_self=False)
 

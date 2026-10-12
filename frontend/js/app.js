@@ -734,11 +734,21 @@
       if (DOM.activeChatTitle) {
         DOM.activeChatTitle.textContent = `🔒 Room: ${data.room_id}`;
       }
+      const peerList = data.peers || data.members || [];
       if (DOM.activeChatDesc) {
-        DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${data.members ? data.members.length : 1}`;
+        DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
       }
-      if (data.members) {
-        updateUserList(data.members);
+      updateUserList(peerList);
+    });
+
+    state.socket.on("room_peers_update", (data) => {
+      // Only render if data.room_id matches the client's current active room
+      if (data && data.room_id === state.roomId) {
+        const peerList = data.peers || [];
+        updateUserList(peerList);
+        if (DOM.activeChatDesc) {
+          DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+        }
       }
     });
 
@@ -747,8 +757,12 @@
 
       if (data.type === "system") {
         appendSystemMessage(data.message);
-        if (data.members) {
-          updateUserList(data.members);
+        if (data.room_id === state.roomId && (data.peers || data.members)) {
+          const peerList = data.peers || data.members;
+          updateUserList(peerList);
+          if (DOM.activeChatDesc) {
+            DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+          }
         }
         return;
       }
@@ -783,7 +797,10 @@
     });
 
     state.socket.on("user_list", (data) => {
-      updateUserList(data.users || []);
+      // Stop populating sidebar from global peer events when an E2EE room is active
+      if (!state.roomId) {
+        updateUserList(data.users || []);
+      }
     });
 
     state.socket.on("system_message", (data) => {
@@ -883,6 +900,9 @@
     DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Entering E2EE Room...</span>`;
     DOM.loginError.classList.add("hidden");
     setConnectionStatus("connecting", "Connecting...");
+
+    // Clear previous member roster immediately before populating the new room's roster
+    updateUserList([]);
 
     // Store strictly in client memory - never persisted to localStorage or cookies!
     state.username = username;
@@ -1140,6 +1160,21 @@
     }
     if (DOM.rpPeerCount) {
       DOM.rpPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
+    }
+
+    // Reset active whisper target if the user is no longer in this room
+    if (state.activeChatTarget && !users.some(u => u.toLowerCase() === state.activeChatTarget.toLowerCase())) {
+      state.activeChatTarget = null;
+      if (DOM.btnPublicRoom) DOM.btnPublicRoom.classList.add("active");
+      if (DOM.activeChatTitle && state.roomId) {
+        DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
+      }
+      if (DOM.headerChannelIcon) {
+        DOM.headerChannelIcon.innerHTML = `<use href="#icon-globe"></use>`;
+      }
+      if (DOM.messageInput) {
+        DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
+      }
     }
 
     // Refresh Sidebar Users
