@@ -27,7 +27,11 @@
     messagesCount: 0,
     theme: "dark",
     isConnected: false,
-    connectionStatus: "disconnected" // "connected" | "connecting" | "disconnected"
+    connectionStatus: "disconnected", // "connected" | "connecting" | "disconnected"
+    roomId: null,
+    roomPasskey: null, // Strictly in-memory (never persisted)
+    roomMode: "create", // "create" | "join"
+    isE2EE: true
   };
 
   // DOM Elements Cache
@@ -37,9 +41,18 @@
     btnLoginThemeToggle: document.getElementById("btn-login-theme-toggle"),
     btnThemeToggle: document.getElementById("btn-theme-toggle"),
 
-    // Login & Gateway
+    // Login, Room Setup & Gateway
     loginOverlay: document.getElementById("login-overlay"),
+    btnModeCreate: document.getElementById("btn-mode-create"),
+    btnModeJoin: document.getElementById("btn-mode-join"),
     usernameInput: document.getElementById("username-input"),
+    roomInput: document.getElementById("room-input"),
+    passkeyInput: document.getElementById("passkey-input"),
+    btnGenerateRoom: document.getElementById("btn-generate-room"),
+    btnTogglePasskey: document.getElementById("btn-toggle-passkey"),
+    iconPasskeyVisibility: document.getElementById("icon-passkey-visibility"),
+    connectBtnText: document.getElementById("connect-btn-text"),
+    roomInputHint: document.getElementById("room-input-hint"),
     hostInput: document.getElementById("host-input"),
     portInput: document.getElementById("port-input"),
     connectBtn: document.getElementById("connect-btn"),
@@ -476,6 +489,156 @@
     }
   }
 
+  // =========================================================================
+  // ZERO-KNOWLEDGE E2EE CRYPTOGRAPHY ENGINE (WEB CRYPTO API)
+  // AES-256-GCM + PBKDF2 (SHA-256, 600,000 iterations)
+  // =========================================================================
+  const E2EE = (function () {
+    const PBKDF2_ITERATIONS = 600000;
+    const SALT_LENGTH = 16;
+    const IV_LENGTH = 12;
+
+    function uint8ArrayToBase64(bytes) {
+      let binary = "";
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary);
+    }
+
+    function base64ToUint8Array(base64) {
+      const binary = window.atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    async function importPasskey(passkey) {
+      const enc = new TextEncoder();
+      return window.crypto.subtle.importKey(
+        "raw",
+        enc.encode(passkey),
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+      );
+    }
+
+    async function deriveAesKey(baseKey, salt) {
+      return window.crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: salt,
+          iterations: PBKDF2_ITERATIONS,
+          hash: "SHA-256"
+        },
+        baseKey,
+        {
+          name: "AES-GCM",
+          length: 256
+        },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    async function encryptMessage(plaintext, passkey) {
+      if (!passkey) throw new Error("Missing encryption passkey");
+      const salt = window.crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+      const iv = window.crypto.getRandomValues(new Uint8Array(IV_LENGTH));
+      const baseKey = await importPasskey(passkey);
+      const aesKey = await deriveAesKey(baseKey, salt);
+
+      const enc = new TextEncoder();
+      const ciphertextBuffer = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv },
+        aesKey,
+        enc.encode(plaintext)
+      );
+
+      const ciphertext = new Uint8Array(ciphertextBuffer);
+      const packed = new Uint8Array(salt.length + iv.length + ciphertext.length);
+      packed.set(salt, 0);
+      packed.set(iv, salt.length);
+      packed.set(ciphertext, salt.length + iv.length);
+
+      return uint8ArrayToBase64(packed);
+    }
+
+    async function decryptMessage(base64Payload, passkey) {
+      if (!base64Payload || !passkey) return null;
+      try {
+        const packed = base64ToUint8Array(base64Payload);
+        if (packed.length < SALT_LENGTH + IV_LENGTH + 16) return null;
+
+        const salt = packed.subarray(0, SALT_LENGTH);
+        const iv = packed.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
+        const ciphertext = packed.subarray(SALT_LENGTH + IV_LENGTH);
+
+        const baseKey = await importPasskey(passkey);
+        const aesKey = await deriveAesKey(baseKey, salt);
+
+        const decryptedBuffer = await window.crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: iv },
+          aesKey,
+          ciphertext
+        );
+
+        return new TextDecoder().decode(decryptedBuffer);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    return { encryptMessage, decryptMessage };
+  })();
+
+  function generateRandomRoomId() {
+    const adjectives = ["quantum", "cyber", "stealth", "shadow", "apex", "nexus", "prism", "zero"];
+    const nouns = ["room", "channel", "relay", "vault", "core", "node", "matrix", "shield"];
+    const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const num = Math.floor(100 + Math.random() * 900);
+    return `${adj}-${noun}-${num}`;
+  }
+
+  function setRoomMode(mode) {
+    state.roomMode = mode;
+    if (DOM.btnModeCreate && DOM.btnModeJoin) {
+      DOM.btnModeCreate.classList.toggle("active", mode === "create");
+      DOM.btnModeCreate.setAttribute("aria-selected", mode === "create" ? "true" : "false");
+      DOM.btnModeJoin.classList.toggle("active", mode === "join");
+      DOM.btnModeJoin.setAttribute("aria-selected", mode === "join" ? "true" : "false");
+    }
+
+    if (DOM.connectBtnText) {
+      DOM.connectBtnText.textContent = mode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
+    }
+
+    if (DOM.roomInputHint) {
+      DOM.roomInputHint.textContent = mode === "create"
+        ? "Unique room identifier shared between peers."
+        : "Enter the Room ID given to you by the room creator.";
+    }
+
+    if (mode === "create" && DOM.roomInput && !DOM.roomInput.value.trim()) {
+      DOM.roomInput.value = generateRandomRoomId();
+    }
+  }
+
+  function togglePasskeyVisibility() {
+    if (!DOM.passkeyInput) return;
+    const isPass = DOM.passkeyInput.type === "password";
+    DOM.passkeyInput.type = isPass ? "text" : "password";
+    if (DOM.iconPasskeyVisibility) {
+      DOM.iconPasskeyVisibility.innerHTML = `<use href="#icon-${isPass ? "eye-off" : "eye"}"></use>`;
+    }
+  }
+
   function init() {
     initTheme();
     setConnectionStatus("disconnected", "Disconnected");
@@ -494,6 +657,7 @@
     }
 
     setupEventListeners();
+    setRoomMode("create");
     connectSocket();
   }
 
@@ -562,6 +726,49 @@
 
     state.socket.on("join_error", (data) => {
       showLoginError(data.message || "Failed to join network.");
+    });
+
+    // Zero-Knowledge E2EE Room Socket Listeners
+    state.socket.on("room_joined", (data) => {
+      logActivity(`E2EE Channel established for room '${data.room_id}'. Zero-Knowledge Relay active.`);
+      if (DOM.activeChatTitle) {
+        DOM.activeChatTitle.textContent = `🔒 Room: ${data.room_id}`;
+      }
+      if (DOM.activeChatDesc) {
+        DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${data.members ? data.members.length : 1}`;
+      }
+      if (data.members) {
+        updateUserList(data.members);
+      }
+    });
+
+    state.socket.on("receive_message", async (data) => {
+      if (!data) return;
+
+      if (data.type === "system") {
+        appendSystemMessage(data.message);
+        if (data.members) {
+          updateUserList(data.members);
+        }
+        return;
+      }
+
+      if (data.payload) {
+        // Zero-Knowledge message decryption flow using in-memory passkey
+        const decrypted = await E2EE.decryptMessage(data.payload, state.roomPasskey);
+        if (decrypted !== null) {
+          appendChatMessage(data.sender, decrypted, data.timestamp, false);
+          logActivity(`[E2EE Decrypt OK] Packet verified and decrypted from ${data.sender}.`);
+        } else {
+          // Graceful decryption failure without crashing the client app
+          appendChatMessage(data.sender, "[Unable to decrypt: Invalid Passkey]", data.timestamp, false, null, true);
+          logActivity(`[E2EE Decrypt FAIL] MAC tag mismatch / invalid passkey from ${data.sender}.`);
+        }
+      }
+    });
+
+    state.socket.on("room_error", (data) => {
+      showLoginError(data.message || "Failed to join encrypted room.");
     });
 
     // Chat & Networking Events
@@ -644,13 +851,25 @@
   }
 
   // =========================================================================
-  // LOGIN & AUTHENTICATION
+  // LOGIN, E2EE ROOM SETUP & AUTHENTICATION
   // =========================================================================
   function handleConnectClick() {
-    const username = DOM.usernameInput.value.trim();
+    const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
+    const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
+    const passkey = DOM.passkeyInput ? DOM.passkeyInput.value : "";
 
     if (!username) {
-      showLoginError("Please enter a username.");
+      showLoginError("Please enter a nickname.");
+      return;
+    }
+
+    if (!roomId) {
+      showLoginError("Please enter or generate a Room ID.");
+      return;
+    }
+
+    if (!passkey) {
+      showLoginError("Please enter a Room Passkey for client-side encryption.");
       return;
     }
 
@@ -661,12 +880,21 @@
     }
 
     DOM.connectBtn.disabled = true;
-    DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Connecting to TCP...</span>`;
+    DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Entering E2EE Room...</span>`;
     DOM.loginError.classList.add("hidden");
     setConnectionStatus("connecting", "Connecting...");
 
-    logActivity(`Requesting secure TCP registration for '${username}' on 127.0.0.1:5000...`);
+    // Store strictly in client memory - never persisted to localStorage or cookies!
+    state.username = username;
+    state.roomId = roomId;
+    state.roomPasskey = passkey;
+    state.isE2EE = true;
+
+    logActivity(`Joining E2EE room '${roomId}' as '${username}' with client-side AES-256-GCM key derivation...`);
+
+    // Emit TCP join and SocketIO room join
     state.socket.emit("join", { username });
+    state.socket.emit("join_room", { room_id: roomId, username: username });
   }
 
   function handleJoinSuccess(data) {
@@ -687,10 +915,17 @@
     if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
     if (DOM.rpTcpHost) DOM.rpTcpHost.textContent = `${state.host}:${state.port}`;
 
+    if (DOM.activeChatTitle && state.roomId) {
+      DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
+    }
+    if (DOM.activeChatDesc) {
+      DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
+    }
+
     setConnectionStatus("connected", "Connected");
 
-    logActivity(`Successfully connected as '${state.username}' via TCP socket.`);
-    appendSystemMessage(`Connected to TCP network as '${state.username}'.`);
+    logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
+    appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
 
     // Focus chat input on desktop
     if (window.innerWidth > 768 && DOM.messageInput) {
@@ -703,13 +938,14 @@
     DOM.loginError.textContent = msg;
     DOM.loginError.classList.remove("hidden");
     DOM.connectBtn.disabled = false;
-    DOM.connectBtn.innerHTML = `<span>Connect to Network</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
+    const btnLabel = state.roomMode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
+    DOM.connectBtn.innerHTML = `<span>${btnLabel}</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
   }
 
   // =========================================================================
-  // CHAT & MESSAGING
+  // CHAT & MESSAGING (ZERO-KNOWLEDGE ENCRYPTION FLOW)
   // =========================================================================
-  function handleSendMessage(e) {
+  async function handleSendMessage(e) {
     e.preventDefault();
     toggleEmojiPopover(false);
     const text = DOM.messageInput.value.trim();
@@ -717,7 +953,21 @@
 
     DOM.messageInput.value = "";
 
-    if (state.activeChatTarget) {
+    // E2EE Room encryption flow
+    if (state.roomId && state.roomPasskey) {
+      try {
+        const ciphertextBase64 = await E2EE.encryptMessage(text, state.roomPasskey);
+        state.socket.emit("send_message", {
+          room_id: state.roomId,
+          username: state.username,
+          payload: ciphertextBase64
+        });
+        logActivity(`Encrypted and dispatched packet to room '${state.roomId}'.`);
+      } catch (err) {
+        console.error("Encryption error:", err);
+        appendSystemMessage("Encryption failure: Could not encrypt message.");
+      }
+    } else if (state.activeChatTarget) {
       // Send Private Whisper
       state.socket.emit("send_private", {
         recipient: state.activeChatTarget,
@@ -793,19 +1043,26 @@
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  function appendChatMessage(sender, content, timestamp, isPrivate, peer) {
+  function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false) {
     if (DOM.emptyState) {
       DOM.emptyState.style.display = "none";
     }
 
     const wasNearBottom = isUserNearBottom();
 
-    const isMe = sender.toLowerCase() === state.username.toLowerCase();
+    const isMe = sender && state.username && sender.toLowerCase() === state.username.toLowerCase();
     const bubble = document.createElement("div");
-    bubble.className = `message-bubble ${isMe ? "mine" : ""} ${isPrivate ? "private" : ""}`;
+    bubble.className = `message-bubble ${isMe ? "mine" : ""} ${isPrivate ? "private" : ""} ${isDecryptError ? "decrypt-error" : ""}`;
 
     const header = document.createElement("div");
     header.className = "msg-header";
+
+    if (state.isE2EE) {
+      const e2eeBadge = document.createElement("span");
+      e2eeBadge.className = isDecryptError ? "msg-badge badge-warning" : "msg-badge badge-success";
+      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "E2EE"}`;
+      header.appendChild(e2eeBadge);
+    }
 
     if (isPrivate) {
       const badge = document.createElement("span");
@@ -835,7 +1092,7 @@
     }
 
     const body = document.createElement("div");
-    body.className = "msg-content";
+    body.className = "msg-content" + (isDecryptError ? " msg-decrypt-error" : "");
     body.textContent = content;
 
     bubble.appendChild(header);
@@ -1739,6 +1996,32 @@
         if (DOM.advancedChevron) {
           DOM.advancedChevron.classList.toggle("rotated", !isHidden);
         }
+      });
+    }
+
+    // E2EE Room Mode Selectors & Controls
+    if (DOM.btnModeCreate) {
+      DOM.btnModeCreate.addEventListener("click", () => setRoomMode("create"));
+    }
+    if (DOM.btnModeJoin) {
+      DOM.btnModeJoin.addEventListener("click", () => setRoomMode("join"));
+    }
+    if (DOM.btnGenerateRoom) {
+      DOM.btnGenerateRoom.addEventListener("click", () => {
+        if (DOM.roomInput) DOM.roomInput.value = generateRandomRoomId();
+      });
+    }
+    if (DOM.btnTogglePasskey) {
+      DOM.btnTogglePasskey.addEventListener("click", togglePasskeyVisibility);
+    }
+    if (DOM.roomInput) {
+      DOM.roomInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick();
+      });
+    }
+    if (DOM.passkeyInput) {
+      DOM.passkeyInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick();
       });
     }
 

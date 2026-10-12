@@ -70,6 +70,39 @@ class TestWebApp(unittest.TestCase):
         response = self.client.get("/api/download/non-existent-id")
         self.assertEqual(response.status_code, 404)
 
+    def test_05_zero_knowledge_room_relay(self):
+        """Test zero-knowledge room joining, message routing, and room isolation."""
+        from web_app.app import socketio
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+
+        c1.emit("join_room", {"room_id": "crypto_vault", "username": "Alice"})
+        c2.emit("join_room", {"room_id": "crypto_vault", "username": "Bob"})
+        c3.emit("join_room", {"room_id": "other_vault", "username": "Charlie"})
+
+        test_ciphertext = "SALT16B_IV12B_OPAQUE_AES_GCM_ENCRYPTED_BASE64_STRING=="
+        c1.emit("send_message", {
+            "room_id": "crypto_vault",
+            "username": "Alice",
+            "payload": test_ciphertext
+        })
+
+        received_c2 = c2.get_received()
+        received_c3 = c3.get_received()
+
+        msg_c2 = [m for m in received_c2 if m["name"] == "receive_message" and m["args"][0].get("type") == "encrypted"]
+        msg_c3 = [m for m in received_c3 if m["name"] == "receive_message" and m["args"][0].get("type") == "encrypted"]
+
+        self.assertEqual(len(msg_c2), 1)
+        self.assertEqual(msg_c2[0]["args"][0]["payload"], test_ciphertext)
+        self.assertEqual(msg_c2[0]["args"][0]["sender"], "Alice")
+        self.assertEqual(len(msg_c3), 0)
+
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()

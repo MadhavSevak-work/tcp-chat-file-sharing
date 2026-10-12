@@ -12,7 +12,7 @@ import uuid
 import logging
 import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -69,6 +69,8 @@ logger = logging.getLogger("WebApp")
 file_registry = {}
 active_chunk_transfers = {}
 chunk_transfers_lock = threading.Lock()
+active_rooms = {}
+room_lock = threading.Lock()
 
 
 # ============================================================================
@@ -326,6 +328,104 @@ def handle_disconnect():
     logger.info(f"[SocketIO] Client disconnected: {sid}")
     gateway_manager.remove_session(sid)
     socket_message_limiter.reset(sid)
+
+    # Clean up client from active E2EE rooms
+    with room_lock:
+        for r_id, mems in list(active_rooms.items()):
+            if sid in mems:
+                departed_user = mems.pop(sid)
+                members_remaining = list(mems.values())
+                emit("receive_message", {
+                    "type": "system",
+                    "sender": "System",
+                    "room_id": r_id,
+                    "message": f"🔒 {departed_user} left the encrypted room.",
+                    "members": members_remaining,
+                    "timestamp": time.time()
+                }, room=r_id)
+                if not mems:
+                    active_rooms.pop(r_id, None)
+
+
+# ============================================================================
+# ZERO-KNOWLEDGE E2EE ROOM HANDLERS
+# ============================================================================
+
+@socketio.on("join_room")
+def handle_join_room(data):
+    """
+    Manages E2EE room membership.
+    The backend joins the client socket to the requested room channel
+    without access to the room passkey or cryptographic material.
+    """
+    sid = request.sid
+    if not isinstance(data, dict):
+        return
+
+    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
+    username = str(data.get("username", "")).strip()
+
+    if not room_id or not username:
+        emit("room_error", {"message": "Both Room ID and Username are required."})
+        return
+
+    # Join the Flask-SocketIO channel
+    join_room(room_id)
+
+    with room_lock:
+        if room_id not in active_rooms:
+            active_rooms[room_id] = {}
+        active_rooms[room_id][sid] = username
+        members = list(active_rooms[room_id].values())
+
+    # Zero-retention logging - do not log passwords or sensitive keys
+    logger.info(f"[E2EE Relay] Peer '{username}' joined room '{room_id}' (Total peers: {len(members)})")
+
+    # Acknowledge to joining user
+    emit("room_joined", {
+        "room_id": room_id,
+        "username": username,
+        "members": members,
+        "e2ee": True
+    }, room=sid)
+
+    # Broadcast system event to other room peers
+    emit("receive_message", {
+        "type": "system",
+        "sender": "System",
+        "room_id": room_id,
+        "message": f"🔒 {username} entered the encrypted room.",
+        "members": members,
+        "timestamp": time.time()
+    }, room=room_id, include_self=False)
+
+
+@socketio.on("send_message")
+def handle_send_message(data):
+    """
+    Zero-Knowledge Blind Relay:
+    Forwards encrypted ciphertext directly to all participants in the room.
+    The payload is treated strictly as an opaque blob.
+    The server does NOT decode, inspect, or log the payload content.
+    """
+    if not isinstance(data, dict):
+        return
+
+    room_id = str(data.get("room_id", "")).strip().lower()
+    username = str(data.get("username", "")).strip()
+    payload = data.get("payload")
+
+    if not room_id or not payload:
+        return
+
+    # Blind relay to all members in the room (including sender for message verification and ordering)
+    emit("receive_message", {
+        "type": "encrypted",
+        "sender": username,
+        "room_id": room_id,
+        "payload": payload,
+        "timestamp": time.time()
+    }, room=room_id, include_self=True)
 
 
 @socketio.on("join")

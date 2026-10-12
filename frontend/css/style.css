@@ -640,6 +640,101 @@ select:focus {
   font-family: var(--font-mono);
 }
 
+/* ==================== E2EE ROOM SELECTOR & PASSKEY ==================== */
+.room-mode-tabs {
+  display: flex;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.room-mode-tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.825rem;
+  font-weight: 600;
+  border-radius: calc(var(--radius-sm) - 2px);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+}
+
+.room-mode-tab:hover {
+  color: var(--text-primary);
+}
+
+.room-mode-tab.active {
+  background-color: var(--primary-accent);
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.input-with-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-action input {
+  width: 100%;
+  padding-right: 42px;
+}
+
+.input-action-btn {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition-fast);
+}
+
+.input-action-btn:hover {
+  color: var(--text-primary);
+}
+
+.e2ee-security-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: rgba(0, 168, 132, 0.08);
+  border: 1px solid rgba(0, 168, 132, 0.25);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 0.75rem;
+  color: var(--color-connected);
+}
+
+.e2ee-security-badge .shield-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+.msg-decrypt-error {
+  color: #ef4444 !important;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.message-bubble.decrypt-error {
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background-color: rgba(239, 68, 68, 0.08);
+}
+
 /* ==================== MAIN APPLICATION LAYOUT ==================== */
 .app-layout {
   display: flex;
