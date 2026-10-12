@@ -27,7 +27,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
@@ -344,6 +344,10 @@
           <li class="nav-menu-item" id="btn-drawer-share-file" role="button" tabindex="0" aria-label="Share File with Peer">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
             <span class="nav-title">Share File</span>
+          </li>
+          <li class="nav-menu-item hidden" id="btn-drawer-copy-link" role="button" tabindex="0" aria-label="Share Room Invite Link">
+            <svg class="svg-icon" id="icon-drawer-copy-link" aria-hidden="true"><use href="#icon-link"></use></svg>
+            <span class="nav-title" id="drawer-copy-link-title">Share Room Link</span>
           </li>
           <li class="nav-menu-item" id="btn-drawer-diagnostics" role="button" tabindex="0" aria-label="Network Diagnostics">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
@@ -896,6 +900,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

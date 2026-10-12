@@ -84,6 +84,9 @@
     btnDrawerDiagnostics: document.getElementById("btn-drawer-diagnostics"),
     btnDrawerTheme: document.getElementById("btn-drawer-theme"),
     drawerThemeLabel: document.getElementById("drawer-theme-label"),
+    btnDrawerCopyLink: document.getElementById("btn-drawer-copy-link"),
+    iconDrawerCopyLink: document.getElementById("icon-drawer-copy-link"),
+    drawerCopyLinkTitle: document.getElementById("drawer-copy-link-title"),
 
     // Chat Header & Messages
     activeChatTitle: document.getElementById("active-chat-title"),
@@ -413,6 +416,9 @@
     }
     if (DOM.btnMobileMenu) {
       DOM.btnMobileMenu.setAttribute("aria-expanded", "false");
+    }
+    if (DOM.tabPeers && DOM.tabPeers.classList.contains("active")) {
+      setMobileActiveTab("chat");
     }
   }
 
@@ -772,6 +778,20 @@
         }
       }, 2000);
     }
+
+    if (DOM.btnDrawerCopyLink) {
+      DOM.btnDrawerCopyLink.classList.add("active");
+      if (DOM.drawerCopyLinkTitle) DOM.drawerCopyLinkTitle.textContent = "Link Copied!";
+      if (DOM.iconDrawerCopyLink) DOM.iconDrawerCopyLink.innerHTML = `<use href="#icon-check"></use>`;
+
+      setTimeout(() => {
+        if (DOM.btnDrawerCopyLink) {
+          DOM.btnDrawerCopyLink.classList.remove("active");
+          if (DOM.drawerCopyLinkTitle) DOM.drawerCopyLinkTitle.textContent = "Share Room Link";
+          if (DOM.iconDrawerCopyLink) DOM.iconDrawerCopyLink.innerHTML = `<use href="#icon-link"></use>`;
+        }
+      }, 2000);
+    }
     logActivity(`Invite link copied to clipboard: ${inviteUrl}`);
   }
 
@@ -873,6 +893,9 @@
       }
       if (DOM.btnCopyRoomLink) {
         DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (DOM.btnDrawerCopyLink) {
+        DOM.btnDrawerCopyLink.classList.remove("hidden");
       }
       if (data.room_id) {
         try {
@@ -1118,6 +1141,9 @@
       DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
       if (DOM.btnCopyRoomLink) {
         DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (DOM.btnDrawerCopyLink) {
+        DOM.btnDrawerCopyLink.classList.remove("hidden");
       }
       try {
         window.location.hash = "#room=" + encodeURIComponent(state.roomId);
@@ -1456,6 +1482,12 @@
     if (DOM.headerChannelIcon) {
       DOM.headerChannelIcon.innerHTML = `<use href="#icon-globe"></use>`;
     }
+    if (DOM.btnCopyRoomLink) {
+      DOM.btnCopyRoomLink.classList.add("hidden");
+    }
+    if (DOM.btnDrawerCopyLink) {
+      DOM.btnDrawerCopyLink.classList.add("hidden");
+    }
     DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
     closeSidebar();
     setMobileActiveTab("chat");
@@ -1464,6 +1496,12 @@
   function switchToPrivateChat(peerUsername) {
     state.activeChatTarget = peerUsername;
     DOM.btnPublicRoom.classList.remove("active");
+    if (DOM.btnCopyRoomLink) {
+      DOM.btnCopyRoomLink.classList.add("hidden");
+    }
+    if (DOM.btnDrawerCopyLink) {
+      DOM.btnDrawerCopyLink.classList.add("hidden");
+    }
 
     document.querySelectorAll(".peer-list .nav-menu-item").forEach(el => {
       const titleEl = el.querySelector(".nav-title");
@@ -2172,6 +2210,19 @@
           e.preventDefault();
           closeSidebar();
           openFileModal();
+        }
+      });
+    }
+    if (DOM.btnDrawerCopyLink) {
+      DOM.btnDrawerCopyLink.addEventListener("click", () => {
+        copyInviteLink();
+        closeSidebar();
+      });
+      DOM.btnDrawerCopyLink.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          copyInviteLink();
+          closeSidebar();
         }
       });
     }

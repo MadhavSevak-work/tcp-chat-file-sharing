@@ -1,6 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
+  "rewrites": [
+    { "source": "/static/css/:match*", "destination": "/css/:match*" },
+    { "source": "/static/js/:match*", "destination": "/js/:match*" }
+  ],
   "headers": [
     {
       "source": "/(.*)",

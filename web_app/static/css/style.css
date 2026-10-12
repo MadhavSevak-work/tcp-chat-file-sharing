@@ -2430,6 +2430,41 @@ body.drawer-open {
     display: none !important;
   }
 
+  /* Responsive Room Title and Copy Invite Button */
+  .header-title-meta {
+    flex: 1;
+    min-width: 0;
+    max-width: 190px;
+  }
+  .header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  .header-title-row h2 {
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .btn-copy-invite {
+    padding: 2px 7px;
+    font-size: 0.65rem;
+    flex-shrink: 0;
+  }
+
+  /* Responsive Typing Indicator */
+  .typing-indicator {
+    padding: 2px 4px 4px;
+    font-size: 0.7rem;
+    min-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* Messages Viewport */
   .messages-viewport {
     flex: 1;
@@ -2626,10 +2661,20 @@ body.drawer-open {
     display: none;
   }
   .header-title-meta {
-    max-width: 110px;
+    max-width: 140px;
   }
   .header-title-meta h2 {
-    font-size: 0.85rem;
+    font-size: 0.825rem;
+  }
+  .btn-copy-invite {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+  }
+  .btn-copy-invite .copy-invite-text {
+    display: none;
   }
   .header-right {
     gap: 5px;
