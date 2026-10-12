@@ -197,7 +197,7 @@
       <div class="login-header">
         <div class="app-brand" aria-label="NetChat Live">
           <div class="brand-symbol-wrap">
-            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
           </div>
           <div class="brand-text-wrap">
             <span class="app-brand-text">NetChat</span>
@@ -282,7 +282,7 @@
       <div class="sidebar-brand">
         <div class="app-brand" aria-label="NetChat Live">
           <div class="brand-symbol-wrap">
-            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+            <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
           </div>
           <div class="brand-text-wrap">
             <span class="app-brand-text">NetChat</span>
@@ -396,7 +396,7 @@
           <!-- Mobile Compact Brand Badge -->
           <div class="header-mobile-brand" aria-label="NetChat Live">
             <div class="brand-symbol-wrap">
-              <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-netchat-brand"></use></svg>
+              <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
             </div>
             <div class="brand-text-wrap">
               <span class="app-brand-text">NetChat</span>
@@ -513,6 +513,80 @@
         </button>
       </nav>
     </main>
+
+    <!-- RIGHT PANEL (Optional/Collapsible Network Diagnostics on Desktop) -->
+    <aside class="right-panel hidden" id="right-panel" aria-label="Network Diagnostics Panel">
+      <div class="right-panel-header">
+        <div class="right-panel-title">
+          <svg class="svg-icon sm text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <span>Diagnostics</span>
+        </div>
+        <button type="button" id="btn-close-right-panel" class="btn-icon" title="Close Panel" aria-label="Close diagnostics panel">
+          <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+
+      <div class="right-panel-body">
+        <div class="panel-section">
+          <div class="panel-section-title">SOCKET STATUS</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Session</span>
+              <span class="val text-success font-bold" id="rp-status">Connected</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Round-Trip Latency</span>
+              <span class="val text-primary text-mono font-bold" id="rp-latency">-- ms</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Transport Gateway</span>
+              <span class="val text-mono" id="rp-transport">WebSocket</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">TCP BROKER TARGET</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Chat Socket</span>
+              <span class="val text-mono" id="rp-tcp-host">127.0.0.1:5000</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">File Relay Socket</span>
+              <span class="val text-mono" id="rp-file-port">Port 5001</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Frame Protocol</span>
+              <span class="val text-mono text-xs text-primary">4-Byte Prefix (!I)</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">DATA INTEGRITY</div>
+          <div class="panel-data-card">
+            <div class="panel-data-row">
+              <span class="label">Checksum Engine</span>
+              <span class="val text-mono">SHA-256</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Buffer Chunk Size</span>
+              <span class="val text-mono">64 KB Chunks</span>
+            </div>
+            <div class="panel-data-row">
+              <span class="label">Online Peers</span>
+              <span class="val text-mono font-bold" id="rp-peer-count">0 Peers</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="panel-section-title">REAL-TIME SOCKET LOG</div>
+          <div class="terminal-log-view rp-log" id="rp-activity-log"></div>
+        </div>
+      </div>
+    </aside>
 
   </div>
 

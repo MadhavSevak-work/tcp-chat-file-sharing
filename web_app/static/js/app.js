@@ -134,7 +134,18 @@
     diagFilePort: document.getElementById("diag-file-port"),
     diagGatewayHost: document.getElementById("diag-gateway-host"),
     diagPeerCount: document.getElementById("diag-peer-count"),
-    activityLogBox: document.getElementById("activity-log-box")
+    activityLogBox: document.getElementById("activity-log-box"),
+
+    // Desktop Right Panel Diagnostics
+    rightPanel: document.getElementById("right-panel"),
+    btnCloseRightPanel: document.getElementById("btn-close-right-panel"),
+    rpStatus: document.getElementById("rp-status"),
+    rpLatency: document.getElementById("rp-latency"),
+    rpTransport: document.getElementById("rp-transport"),
+    rpTcpHost: document.getElementById("rp-tcp-host"),
+    rpFilePort: document.getElementById("rp-file-port"),
+    rpPeerCount: document.getElementById("rp-peer-count"),
+    rpActivityLog: document.getElementById("rp-activity-log")
   };
 
   // =========================================================================
@@ -159,12 +170,12 @@
   }
 
   const AVATAR_GRADIENTS = [
-    "linear-gradient(135deg, #7c3aed, #06b6d4)",
-    "linear-gradient(135deg, #06b6d4, #10b981)",
-    "linear-gradient(135deg, #8b5cf6, #ec4899)",
-    "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-    "linear-gradient(135deg, #6366f1, #06b6d4)",
-    "linear-gradient(135deg, #0ea5e9, #10b981)"
+    "linear-gradient(135deg, #00A884, #005C4B)",
+    "linear-gradient(135deg, #0284c7, #0369a1)",
+    "linear-gradient(135deg, #059669, #047857)",
+    "linear-gradient(135deg, #0d9488, #115e59)",
+    "linear-gradient(135deg, #00A884, #0284c7)",
+    "linear-gradient(135deg, #10b981, #059669)"
   ];
 
   function getAvatarGradient(name) {
@@ -183,13 +194,16 @@
   }
 
   function logActivity(text) {
-    if (!DOM.activityLogBox) return;
     const time = formatTime();
-    const line = document.createElement("div");
-    line.className = "log-line";
-    line.innerHTML = `<span class="log-time">[${time}]</span> ${escapeHtml(text)}`;
-    DOM.activityLogBox.appendChild(line);
-    DOM.activityLogBox.scrollTop = DOM.activityLogBox.scrollHeight;
+    const lineHtml = `<div class="log-line"><span class="log-time">[${time}]</span> ${escapeHtml(text)}</div>`;
+    if (DOM.activityLogBox) {
+      DOM.activityLogBox.insertAdjacentHTML("beforeend", lineHtml);
+      DOM.activityLogBox.scrollTop = DOM.activityLogBox.scrollHeight;
+    }
+    if (DOM.rpActivityLog) {
+      DOM.rpActivityLog.insertAdjacentHTML("beforeend", lineHtml);
+      DOM.rpActivityLog.scrollTop = DOM.rpActivityLog.scrollHeight;
+    }
   }
 
   // =========================================================================
@@ -228,6 +242,15 @@
         DOM.headerLatencyText.textContent = "";
         DOM.headerLatencyText.classList.add("hidden");
       }
+    }
+
+    // Right Panel Sync
+    if (DOM.rpStatus) {
+      DOM.rpStatus.textContent = isConnected ? "Connected" : (status === "connecting" ? "Connecting..." : "Disconnected");
+      DOM.rpStatus.className = "val font-bold " + (isConnected ? "text-success" : (status === "connecting" ? "text-warning" : "text-muted"));
+    }
+    if (DOM.rpLatency) {
+      DOM.rpLatency.textContent = (isConnected && state.latencyMs > 0) ? `${state.latencyMs} ms` : "-- ms";
     }
 
     // Sidebar status badge (CSS status dot + readable text)
@@ -560,6 +583,7 @@
 
     if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
     if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
+    if (DOM.rpTcpHost) DOM.rpTcpHost.textContent = `${state.host}:${state.port}`;
 
     setConnectionStatus("connected", "Connected");
 
@@ -681,6 +705,9 @@
     if (DOM.mobileUserCount) DOM.mobileUserCount.textContent = count;
     if (DOM.diagPeerCount) {
       DOM.diagPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
+    }
+    if (DOM.rpPeerCount) {
+      DOM.rpPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
     }
 
     // Refresh Sidebar Users
@@ -1155,9 +1182,20 @@
     if (DOM.btnAcceptFile) DOM.btnAcceptFile.addEventListener("click", handleAcceptFileOffer);
     if (DOM.btnRejectFile) DOM.btnRejectFile.addEventListener("click", handleRejectFileOffer);
 
-    // Diagnostics Modal
+    // Diagnostics Trigger (Desktop toggles Right Panel, Mobile opens Modal)
     if (DOM.btnOpenDiagnostics) {
-      DOM.btnOpenDiagnostics.addEventListener("click", openDiagnosticsModal);
+      DOM.btnOpenDiagnostics.addEventListener("click", () => {
+        if (window.innerWidth >= 1024 && DOM.rightPanel) {
+          DOM.rightPanel.classList.toggle("hidden");
+        } else {
+          openDiagnosticsModal();
+        }
+      });
+    }
+    if (DOM.btnCloseRightPanel) {
+      DOM.btnCloseRightPanel.addEventListener("click", () => {
+        if (DOM.rightPanel) DOM.rightPanel.classList.add("hidden");
+      });
     }
     if (DOM.diagnosticsMiniBtn) {
       DOM.diagnosticsMiniBtn.addEventListener("click", openDiagnosticsModal);
