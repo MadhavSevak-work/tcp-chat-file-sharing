@@ -5,6 +5,12 @@ Serves the modern web frontend, handles secure HTTP file upload/download endpoin
 and routes browser WebSockets through the TCP Gateway to the central ChatServer.
 """
 
+try:
+    import gevent.monkey
+    gevent.monkey.patch_all()
+except (ImportError, Exception):
+    pass
+
 import os
 import sys
 import time
@@ -43,11 +49,10 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
-# Configure SocketIO with threading mode, 105 MB payload buffer to prevent WebSocket 1009, and resilient heartbeats
+# Configure SocketIO with CORS allowed for all origins (including Vercel frontend)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode="threading",
     max_http_buffer_size=MAX_WS_PAYLOAD,
     ping_timeout=60,
     ping_interval=25,
@@ -156,9 +161,16 @@ def add_cors_headers(response):
 # HTTP ROUTES
 # ============================================================================
 
-@app.route("/")
+@app.route("/", methods=["GET"])
 def index():
-    """Renders the main single-page application."""
+    """Health check endpoint for Render to verify backend status."""
+    return jsonify({"status": "NetChat Backend Active"}), 200
+
+
+@app.route("/app", methods=["GET"])
+@app.route("/chat", methods=["GET"])
+def web_ui():
+    """Renders the main single-page application UI."""
     return render_template("index.html")
 
 
@@ -971,10 +983,9 @@ def create_app():
 
 
 if __name__ == "__main__":
-    host = "0.0.0.0"
-    port = int(os.environ.get("PORT", 5050))
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 60)
     print(f"Starting Web Gateway Server on http://0.0.0.0:{port}")
     print(f"Bridges browser clients to TCP Chat Server on Port {DEFAULT_CHAT_PORT}")
     print("=" * 60)
-    socketio.run(app, host=host, port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+    socketio.run(app, host="0.0.0.0", port=port, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)

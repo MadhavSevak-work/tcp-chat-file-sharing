@@ -24,11 +24,16 @@ class TestWebApp(unittest.TestCase):
         ip_connection_limiter.reset("127.0.0.1")
 
     def test_01_index_route(self):
-        """GET / should render the HTML single-page application."""
+        """GET / should return backend active JSON status for Render health check."""
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"TCP Multi-Client Chat & File Sharing", response.data)
-        self.assertIn(b"Computer Networks Lab", response.data)
+        data = json.loads(response.data)
+        self.assertEqual(data.get("status"), "NetChat Backend Active")
+
+        # /app renders the HTML UI
+        res_app = self.client.get("/app")
+        self.assertEqual(res_app.status_code, 200)
+        self.assertIn(b"NetChat", res_app.data)
 
     def test_02_api_status(self):
         """GET /api/status should return JSON telemetry data."""
