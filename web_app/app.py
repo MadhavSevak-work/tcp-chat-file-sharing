@@ -447,6 +447,7 @@ def handle_send_message(data):
     Forwards encrypted ciphertext directly to all participants in the room.
     The payload is treated strictly as an opaque blob.
     The server does NOT decode, inspect, or log the payload content.
+    Passes through optional message ID and reply_to metadata dictionary without parsing or storing.
     """
     if not isinstance(data, dict):
         return
@@ -454,48 +455,72 @@ def handle_send_message(data):
     room_id = str(data.get("room_id", "")).strip().lower()
     username = str(data.get("username", "")).strip()
     payload = data.get("payload")
+    message_id = data.get("id") or data.get("message_id")
+    reply_to = data.get("reply_to")
 
     if not room_id or not payload:
         return
 
-    # Blind relay to all members in the room (including sender for message verification and ordering)
-    emit("receive_message", {
+    msg_data = {
         "type": "encrypted",
         "sender": username,
         "room_id": room_id,
         "payload": payload,
-        "timestamp": time.time()
-    }, room=room_id, include_self=True)
+        "timestamp": time.time(),
+    }
+    if message_id:
+        msg_data["id"] = message_id
+    if reply_to is not None and isinstance(reply_to, dict):
+        msg_data["reply_to"] = reply_to
+
+    # Blind relay to all members in the room (including sender for message verification and ordering)
+    emit("receive_message", msg_data, room=room_id, include_self=True)
+
+
+@socketio.on("typing")
+def handle_typing(data):
+    """Broadcasts typing notification exclusively to room peers (omitting sender)."""
+    if not isinstance(data, dict):
+        return
+    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
+    username = str(data.get("username", "")).strip()
+    if not room_id or not username:
+        return
+    payload = {
+        "room_id": room_id,
+        "username": username,
+    }
+    emit("typing", payload, room=room_id, include_self=False)
+    emit("user_typing", payload, room=room_id, include_self=False)
+
+
+@socketio.on("stop_typing")
+def handle_stop_typing(data):
+    """Broadcasts stop typing notification exclusively to room peers (omitting sender)."""
+    if not isinstance(data, dict):
+        return
+    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
+    username = str(data.get("username", "")).strip()
+    if not room_id or not username:
+        return
+    payload = {
+        "room_id": room_id,
+        "username": username,
+    }
+    emit("stop_typing", payload, room=room_id, include_self=False)
+    emit("user_stop_typing", payload, room=room_id, include_self=False)
 
 
 @socketio.on("user_typing")
 def handle_user_typing(data):
-    """Broadcasts typing notification strictly to room peers (excluding sender)."""
-    if not isinstance(data, dict):
-        return
-    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
-    username = str(data.get("username", "")).strip()
-    if not room_id or not username:
-        return
-    emit("user_typing", {
-        "room_id": room_id,
-        "username": username
-    }, room=room_id, include_self=False)
+    """Backward-compatible alias for handle_typing."""
+    handle_typing(data)
 
 
 @socketio.on("user_stop_typing")
 def handle_user_stop_typing(data):
-    """Broadcasts stop typing notification strictly to room peers (excluding sender)."""
-    if not isinstance(data, dict):
-        return
-    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
-    username = str(data.get("username", "")).strip()
-    if not room_id or not username:
-        return
-    emit("user_stop_typing", {
-        "room_id": room_id,
-        "username": username
-    }, room=room_id, include_self=False)
+    """Backward-compatible alias for handle_stop_typing."""
+    handle_stop_typing(data)
 
 
 @socketio.on("join")

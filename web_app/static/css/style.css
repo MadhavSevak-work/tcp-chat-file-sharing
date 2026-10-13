@@ -1331,6 +1331,140 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
   overflow-wrap: anywhere;
 }
 
+/* Reply Action Button in Message Bubble */
+.msg-reply-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs, 4px);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  opacity: 0.75;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.msg-reply-btn:hover {
+  opacity: 1;
+  color: var(--primary-accent);
+  background-color: var(--accent-subtle);
+}
+
+.message-bubble.mine .msg-reply-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.message-bubble.mine .msg-reply-btn:hover {
+  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+html[data-theme="light"] .message-bubble.mine .msg-reply-btn {
+  color: rgba(17, 27, 33, 0.6);
+}
+
+html[data-theme="light"] .message-bubble.mine .msg-reply-btn:hover {
+  color: var(--primary-accent);
+  background-color: rgba(0, 168, 132, 0.12);
+}
+
+/* Quoted Message in Bubble */
+.msg-reply-quote {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-left: 3px solid var(--primary-accent);
+  border-radius: 4px;
+  padding: 5px 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.message-bubble.mine .msg-reply-quote {
+  background-color: rgba(0, 0, 0, 0.18);
+  border-left-color: rgba(255, 255, 255, 0.85);
+}
+
+html[data-theme="light"] .msg-reply-quote {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+html[data-theme="light"] .message-bubble.mine .msg-reply-quote {
+  background-color: rgba(0, 168, 132, 0.12);
+  border-left-color: var(--primary-accent);
+}
+
+.msg-reply-quote:hover {
+  background-color: rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme="light"] .msg-reply-quote:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+.msg-reply-quote-sender {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--primary-accent);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.message-bubble.mine .msg-reply-quote-sender {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+html[data-theme="light"] .message-bubble.mine .msg-reply-quote-sender {
+  color: var(--primary-accent);
+}
+
+.msg-reply-quote-snippet {
+  font-size: 0.775rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.message-bubble.mine .msg-reply-quote-snippet {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+html[data-theme="light"] .message-bubble.mine .msg-reply-quote-snippet {
+  color: rgba(17, 27, 33, 0.75);
+}
+
+/* Highlight pulse when jumping to a quoted message */
+.msg-highlight-pulse {
+  animation: messagePulse 1.6s ease-out;
+}
+
+@keyframes messagePulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 168, 132, 0.7);
+    transform: scale(1.02);
+  }
+  50% {
+    box-shadow: 0 0 16px 4px rgba(0, 168, 132, 0.5);
+    transform: scale(1.02);
+  }
+  100% {
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
+
 /* System Pill */
 .system-pill {
   align-self: center;
@@ -1433,6 +1567,102 @@ html[data-theme="light"] .message-bubble.mine .msg-time {
   from {
     opacity: 0;
     transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Message Reply Context Banner */
+.reply-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-left: 4px solid var(--primary-accent);
+  border-radius: var(--radius-sm, 6px);
+  padding: 6px 12px;
+  margin-bottom: 8px;
+  animation: replySlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: 5;
+}
+
+.reply-banner.hidden {
+  display: none !important;
+}
+
+.reply-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.reply-banner-content .reply-icon {
+  color: var(--primary-accent);
+  flex-shrink: 0;
+}
+
+.reply-banner-text {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  font-size: 0.775rem;
+  line-height: 1.35;
+  overflow: hidden;
+}
+
+.reply-banner-title {
+  color: var(--primary-accent);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.reply-banner-title strong {
+  font-weight: 700;
+}
+
+.reply-banner-snippet {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+}
+
+.btn-cancel-reply {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel-reply:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+@keyframes replySlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

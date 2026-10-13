@@ -104,6 +104,10 @@
     btnJumpLatest: document.getElementById("btn-jump-latest"),
     typingIndicator: document.getElementById("typing-indicator"),
     typingText: document.getElementById("typing-text"),
+    replyBanner: document.getElementById("reply-banner"),
+    replyBannerUser: document.getElementById("reply-banner-user"),
+    replyBannerSnippet: document.getElementById("reply-banner-snippet"),
+    btnCancelReply: document.getElementById("btn-cancel-reply"),
     chatForm: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     btnComposerAttach: document.getElementById("btn-composer-attach"),
@@ -664,6 +668,11 @@
 
     if (!typingState.isTyping) {
       typingState.isTyping = true;
+      state.socket.emit("typing", {
+        room_id: state.roomId,
+        username: state.username
+      });
+      // Also emit user_typing for compatibility
       state.socket.emit("user_typing", {
         room_id: state.roomId,
         username: state.username
@@ -674,6 +683,7 @@
       clearTimeout(typingState.timeout);
     }
 
+    // Debounce: reset 1.5-second timeout on every keystroke
     typingState.timeout = setTimeout(() => {
       stopTyping();
     }, 1500);
@@ -687,6 +697,10 @@
         typingState.timeout = null;
       }
       if (state.roomId && state.username && state.socket) {
+        state.socket.emit("stop_typing", {
+          room_id: state.roomId,
+          username: state.username
+        });
         state.socket.emit("user_stop_typing", {
           room_id: state.roomId,
           username: state.username
@@ -696,26 +710,63 @@
   }
 
   function renderTypingIndicator() {
-    if (!DOM.typingIndicator || !DOM.typingText) return;
+    if (!DOM.typingIndicator) return;
     const typers = Array.from(typingState.activeTypers.keys());
 
     if (typers.length === 0) {
       DOM.typingIndicator.classList.add("hidden");
-      DOM.typingText.textContent = "";
+      if (DOM.typingText) DOM.typingText.textContent = "";
       return;
     }
 
     let text = "";
     if (typers.length === 1) {
-      text = `${escapeHtml(typers[0])} is typing...`;
+      text = `${typers[0]} is typing...`;
     } else if (typers.length === 2) {
-      text = `${escapeHtml(typers[0])} and ${escapeHtml(typers[1])} are typing...`;
+      text = `${typers[0]} and ${typers[1]} are typing...`;
     } else {
-      text = `${escapeHtml(typers[0])}, ${escapeHtml(typers[1])} and ${typers.length - 2} more are typing...`;
+      text = `${typers[0]}, ${typers[1]} and ${typers.length - 2} more are typing...`;
     }
 
-    DOM.typingText.textContent = text;
+    if (DOM.typingText) {
+      DOM.typingText.textContent = text;
+    }
     DOM.typingIndicator.classList.remove("hidden");
+  }
+
+  // =========================================================================
+  // MESSAGE REPLIES CONTROLLER
+  // =========================================================================
+  let activeReply = null; // { id, sender, snippet }
+
+  function initiateReply(messageId, sender, text) {
+    const rawText = (text || "").trim();
+    const snippet = rawText.length > 70 ? rawText.substring(0, 70) + "..." : rawText;
+
+    activeReply = {
+      id: messageId || "",
+      sender: sender || "Anonymous",
+      snippet: snippet || "(attachment)"
+    };
+
+    if (DOM.replyBanner) {
+      if (DOM.replyBannerUser) DOM.replyBannerUser.textContent = activeReply.sender;
+      if (DOM.replyBannerSnippet) DOM.replyBannerSnippet.textContent = activeReply.snippet;
+      DOM.replyBanner.classList.remove("hidden");
+    }
+
+    if (DOM.messageInput) {
+      DOM.messageInput.focus();
+    }
+  }
+
+  function cancelReply() {
+    activeReply = null;
+    if (DOM.replyBanner) {
+      DOM.replyBanner.classList.add("hidden");
+      if (DOM.replyBannerUser) DOM.replyBannerUser.textContent = "";
+      if (DOM.replyBannerSnippet) DOM.replyBannerSnippet.textContent = "";
+    }
   }
 
   // =========================================================================
@@ -973,7 +1024,7 @@
     });
 
     // Real-Time Typing Indicator Socket Listeners
-    state.socket.on("user_typing", (data) => {
+    const handleRemoteTyping = (data) => {
       if (!data || data.room_id !== state.roomId) return;
       if (data.username && data.username.toLowerCase() !== state.username.toLowerCase()) {
         if (typingState.activeTypers.has(data.username)) {
@@ -986,16 +1037,20 @@
         typingState.activeTypers.set(data.username, timer);
         renderTypingIndicator();
       }
-    });
+    };
+    state.socket.on("typing", handleRemoteTyping);
+    state.socket.on("user_typing", handleRemoteTyping);
 
-    state.socket.on("user_stop_typing", (data) => {
+    const handleRemoteStopTyping = (data) => {
       if (!data || data.room_id !== state.roomId) return;
       if (data.username && typingState.activeTypers.has(data.username)) {
         clearTimeout(typingState.activeTypers.get(data.username));
         typingState.activeTypers.delete(data.username);
         renderTypingIndicator();
       }
-    });
+    };
+    state.socket.on("stop_typing", handleRemoteStopTyping);
+    state.socket.on("user_stop_typing", handleRemoteStopTyping);
 
     state.socket.on("receive_message", async (data) => {
       if (!data) return;
@@ -1021,12 +1076,13 @@
       if (data.payload) {
         // Zero-Knowledge message decryption flow using in-memory passkey
         const decrypted = await E2EE.decryptMessage(data.payload, state.roomPasskey);
+        const msgId = data.id || data.message_id || ((window.crypto && typeof crypto.randomUUID === "function") ? crypto.randomUUID() : ("msg-" + Math.random().toString(36).substring(2, 9)));
         if (decrypted !== null) {
-          appendChatMessage(data.sender, decrypted, data.timestamp, false);
+          appendChatMessage(data.sender, decrypted, data.timestamp, false, null, false, msgId, data.reply_to);
           logActivity(`[E2EE Decrypt OK] Packet verified and decrypted from ${data.sender}.`);
         } else {
           // Graceful decryption failure without crashing the client app
-          appendChatMessage(data.sender, "[Unable to decrypt: Invalid Passkey]", data.timestamp, false, null, true);
+          appendChatMessage(data.sender, "[Unable to decrypt: Invalid Passkey]", data.timestamp, false, null, true, msgId, data.reply_to);
           logActivity(`[E2EE Decrypt FAIL] MAC tag mismatch / invalid passkey from ${data.sender}.`);
         }
       }
@@ -1038,13 +1094,13 @@
 
     // Chat & Networking Events
     state.socket.on("chat_message", (data) => {
-      appendChatMessage(data.sender, data.content, data.timestamp, false);
+      appendChatMessage(data.sender, data.content, data.timestamp, false, null, false, data.id, data.reply_to);
     });
 
     state.socket.on("private_message", (data) => {
       const isMe = data.sender.toLowerCase() === state.username.toLowerCase();
       const peer = isMe ? data.recipient : data.sender;
-      appendChatMessage(data.sender, data.content, data.timestamp, true, peer);
+      appendChatMessage(data.sender, data.content, data.timestamp, true, peer, false, data.id, data.reply_to);
     });
 
     state.socket.on("user_list", (data) => {
@@ -1237,15 +1293,32 @@
 
     DOM.messageInput.value = "";
 
+    // Generate unique ID for every sent message using crypto.randomUUID()
+    const msgId = (window.crypto && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : ("msg-" + Date.now() + "-" + Math.random().toString(36).substring(2, 9));
+
+    // Capture reply context if active
+    const replyPayload = activeReply ? {
+      id: activeReply.id,
+      sender: activeReply.sender,
+      snippet: activeReply.snippet
+    } : null;
+
     // E2EE Room encryption flow
     if (state.roomId && state.roomPasskey) {
       try {
         const ciphertextBase64 = await E2EE.encryptMessage(text, state.roomPasskey);
-        state.socket.emit("send_message", {
+        const msgPacket = {
+          id: msgId,
           room_id: state.roomId,
           username: state.username,
           payload: ciphertextBase64
-        });
+        };
+        if (replyPayload) {
+          msgPacket.reply_to = replyPayload;
+        }
+        state.socket.emit("send_message", msgPacket);
         logActivity(`Encrypted and dispatched packet to room '${state.roomId}'.`);
       } catch (err) {
         console.error("Encryption error:", err);
@@ -1254,15 +1327,24 @@
     } else if (state.activeChatTarget) {
       // Send Private Whisper
       state.socket.emit("send_private", {
+        id: msgId,
         recipient: state.activeChatTarget,
-        content: text
+        content: text,
+        reply_to: replyPayload
       });
       logActivity(`Sent private message to ${state.activeChatTarget}.`);
     } else {
       // Send Public Broadcast
-      state.socket.emit("send_chat", { content: text });
+      state.socket.emit("send_chat", {
+        id: msgId,
+        content: text,
+        reply_to: replyPayload
+      });
       logActivity(`Sent public broadcast message.`);
     }
+
+    // Frontend Cleanup: Clear active reply context variable and hide reply banner
+    cancelReply();
 
     scrollToBottom(true);
   }
@@ -1327,16 +1409,22 @@
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false) {
+  function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false, messageId = null, replyTo = null) {
     if (DOM.emptyState) {
       DOM.emptyState.style.display = "none";
     }
 
     const wasNearBottom = isUserNearBottom();
 
+    // Unique Message ID
+    const msgId = messageId || ((window.crypto && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : ("msg-" + Date.now() + "-" + Math.random().toString(36).substring(2, 9)));
+
     const isMe = sender && state.username && sender.toLowerCase() === state.username.toLowerCase();
     const bubble = document.createElement("div");
     bubble.className = `message-bubble ${isMe ? "mine" : ""} ${isPrivate ? "private" : ""} ${isDecryptError ? "decrypt-error" : ""}`;
+    bubble.dataset.messageId = msgId;
 
     const header = document.createElement("div");
     header.className = "msg-header";
@@ -1375,12 +1463,58 @@
       header.appendChild(timeEl);
     }
 
+    // Small Reply Button on every rendered chat message
+    if (!isDecryptError) {
+      const replyBtn = document.createElement("button");
+      replyBtn.type = "button";
+      replyBtn.className = "msg-reply-btn";
+      replyBtn.title = "Reply to this message";
+      replyBtn.setAttribute("aria-label", `Reply to ${sender}`);
+      replyBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-reply"></use></svg><span>Reply</span>`;
+      replyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        initiateReply(msgId, sender, content);
+      });
+      header.appendChild(replyBtn);
+    }
+
+    bubble.appendChild(header);
+
+    // If reply_to payload exists, render styled blockquote or nested div directly above the message text
+    if (replyTo && (replyTo.snippet || replyTo.sender)) {
+      const quoteDiv = document.createElement("div");
+      quoteDiv.className = "msg-reply-quote";
+      if (replyTo.id) {
+        quoteDiv.dataset.replyTargetId = replyTo.id;
+        quoteDiv.title = "Jump to original quoted message";
+        quoteDiv.addEventListener("click", () => {
+          const target = document.querySelector(`[data-message-id="${replyTo.id}"]`);
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            target.classList.add("msg-highlight-pulse");
+            setTimeout(() => target.classList.remove("msg-highlight-pulse"), 1600);
+          }
+        });
+      }
+
+      const quoteSender = document.createElement("div");
+      quoteSender.className = "msg-reply-quote-sender";
+      quoteSender.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-reply"></use></svg><span>${escapeHtml(replyTo.sender || "User")}</span>`;
+
+      const quoteSnippet = document.createElement("div");
+      quoteSnippet.className = "msg-reply-quote-snippet";
+      quoteSnippet.textContent = replyTo.snippet || "";
+
+      quoteDiv.appendChild(quoteSender);
+      quoteDiv.appendChild(quoteSnippet);
+      bubble.appendChild(quoteDiv);
+    }
+
     const body = document.createElement("div");
     body.className = "msg-content" + (isDecryptError ? " msg-decrypt-error" : "");
     body.textContent = content;
-
-    bubble.appendChild(header);
     bubble.appendChild(body);
+
     DOM.messagesContainer.appendChild(bubble);
 
     state.messagesCount++;
@@ -2368,10 +2502,16 @@
       DOM.messageInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           stopTyping();
+        } else if (e.key === "Escape" && activeReply) {
+          cancelReply();
         } else {
           handleInputTyping();
         }
       });
+    }
+
+    if (DOM.btnCancelReply) {
+      DOM.btnCancelReply.addEventListener("click", cancelReply);
     }
 
     // Copy Invite Link Button

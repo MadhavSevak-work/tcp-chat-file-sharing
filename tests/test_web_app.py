@@ -240,6 +240,91 @@ class TestWebApp(unittest.TestCase):
         c2.disconnect()
         c3.disconnect()
 
+    def test_08_typing_and_stop_typing_events(self):
+        """Test SocketIO typing and stop_typing event routing (room-scoped, omitting sender)."""
+        from web_app.app import socketio
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+
+        c1.emit("join_room", {"room_id": "typing_room", "username": "Alice"})
+        c2.emit("join_room", {"room_id": "typing_room", "username": "Bob"})
+        c3.emit("join_room", {"room_id": "other_room", "username": "Charlie"})
+
+        c1.get_received()
+        c2.get_received()
+        c3.get_received()
+
+        # Alice starts typing via 'typing' event
+        c1.emit("typing", {"room_id": "typing_room", "username": "Alice"})
+
+        rec_c1 = c1.get_received()
+        rec_c2 = c2.get_received()
+        rec_c3 = c3.get_received()
+
+        # Alice should NOT receive own typing event
+        self.assertEqual(len([m for m in rec_c1 if m["name"] == "typing"]), 0)
+
+        # Bob in same room receives typing event
+        typing_c2 = [m for m in rec_c2 if m["name"] == "typing"]
+        self.assertEqual(len(typing_c2), 1)
+        self.assertEqual(typing_c2[0]["args"][0]["username"], "Alice")
+        self.assertEqual(typing_c2[0]["args"][0]["room_id"], "typing_room")
+
+        # Charlie in other room should NOT receive it
+        self.assertEqual(len([m for m in rec_c3 if m["name"] == "typing"]), 0)
+
+        # Alice stops typing via 'stop_typing' event
+        c1.emit("stop_typing", {"room_id": "typing_room", "username": "Alice"})
+
+        rec_c2_stop = c2.get_received()
+        stop_c2 = [m for m in rec_c2_stop if m["name"] == "stop_typing"]
+        self.assertEqual(len(stop_c2), 1)
+        self.assertEqual(stop_c2[0]["args"][0]["username"], "Alice")
+
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
+
+    def test_09_message_reply_passthrough(self):
+        """Test that send_message cleanly relays id and reply_to dictionary without alteration."""
+        from web_app.app import socketio
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+
+        c1.emit("join_room", {"room_id": "reply_room", "username": "Alice"})
+        c2.emit("join_room", {"room_id": "reply_room", "username": "Bob"})
+
+        c1.get_received()
+        c2.get_received()
+
+        reply_meta = {
+            "id": "orig-msg-12345",
+            "sender": "Bob",
+            "snippet": "Hello Alice, how are you?"
+        }
+
+        c1.emit("send_message", {
+            "id": "reply-msg-67890",
+            "room_id": "reply_room",
+            "username": "Alice",
+            "payload": "CIPHERTEXT_BLOB_BASE64",
+            "reply_to": reply_meta
+        })
+
+        rec_c2 = c2.get_received()
+        msg_c2 = [m for m in rec_c2 if m["name"] == "receive_message" and m["args"][0].get("type") == "encrypted"]
+
+        self.assertEqual(len(msg_c2), 1)
+        delivered = msg_c2[0]["args"][0]
+        self.assertEqual(delivered["id"], "reply-msg-67890")
+        self.assertEqual(delivered["sender"], "Alice")
+        self.assertEqual(delivered["reply_to"], reply_meta)
+        self.assertEqual(delivered["payload"], "CIPHERTEXT_BLOB_BASE64")
+
+        c1.disconnect()
+        c2.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()

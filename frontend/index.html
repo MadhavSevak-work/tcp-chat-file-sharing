@@ -208,6 +208,11 @@
         <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
         <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
       </symbol>
+      <!-- Message Reply: Reply -->
+      <symbol id="icon-reply" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 17 4 12 9 7"/>
+        <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+      </symbol>
     </defs>
   </svg>
 
@@ -549,6 +554,20 @@
             <button type="button" class="emoji-btn" data-emoji="✨" aria-label="Sparkles">✨</button>
             <button type="button" class="emoji-btn" data-emoji="⚡" aria-label="High voltage">⚡</button>
           </div>
+        </div>
+
+        <!-- Message Reply Context Banner -->
+        <div id="reply-banner" class="reply-banner hidden" aria-live="polite">
+          <div class="reply-banner-content">
+            <svg class="svg-icon xs reply-icon" aria-hidden="true"><use href="#icon-reply"></use></svg>
+            <div class="reply-banner-text">
+              <span class="reply-banner-title">Replying to <strong id="reply-banner-user"></strong>:</span>
+              <span id="reply-banner-snippet" class="reply-banner-snippet"></span>
+            </div>
+          </div>
+          <button type="button" id="btn-cancel-reply" class="btn-cancel-reply" title="Cancel Reply" aria-label="Cancel reply">
+            <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-x"></use></svg>
+          </button>
         </div>
 
         <form id="chat-form" class="composer-form">
