@@ -220,16 +220,16 @@
   <div id="login-overlay" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <div class="login-card">
       
-      <!-- Top Action Bar for Login (Theme Toggle) -->
+      <!-- Top Action Bar for Login (Theme Toggle & Minimal Connection Status Badge) -->
       <div class="login-top-bar">
-        <div class="login-system-pill">
-          <span class="status-dot connected"></span>
-          <span>ZERO-KNOWLEDGE E2EE</span>
-        </div>
         <button type="button" id="btn-login-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn" title="Switch to light mode" aria-label="Switch to light mode">
           <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
           <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
         </button>
+        <div id="login-status-badge" class="modal-status-badge status-connecting" aria-live="polite">
+          <span class="status-badge-dot"></span>
+          <span id="login-status-text" class="status-badge-text">Connecting...</span>
+        </div>
       </div>
 
       <div class="login-header">
@@ -242,24 +242,11 @@
             <span class="brand-live-badge">E2EE</span>
           </div>
         </div>
-        <p class="subtitle">Zero-Knowledge Relay · AES-256-GCM · PBKDF2 (600,000 Iterations)</p>
       </div>
 
       <div class="login-body">
         <div id="login-error" class="alert-banner alert-error hidden" role="alert">
           <span id="login-error-text" class="login-error-text" style="color: #ef4444; font-weight: 500;"></span>
-        </div>
-
-        <!-- Connection Endpoint Banner -->
-        <div class="gateway-status-card">
-          <div class="gateway-info">
-            <span class="status-dot connecting" id="login-gateway-dot"></span>
-            <div>
-              <div class="gateway-title" id="gateway-display-name">Render Backend Gateway</div>
-              <div class="gateway-display-endpoint" id="gateway-display-endpoint">Connecting to Render server... (may take 30s to wake up)</div>
-            </div>
-          </div>
-          <span class="badge badge-secondary" id="login-gateway-badge">CONNECTING</span>
         </div>
 
         <!-- Room Mode Selector Tabs -->
@@ -269,13 +256,13 @@
         </div>
 
         <div class="form-group">
-          <label for="username-input">Peer Nickname</label>
+          <label for="username-input">Nickname</label>
           <input type="text" id="username-input" placeholder="e.g. Alice, Cipher_1" maxlength="20" autofocus autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
           <span class="field-hint">Alphanumeric, hyphens, underscores (2-20 characters).</span>
         </div>
 
         <div class="form-group">
-          <label for="room-input">Room ID / Channel Name</label>
+          <label for="room-input">Room ID</label>
           <div class="input-with-action">
             <input type="text" id="room-input" placeholder="e.g. quantum-room, team-alpha" maxlength="32" autocomplete="off" spellcheck="false">
             <button type="button" class="input-action-btn" id="btn-generate-room" title="Generate random Room ID" aria-label="Generate random Room ID">
@@ -286,19 +273,14 @@
         </div>
 
         <div class="form-group">
-          <label for="passkey-input">Room PIN / Passkey (Client-Side Encryption Secret)</label>
+          <label for="passkey-input">Room Passkey</label>
           <div class="input-with-action">
-            <input type="password" id="passkey-input" placeholder="Enter secret room PIN / passkey..." maxlength="64" autocomplete="off" spellcheck="false">
+            <input type="password" id="passkey-input" placeholder="Enter room passkey..." maxlength="64" autocomplete="off" spellcheck="false">
             <button type="button" class="input-action-btn" id="btn-toggle-passkey" title="Toggle passkey visibility" aria-label="Toggle passkey visibility">
               <svg class="svg-icon xs" aria-hidden="true" id="icon-passkey-visibility"><use href="#icon-eye"></use></svg>
             </button>
           </div>
-          <span class="field-hint">Used for client-side AES-256-GCM encryption & server-side ephemeral verification.</span>
-        </div>
-
-        <div class="e2ee-security-badge">
-          <svg class="svg-icon xs shield-icon" aria-hidden="true"><use href="#icon-shield"></use></svg>
-          <span><strong>Zero-Knowledge:</strong> Server acts as blind router and never receives unencrypted chats.</span>
+          <span class="field-hint">Your passkey never leaves this device.</span>
         </div>
 
         <div class="login-action-buttons-group">
@@ -311,10 +293,6 @@
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>
           </button>
         </div>
-      </div>
-
-      <div class="login-footer">
-        <span>Layer 4 TCP Sockets | WebSocket Tunnel | SHA-256 Checksums</span>
       </div>
     </div>
   </div>

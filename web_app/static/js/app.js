@@ -62,6 +62,8 @@
     connectBtn: document.getElementById("connect-btn") || document.getElementById("btn-create-room"),
     loginError: document.getElementById("login-error"),
     loginErrorText: document.getElementById("login-error-text"),
+    loginStatusBadge: document.getElementById("login-status-badge"),
+    loginStatusText: document.getElementById("login-status-text"),
     gatewayDisplayName: document.getElementById("gateway-display-name"),
     gatewayDisplayEndpoint: document.getElementById("gateway-display-endpoint"),
     loginGatewayDot: document.getElementById("login-gateway-dot"),
@@ -258,13 +260,33 @@
   }
 
   // =========================================================================
-  // SINGLE SOURCE OF TRUTH: CONNECTION STATUS MANAGER
+  // SINGLE SOURCE OF TRUTH: CONNECTION STATUS MANAGER & MODAL BADGE
   // =========================================================================
+  function updateModalConnectionBadge(stateClass, labelText) {
+    const badge = DOM.loginStatusBadge || document.getElementById("login-status-badge");
+    const textEl = DOM.loginStatusText || document.getElementById("login-status-text");
+    if (badge) {
+      badge.className = "modal-status-badge " + stateClass;
+    }
+    if (textEl) {
+      textEl.textContent = labelText;
+    }
+  }
+
   function setConnectionStatus(status, label) {
     state.connectionStatus = status; // "connected" | "connecting" | "disconnected"
 
     const isConnected = status === "connected";
     state.isConnected = isConnected;
+
+    // Sync Minimal Modal Connection Status Badge
+    if (status === "connected") {
+      updateModalConnectionBadge("status-connected", "Connected");
+    } else if (status === "connecting") {
+      updateModalConnectionBadge("status-connecting", "Connecting...");
+    } else {
+      updateModalConnectionBadge("status-disconnected", "Offline");
+    }
 
     // Header Status Dot
     if (DOM.headerStatusDot) {
@@ -482,30 +504,12 @@
   let reconnectAttemptsCount = 0;
 
   function updateWakeupBanner(isWaking, message) {
-    if (DOM.loginGatewayDot) {
-      DOM.loginGatewayDot.className = "status-dot " + (isWaking ? "connecting" : (state.isConnected ? "connected" : "disconnected"));
-    }
-    if (DOM.loginGatewayBadge) {
-      DOM.loginGatewayBadge.className = "badge " + (isWaking ? "badge-warning" : (state.isConnected ? "badge-success" : "badge-secondary"));
-      DOM.loginGatewayBadge.textContent = isWaking ? "WAKING UP..." : (state.isConnected ? "READY" : "OFFLINE");
-    }
-    if (DOM.gatewayDisplayEndpoint) {
-      let host = "netchat-live.onrender.com";
-      try { host = new URL(BACKEND_URL).host; } catch (_) {}
-      DOM.gatewayDisplayEndpoint.textContent = isWaking
-        ? (message || "Connecting to Render server... backend may take 30s to wake up")
-        : (state.isConnected ? `Connected: ${host}` : `Target: ${host}`);
-    }
-
-    if (DOM.loginError) {
-      if (isWaking) {
-        DOM.loginError.className = "alert-banner alert-warning";
-        DOM.loginError.innerHTML = `<strong>Notice:</strong> Connecting to Render server... free-tier backend may take ~30s to wake up from idle state.`;
-        DOM.loginError.classList.remove("hidden");
-      } else if (DOM.loginError.classList.contains("alert-warning")) {
-        DOM.loginError.classList.add("hidden");
-        DOM.loginError.className = "alert-banner alert-error hidden";
-      }
+    if (isWaking) {
+      updateModalConnectionBadge("status-connecting", "Connecting...");
+    } else if (state.isConnected) {
+      updateModalConnectionBadge("status-connected", "Connected");
+    } else {
+      updateModalConnectionBadge("status-disconnected", "Offline");
     }
   }
 
@@ -906,7 +910,8 @@
 
   function init() {
     initTheme();
-    setConnectionStatus("disconnected", "Disconnected");
+    updateModalConnectionBadge("status-connecting", "Connecting...");
+    setConnectionStatus("disconnected", "Connecting...");
 
     // Detect environment host for user-facing connection banner
     let hostLabel = "netchat-live.onrender.com";
@@ -928,7 +933,7 @@
   }
 
   function connectSocket() {
-    updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+    updateModalConnectionBadge("status-connecting", "Connecting...");
 
     state.socket = io(BACKEND_URL, {
       transports: ["websocket", "polling"],
@@ -940,36 +945,33 @@
     state.socket.on("connect", () => {
       logActivity(`WebSocket transport established with Gateway (${BACKEND_URL}).`);
       reconnectAttemptsCount = 0;
-      updateWakeupBanner(false);
+      updateModalConnectionBadge("status-connected", "Connected");
       if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
       if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
-      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot connected";
-      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "READY";
       startPingMonitoring();
     });
 
     state.socket.on("disconnect", () => {
       logActivity("WebSocket connection to Gateway closed.");
       setConnectionStatus("disconnected", "Disconnected");
-      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot disconnected";
-      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "OFFLINE";
+      updateModalConnectionBadge("status-disconnected", "Offline");
     });
 
     state.socket.on("connect_error", (error) => {
       reconnectAttemptsCount++;
-      logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount}): Render backend waking up...`);
+      logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount})...`);
       setConnectionStatus("disconnected", "Connecting...");
-      updateWakeupBanner(true, `Connecting to Render server (attempt ${reconnectAttemptsCount})... backend may take 30s to wake up`);
+      updateModalConnectionBadge("status-connecting", "Connecting...");
     });
 
     if (state.socket.io) {
       state.socket.io.on("reconnect_attempt", (attempt) => {
-        updateWakeupBanner(true, `Reconnecting to Render server (attempt ${attempt})... waking up`);
+        updateModalConnectionBadge("status-connecting", "Connecting...");
       });
 
       state.socket.io.on("reconnect", () => {
-        logActivity("Reconnected to Render backend successfully!");
-        updateWakeupBanner(false);
+        logActivity("Reconnected to backend successfully!");
+        updateModalConnectionBadge("status-connected", "Connected");
       });
     }
 
@@ -1263,8 +1265,7 @@
     }
 
     if (!state.socket || !state.socket.connected) {
-      showLoginError("Render backend is still waking up from idle state (~30s). Please wait a moment and try again.");
-      updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+      showLoginError("Connecting to server. Please wait a moment and try again.");
       return;
     }
 
@@ -1329,8 +1330,7 @@
     }
 
     if (!state.socket || !state.socket.connected) {
-      showLoginError("Render backend is still waking up from idle state (~30s). Please wait a moment and try again.");
-      updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+      showLoginError("Connecting to server. Please wait a moment and try again.");
       return;
     }
 
