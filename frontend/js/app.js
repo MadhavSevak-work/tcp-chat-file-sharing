@@ -45,6 +45,10 @@
     loginOverlay: document.getElementById("login-overlay"),
     btnModeCreate: document.getElementById("btn-mode-create"),
     btnModeJoin: document.getElementById("btn-mode-join"),
+    btnCreateRoom: document.getElementById("btn-create-room"),
+    btnJoinRoom: document.getElementById("btn-join-room"),
+    btnCreateRoomText: document.getElementById("btn-create-room-text"),
+    btnJoinRoomText: document.getElementById("btn-join-room-text"),
     usernameInput: document.getElementById("username-input"),
     roomInput: document.getElementById("room-input"),
     passkeyInput: document.getElementById("passkey-input"),
@@ -55,8 +59,9 @@
     roomInputHint: document.getElementById("room-input-hint"),
     hostInput: document.getElementById("host-input"),
     portInput: document.getElementById("port-input"),
-    connectBtn: document.getElementById("connect-btn"),
+    connectBtn: document.getElementById("connect-btn") || document.getElementById("btn-create-room"),
     loginError: document.getElementById("login-error"),
+    loginErrorText: document.getElementById("login-error-text"),
     gatewayDisplayName: document.getElementById("gateway-display-name"),
     gatewayDisplayEndpoint: document.getElementById("gateway-display-endpoint"),
     loginGatewayDot: document.getElementById("login-gateway-dot"),
@@ -623,6 +628,7 @@
 
   function setRoomMode(mode) {
     state.roomMode = mode;
+    clearLoginError();
     if (DOM.btnModeCreate && DOM.btnModeJoin) {
       DOM.btnModeCreate.classList.toggle("active", mode === "create");
       DOM.btnModeCreate.setAttribute("aria-selected", mode === "create" ? "true" : "false");
@@ -1177,23 +1183,82 @@
   // =========================================================================
   // LOGIN, E2EE ROOM SETUP & AUTHENTICATION
   // =========================================================================
-  function handleConnectClick() {
+  function setButtonsLoading(isLoading, activeBtnId = null) {
+    const btnCreate = DOM.btnCreateRoom;
+    const btnJoin = DOM.btnJoinRoom;
+
+    if (btnCreate) {
+      btnCreate.disabled = isLoading;
+      if (isLoading && activeBtnId === "btn-create-room") {
+        btnCreate.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span id="btn-create-room-text">Connecting...</span>`;
+      } else {
+        btnCreate.innerHTML = `<span id="btn-create-room-text">Create Room</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-lock"></use></svg>`;
+      }
+    }
+
+    if (btnJoin) {
+      btnJoin.disabled = isLoading;
+      if (isLoading && activeBtnId === "btn-join-room") {
+        btnJoin.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span id="btn-join-room-text">Connecting...</span>`;
+      } else {
+        btnJoin.innerHTML = `<span id="btn-join-room-text">Join Room</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
+      }
+    }
+
+    if (DOM.connectBtn && DOM.connectBtn !== btnCreate && DOM.connectBtn !== btnJoin) {
+      DOM.connectBtn.disabled = isLoading;
+    }
+  }
+
+  function showLoginError(msg) {
+    setConnectionStatus("disconnected", "Disconnected");
+    setButtonsLoading(false);
+    let errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
+    if (!errorSpan && DOM.loginError) {
+      DOM.loginError.innerHTML = `<span id="login-error-text" class="login-error-text" style="color: #ef4444; font-weight: 500;"></span>`;
+      errorSpan = DOM.loginError.querySelector("#login-error-text");
+      DOM.loginErrorText = errorSpan;
+    }
+    if (errorSpan) {
+      errorSpan.textContent = msg;
+    }
+    if (DOM.loginError) {
+      DOM.loginError.classList.remove("hidden");
+    }
+  }
+
+  function clearLoginError() {
+    const errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
+    if (errorSpan) {
+      errorSpan.textContent = "";
+    }
+    if (DOM.loginError) {
+      DOM.loginError.classList.add("hidden");
+    }
+  }
+
+  function handleCreateRoom() {
+    clearLoginError();
+
     const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
     const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
-    const passkey = DOM.passkeyInput ? DOM.passkeyInput.value : "";
+    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
 
     if (!username) {
       showLoginError("Please enter a nickname.");
+      if (DOM.usernameInput) DOM.usernameInput.focus();
       return;
     }
 
     if (!roomId) {
       showLoginError("Please enter or generate a Room ID.");
+      if (DOM.roomInput) DOM.roomInput.focus();
       return;
     }
 
-    if (!passkey) {
-      showLoginError("Please enter a Room Passkey for client-side encryption.");
+    if (!pin) {
+      showLoginError("Please enter a Room PIN.");
+      if (DOM.passkeyInput) DOM.passkeyInput.focus();
       return;
     }
 
@@ -1203,82 +1268,113 @@
       return;
     }
 
-    DOM.connectBtn.disabled = true;
-    DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Entering E2EE Room...</span>`;
-    DOM.loginError.classList.add("hidden");
+    setButtonsLoading(true, "btn-create-room");
     setConnectionStatus("connecting", "Connecting...");
 
-    // Clear previous member roster immediately before populating the new room's roster
-    updateUserList([]);
-    typingState.activeTypers.forEach((timer) => clearTimeout(timer));
-    typingState.activeTypers.clear();
-    renderTypingIndicator();
+    state.socket.emit("create_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+      setButtonsLoading(false);
+      if (response && response.status === "success") {
+        // Save credentials in memory (zero-retention)
+        state.username = username;
+        state.roomId = roomId;
+        state.roomPasskey = pin;
+        state.isE2EE = true;
 
-    // Store strictly in client memory - never persisted to localStorage or cookies!
-    state.username = username;
-    state.roomId = roomId;
-    state.roomPasskey = passkey;
-    state.isE2EE = true;
+        // Clear previous member roster before populating
+        updateUserList([]);
+        typingState.activeTypers.forEach((timer) => clearTimeout(timer));
+        typingState.activeTypers.clear();
+        renderTypingIndicator();
 
-    logActivity(`Joining E2EE room '${roomId}' as '${username}' with client-side AES-256-GCM key derivation...`);
+        // Register underlying gateway TCP session
+        state.socket.emit("join", { username });
 
-    // Emit TCP join and SocketIO room join
-    state.socket.emit("join", { username });
-    state.socket.emit("join_room", { room_id: roomId, username: username });
+        // Close modal and render chat UI
+        handleJoinSuccess({
+          username: username,
+          host: state.host,
+          port: state.port,
+          roomId: roomId
+        });
+      } else {
+        const errorMsg = (response && response.message) ? response.message : "Room already exists";
+        showLoginError(errorMsg);
+      }
+    });
   }
 
-  function handleJoinSuccess(data) {
-    state.username = data.username;
-    state.host = data.host;
-    state.port = data.port;
+  function handleJoinRoom() {
+    clearLoginError();
 
-    DOM.loginOverlay.classList.add("hidden");
-    DOM.appContainer.classList.remove("hidden");
+    const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
+    const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
+    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
 
-    DOM.myUsername.textContent = state.username;
-    DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
-    DOM.myAvatar.style.background = getAvatarGradient(state.username);
-    DOM.myAvatar.style.color = "#ffffff";
-    DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
+    if (!username) {
+      showLoginError("Please enter a nickname.");
+      if (DOM.usernameInput) DOM.usernameInput.focus();
+      return;
+    }
 
-    if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
-    if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
-    if (DOM.rpTcpHost) DOM.rpTcpHost.textContent = `${state.host}:${state.port}`;
+    if (!roomId) {
+      showLoginError("Please enter a Room ID.");
+      if (DOM.roomInput) DOM.roomInput.focus();
+      return;
+    }
 
-    if (DOM.activeChatTitle && state.roomId) {
-      DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
-      if (DOM.btnCopyRoomLink) {
-        DOM.btnCopyRoomLink.classList.remove("hidden");
+    if (!pin) {
+      showLoginError("Please enter the Room PIN.");
+      if (DOM.passkeyInput) DOM.passkeyInput.focus();
+      return;
+    }
+
+    if (!state.socket || !state.socket.connected) {
+      showLoginError("Render backend is still waking up from idle state (~30s). Please wait a moment and try again.");
+      updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+      return;
+    }
+
+    setButtonsLoading(true, "btn-join-room");
+    setConnectionStatus("connecting", "Connecting...");
+
+    state.socket.emit("join_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+      setButtonsLoading(false);
+      if (response && response.status === "success") {
+        // Save credentials in memory (zero-retention)
+        state.username = username;
+        state.roomId = roomId;
+        state.roomPasskey = pin;
+        state.isE2EE = true;
+
+        // Clear previous member roster before populating
+        updateUserList([]);
+        typingState.activeTypers.forEach((timer) => clearTimeout(timer));
+        typingState.activeTypers.clear();
+        renderTypingIndicator();
+
+        // Register underlying gateway TCP session
+        state.socket.emit("join", { username });
+
+        // Close modal and render chat UI
+        handleJoinSuccess({
+          username: username,
+          host: state.host,
+          port: state.port,
+          roomId: roomId
+        });
+      } else {
+        const errorMsg = (response && response.message) ? response.message : "Invalid PIN or Room not found";
+        showLoginError(errorMsg);
       }
-      if (DOM.btnDrawerCopyLink) {
-        DOM.btnDrawerCopyLink.classList.remove("hidden");
-      }
-      try {
-        window.location.hash = "#room=" + encodeURIComponent(state.roomId);
-      } catch (_) {}
-    }
-    if (DOM.activeChatDesc) {
-      DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
-    }
-
-    setConnectionStatus("connected", "Connected");
-
-    logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
-    appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
-
-    // Focus chat input on desktop
-    if (window.innerWidth > 768 && DOM.messageInput) {
-      DOM.messageInput.focus();
-    }
+    });
   }
 
-  function showLoginError(msg) {
-    setConnectionStatus("disconnected", "Disconnected");
-    DOM.loginError.textContent = msg;
-    DOM.loginError.classList.remove("hidden");
-    DOM.connectBtn.disabled = false;
-    const btnLabel = state.roomMode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
-    DOM.connectBtn.innerHTML = `<span>${btnLabel}</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
+  function handleConnectClick() {
+    if (state.roomMode === "create") {
+      handleCreateRoom();
+    } else {
+      handleJoinRoom();
+    }
   }
 
   // =========================================================================
@@ -2481,31 +2577,45 @@
     }
     if (DOM.btnGenerateRoom) {
       DOM.btnGenerateRoom.addEventListener("click", () => {
+        clearLoginError();
         if (DOM.roomInput) DOM.roomInput.value = generateRandomRoomId();
       });
     }
     if (DOM.btnTogglePasskey) {
       DOM.btnTogglePasskey.addEventListener("click", togglePasskeyVisibility);
     }
+
+    // Modal Input Listeners (Clear errors on input modification)
+    if (DOM.usernameInput) {
+      DOM.usernameInput.addEventListener("input", clearLoginError);
+      DOM.usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick();
+      });
+    }
     if (DOM.roomInput) {
+      DOM.roomInput.addEventListener("input", clearLoginError);
       DOM.roomInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") handleConnectClick();
       });
     }
     if (DOM.passkeyInput) {
+      DOM.passkeyInput.addEventListener("input", clearLoginError);
       DOM.passkeyInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") handleConnectClick();
       });
     }
 
-    // Connect Button & Enter key
-    if (DOM.connectBtn) {
-      DOM.connectBtn.addEventListener("click", handleConnectClick);
+    // Independent Action Button Listeners
+    if (DOM.btnCreateRoom) {
+      DOM.btnCreateRoom.addEventListener("click", handleCreateRoom);
     }
-    if (DOM.usernameInput) {
-      DOM.usernameInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") handleConnectClick();
-      });
+    if (DOM.btnJoinRoom) {
+      DOM.btnJoinRoom.addEventListener("click", handleJoinRoom);
+    }
+
+    // Legacy Fallback Connect Button
+    if (DOM.connectBtn && DOM.connectBtn !== DOM.btnCreateRoom && DOM.connectBtn !== DOM.btnJoinRoom) {
+      DOM.connectBtn.addEventListener("click", handleConnectClick);
     }
 
     // Chat Submission & Typing Listener

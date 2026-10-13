@@ -724,6 +724,61 @@ select:focus {
   height: 16px;
 }
 
+.login-action-buttons-group {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.login-action-buttons-group .btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+#btn-create-room {
+  background-color: var(--primary-accent);
+  color: #ffffff;
+  border: 1px solid transparent;
+  box-shadow: 0 2px 8px rgba(0, 168, 132, 0.28);
+}
+
+#btn-create-room:hover:not(:disabled) {
+  background-color: var(--primary-accent-hover);
+}
+
+#btn-join-room {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+}
+
+#btn-join-room:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--primary-accent);
+  color: var(--primary-accent);
+}
+
+.login-action-buttons-group .btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .login-action-buttons-group {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
 .msg-decrypt-error {
   color: #ef4444 !important;
   font-style: italic;

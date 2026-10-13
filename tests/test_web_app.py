@@ -325,6 +325,69 @@ class TestWebApp(unittest.TestCase):
         c1.disconnect()
         c2.disconnect()
 
+    def test_10_create_room_and_join_room_workflows(self):
+        """Test create_room and join_room separate validated workflows and SocketIO callbacks."""
+        from web_app.app import socketio, room_records, room_members
+
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+
+        # 1. c1 creates room "secret_vault" with pin "pin-1234"
+        res1 = c1.emit("create_room", {
+            "room_id": "secret_vault",
+            "pin": "pin-1234",
+            "username": "Alice"
+        }, callback=True)
+        self.assertEqual(res1.get("status"), "success")
+        self.assertEqual(res1.get("room_id"), "secret_vault")
+
+        # 2. c2 attempts to create the same room -> must fail with "Room already exists"
+        res2 = c2.emit("create_room", {
+            "room_id": "secret_vault",
+            "pin": "pin-9999",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res2.get("status"), "error")
+        self.assertEqual(res2.get("message"), "Room already exists")
+
+        # 3. c2 attempts to join non-existent room with a pin -> must fail with "Room not found"
+        res_nonexistent = c2.emit("join_room", {
+            "room_id": "non_existent_room",
+            "pin": "pin-5555",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res_nonexistent.get("status"), "error")
+        self.assertEqual(res_nonexistent.get("message"), "Room not found")
+
+        # 4. c2 attempts to join "secret_vault" with invalid PIN -> must fail with "Invalid PIN"
+        res_bad_pin = c2.emit("join_room", {
+            "room_id": "secret_vault",
+            "pin": "wrong-pin",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res_bad_pin.get("status"), "error")
+        self.assertEqual(res_bad_pin.get("message"), "Invalid PIN")
+
+        # 5. c2 joins "secret_vault" with correct PIN -> success
+        res_join_ok = c2.emit("join_room", {
+            "room_id": "secret_vault",
+            "pin": "pin-1234",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res_join_ok.get("status"), "success")
+        self.assertEqual(res_join_ok.get("room_id"), "secret_vault")
+
+        # 6. Verify ephemeral zero-retention cleanup on disconnect
+        self.assertIn("secret_vault", room_records)
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
+
+        self.assertNotIn("secret_vault", room_members)
+        self.assertNotIn("secret_vault", room_records)
+
 
 if __name__ == "__main__":
     unittest.main()
+
