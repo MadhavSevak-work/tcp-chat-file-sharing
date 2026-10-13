@@ -799,6 +799,7 @@ select:focus {
 
 .login-action-buttons-group .btn {
   flex: 1;
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: center;

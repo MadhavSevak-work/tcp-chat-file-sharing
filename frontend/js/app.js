@@ -640,6 +640,18 @@
       DOM.btnModeJoin.setAttribute("aria-selected", mode === "join" ? "true" : "false");
     }
 
+    const btnCreate = DOM.btnCreateRoom;
+    const btnJoin = DOM.btnJoinRoom;
+    if (btnCreate && btnJoin) {
+      if (mode === "create") {
+        btnCreate.style.display = "inline-flex";
+        btnJoin.style.display = "none";
+      } else {
+        btnCreate.style.display = "none";
+        btnJoin.style.display = "inline-flex";
+      }
+    }
+
     if (DOM.connectBtnText) {
       DOM.connectBtnText.textContent = mode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
     }
@@ -1018,6 +1030,12 @@
         DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
       }
       updateUserList(peerList);
+    });
+
+    state.socket.on("update_peers", (users) => {
+      if (Array.isArray(users)) {
+        updateUserList(users);
+      }
     });
 
     state.socket.on("room_peers_update", (data) => {
@@ -1729,6 +1747,7 @@
   // ONLINE USERS & ROOM NAVIGATION
   // =========================================================================
   function updateUserList(users) {
+    if (!Array.isArray(users)) users = [];
     state.onlineUsers = users;
     const count = users.length;
     if (DOM.userCount) DOM.userCount.textContent = count;
@@ -1740,8 +1759,17 @@
       DOM.rpPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
     }
 
+    // Normalize entries whether users is a list of strings or list of objects {socket_id, username}
+    const normalizedUsers = users.map((u) => {
+      if (typeof u === "string") return { username: u, socket_id: null };
+      if (u && typeof u === "object") return { username: u.username || "", socket_id: u.socket_id || null };
+      return { username: String(u || ""), socket_id: null };
+    }).filter(u => Boolean(u.username));
+
+    const usernames = normalizedUsers.map(u => u.username);
+
     // Reset active whisper target if the user is no longer in this room
-    if (state.activeChatTarget && !users.some(u => u.toLowerCase() === state.activeChatTarget.toLowerCase())) {
+    if (state.activeChatTarget && !usernames.some(name => name.toLowerCase() === state.activeChatTarget.toLowerCase())) {
       state.activeChatTarget = null;
       if (DOM.btnPublicRoom) DOM.btnPublicRoom.classList.add("active");
       if (DOM.activeChatTitle && state.roomId) {
@@ -1755,87 +1783,98 @@
       }
     }
 
-    // Refresh Sidebar Users
-    DOM.usersNavList.innerHTML = "";
-    const previousSelected = DOM.fileRecipientSelect.value;
-    DOM.fileRecipientSelect.innerHTML = `
-      <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
-      <option value="">-- Choose Online Peer --</option>
-    `;
+    // Clear the DOM container under the ONLINE PEERS header
+    if (DOM.usersNavList) {
+      DOM.usersNavList.innerHTML = "";
+    }
 
-    users.forEach((user) => {
-      const isMe = user.toLowerCase() === state.username.toLowerCase();
+    const previousSelected = DOM.fileRecipientSelect ? DOM.fileRecipientSelect.value : "";
+    if (DOM.fileRecipientSelect) {
+      DOM.fileRecipientSelect.innerHTML = `
+        <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
+        <option value="">-- Choose Online Peer --</option>
+      `;
+    }
 
-      const li = document.createElement("li");
-      li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
-      li.setAttribute("role", "button");
-      li.setAttribute("tabindex", "0");
+    // Loop through users array and append a clean, styled list item for each username
+    normalizedUsers.forEach((userObj) => {
+      const user = userObj.username;
+      const isMe = user.toLowerCase() === (state.username || "").toLowerCase();
 
-      const avatarBg = getAvatarGradient(user);
-      const avatarEl = document.createElement("div");
-      avatarEl.className = "peer-avatar";
-      avatarEl.style.background = avatarBg;
-      avatarEl.style.color = "#ffffff";
-      avatarEl.textContent = user.charAt(0).toUpperCase();
-
-      const titleEl = document.createElement("span");
-      titleEl.className = "nav-title";
-      titleEl.textContent = `${user} ${isMe ? "(You)" : ""}`;
-
-      li.appendChild(avatarEl);
-      li.appendChild(titleEl);
-
-      if (!isMe) {
-        const fileBtn = document.createElement("button");
-        fileBtn.className = "btn-send-file-tiny";
-        fileBtn.title = `Send File to ${user}`;
-        fileBtn.setAttribute("aria-label", `Send file to ${user}`);
-        fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
-        li.appendChild(fileBtn);
-      }
-
-      if (!isMe) {
-        li.addEventListener("click", (e) => {
-          if (!e.target.closest(".btn-send-file-tiny")) {
-            switchToPrivateChat(user);
-            closeSidebar();
-            setMobileActiveTab("chat");
-          }
-        });
-
-        li.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            switchToPrivateChat(user);
-            closeSidebar();
-            setMobileActiveTab("chat");
-          }
-        });
-
-        const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
-        if (tinyFileBtn) {
-          tinyFileBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeSidebar();
-            openFileModal(user);
-          });
-        }
-
+      if (DOM.fileRecipientSelect && !isMe) {
         const opt = document.createElement("option");
         opt.value = user;
         opt.textContent = user;
         DOM.fileRecipientSelect.appendChild(opt);
       }
 
-      DOM.usersNavList.appendChild(li);
+      if (DOM.usersNavList) {
+        const li = document.createElement("li");
+        li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
+        li.setAttribute("role", "button");
+        li.setAttribute("tabindex", "0");
+
+        const avatarBg = getAvatarGradient(user);
+        const avatarEl = document.createElement("div");
+        avatarEl.className = "peer-avatar";
+        avatarEl.style.background = avatarBg;
+        avatarEl.style.color = "#ffffff";
+        avatarEl.textContent = user.charAt(0).toUpperCase();
+
+        const titleEl = document.createElement("span");
+        titleEl.className = "nav-title";
+        titleEl.textContent = `${user} ${isMe ? "(You)" : ""}`;
+
+        li.appendChild(avatarEl);
+        li.appendChild(titleEl);
+
+        if (!isMe) {
+          const fileBtn = document.createElement("button");
+          fileBtn.className = "btn-send-file-tiny";
+          fileBtn.title = `Send File to ${user}`;
+          fileBtn.setAttribute("aria-label", `Send file to ${user}`);
+          fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
+          li.appendChild(fileBtn);
+
+          li.addEventListener("click", (e) => {
+            if (!e.target.closest(".btn-send-file-tiny")) {
+              switchToPrivateChat(user);
+              closeSidebar();
+              setMobileActiveTab("chat");
+            }
+          });
+
+          li.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              switchToPrivateChat(user);
+              closeSidebar();
+              setMobileActiveTab("chat");
+            }
+          });
+
+          const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
+          if (tinyFileBtn) {
+            tinyFileBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              closeSidebar();
+              openFileModal(user);
+            });
+          }
+        }
+
+        DOM.usersNavList.appendChild(li);
+      }
     });
 
-    if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
-      DOM.fileRecipientSelect.value = previousSelected;
-    } else if (!DOM.fileRecipientSelect.value) {
-      DOM.fileRecipientSelect.value = "__BROADCAST__";
+    if (DOM.fileRecipientSelect) {
+      if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
+        DOM.fileRecipientSelect.value = previousSelected;
+      } else if (!DOM.fileRecipientSelect.value) {
+        DOM.fileRecipientSelect.value = "__BROADCAST__";
+      }
+      updateBroadcastBadge();
     }
-    updateBroadcastBadge();
   }
 
   function switchToPublicChat() {

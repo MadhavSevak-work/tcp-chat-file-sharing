@@ -74,6 +74,7 @@ logger = logging.getLogger("WebApp")
 file_registry = {}
 active_chunk_transfers = {}
 chunk_transfers_lock = threading.Lock()
+room_users = {}         # room_id -> [ {"socket_id": socket_id, "username": username}, ... ]
 room_members = {}       # room_id -> { socket_id: username, ... }
 socket_to_room = {}     # socket_id -> room_id
 room_records = {}       # room_id -> { "pin_hash": hash, "created_at": time.time() }
@@ -352,30 +353,40 @@ def handle_disconnect():
     # Clean up user's room membership strictly per room
     with room_lock:
         r_id = socket_to_room.pop(sid, None)
-        if r_id and r_id in room_members:
-            departed_user = room_members[r_id].pop(sid, None)
-            peers_remaining = list(room_members[r_id].values())
+        if r_id:
+            # 1. Update room_users and broadcast update_peers
+            if r_id in room_users:
+                room_users[r_id] = [u for u in room_users[r_id] if u.get("socket_id") != sid]
+                remaining_users = list(room_users[r_id])
+                socketio.emit("update_peers", remaining_users, to=r_id)
+                if not room_users[r_id]:
+                    room_users.pop(r_id, None)
 
-            # Emit the updated peer list strictly to room=room_id
-            emit("room_peers_update", {
-                "room_id": r_id,
-                "peers": peers_remaining
-            }, room=r_id)
+            # 2. Update room_members for legacy compatibility
+            if r_id in room_members:
+                departed_user = room_members[r_id].pop(sid, None)
+                peers_remaining = list(room_members[r_id].values())
 
-            if departed_user:
-                emit("receive_message", {
-                    "type": "system",
-                    "sender": "System",
+                # Emit the updated peer list strictly to room=room_id
+                emit("room_peers_update", {
                     "room_id": r_id,
-                    "message": f"🔒 {departed_user} left the encrypted room.",
-                    "peers": peers_remaining,
-                    "timestamp": time.time()
+                    "peers": peers_remaining
                 }, room=r_id)
 
-            # If the room becomes empty, delete the room key and credentials from memory
-            if not room_members[r_id]:
-                room_members.pop(r_id, None)
-                room_records.pop(r_id, None)
+                if departed_user:
+                    emit("receive_message", {
+                        "type": "system",
+                        "sender": "System",
+                        "room_id": r_id,
+                        "message": f"🔒 {departed_user} left the encrypted room.",
+                        "peers": peers_remaining,
+                        "timestamp": time.time()
+                    }, room=r_id)
+
+                # If the room becomes empty, delete the room key and credentials from memory
+                if not room_members[r_id]:
+                    room_members.pop(r_id, None)
+                    room_records.pop(r_id, None)
 
 
 # ============================================================================
@@ -415,6 +426,11 @@ def handle_create_room(data):
         old_room = socket_to_room.get(sid)
         if old_room and old_room != room_id:
             leave_room(old_room)
+            if old_room in room_users:
+                room_users[old_room] = [u for u in room_users[old_room] if u.get("socket_id") != sid]
+                socketio.emit("update_peers", list(room_users[old_room]), to=old_room)
+                if not room_users[old_room]:
+                    room_users.pop(old_room, None)
             if old_room in room_members and sid in room_members[old_room]:
                 old_user = room_members[old_room].pop(sid, None)
                 old_peers = list(room_members[old_room].values())
@@ -441,8 +457,15 @@ def handle_create_room(data):
         if room_id not in room_members:
             room_members[room_id] = {}
         room_members[room_id][sid] = username
+
+        if room_id not in room_users:
+            room_users[room_id] = []
+        room_users[room_id] = [u for u in room_users[room_id] if u.get("socket_id") != sid]
+        room_users[room_id].append({"socket_id": sid, "username": username})
+
         socket_to_room[sid] = room_id
         peers = list(room_members[room_id].values())
+        current_room_users = list(room_users[room_id])
 
     logger.info(f"[E2EE Room Created] Peer '{username}' created room '{room_id}'")
 
@@ -457,6 +480,8 @@ def handle_create_room(data):
         "room_id": room_id,
         "peers": peers
     }, room=room_id)
+
+    socketio.emit("update_peers", current_room_users, to=room_id)
 
     return {
         "status": "success",
@@ -519,6 +544,11 @@ def handle_join_room(data):
         old_room = socket_to_room.get(sid)
         if old_room and old_room != room_id:
             leave_room(old_room)
+            if old_room in room_users:
+                room_users[old_room] = [u for u in room_users[old_room] if u.get("socket_id") != sid]
+                socketio.emit("update_peers", list(room_users[old_room]), to=old_room)
+                if not room_users[old_room]:
+                    room_users.pop(old_room, None)
             if old_room in room_members and sid in room_members[old_room]:
                 old_user = room_members[old_room].pop(sid, None)
                 old_peers = list(room_members[old_room].values())
@@ -544,8 +574,15 @@ def handle_join_room(data):
         if room_id not in room_members:
             room_members[room_id] = {}
         room_members[room_id][sid] = username
+
+        if room_id not in room_users:
+            room_users[room_id] = []
+        room_users[room_id] = [u for u in room_users[room_id] if u.get("socket_id") != sid]
+        room_users[room_id].append({"socket_id": sid, "username": username})
+
         socket_to_room[sid] = room_id
         peers = list(room_members[room_id].values())
+        current_room_users = list(room_users[room_id])
 
     # Zero-retention logging - do not log passwords or sensitive keys
     logger.info(f"[E2EE Relay] Peer '{username}' joined room '{room_id}' (Room peers: {len(peers)})")
@@ -563,6 +600,8 @@ def handle_join_room(data):
         "room_id": room_id,
         "peers": peers
     }, room=room_id)
+
+    socketio.emit("update_peers", current_room_users, to=room_id)
 
     # Broadcast system event strictly to other room peers
     emit("receive_message", {

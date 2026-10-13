@@ -392,6 +392,72 @@ class TestWebApp(unittest.TestCase):
         self.assertNotIn("secret_vault", room_members)
         self.assertNotIn("secret_vault", room_records)
 
+    def test_12_backend_peer_tracking_update_peers(self):
+        """Test backend peer tracking in room_users and update_peers event emissions."""
+        from web_app.app import socketio, room_users
+
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c1.get_received()
+        c2.get_received()
+
+        # 1. c1 creates room "peer_room"
+        res1 = c1.emit("create_room", {
+            "room_id": "peer_room",
+            "pin": "pin-9876",
+            "username": "Alice"
+        }, callback=True)
+        self.assertEqual(res1.get("status"), "success")
+
+        # Verify room_users contains Alice with socket_id and username
+        self.assertIn("peer_room", room_users)
+        self.assertEqual(len(room_users["peer_room"]), 1)
+        self.assertEqual(room_users["peer_room"][0]["username"], "Alice")
+        self.assertTrue(bool(room_users["peer_room"][0]["socket_id"]))
+
+        # Check c1 received update_peers
+        rec_c1 = c1.get_received()
+        upd_events = [m for m in rec_c1 if m["name"] == "update_peers"]
+        self.assertTrue(len(upd_events) >= 1)
+        self.assertEqual(len(upd_events[-1]["args"][0]), 1)
+        self.assertEqual(upd_events[-1]["args"][0][0]["username"], "Alice")
+
+        # 2. c2 joins "peer_room"
+        res2 = c2.emit("join_room", {
+            "room_id": "peer_room",
+            "pin": "pin-9876",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res2.get("status"), "success")
+
+        self.assertEqual(len(room_users["peer_room"]), 2)
+        user_names = [u["username"] for u in room_users["peer_room"]]
+        self.assertIn("Alice", user_names)
+        self.assertIn("Bob", user_names)
+
+        # Check c1 and c2 both received update_peers with 2 users
+        rec_c1_2 = c1.get_received()
+        rec_c2_2 = c2.get_received()
+        c1_upd = [m for m in rec_c1_2 if m["name"] == "update_peers"]
+        c2_upd = [m for m in rec_c2_2 if m["name"] == "update_peers"]
+        self.assertTrue(len(c1_upd) >= 1)
+        self.assertTrue(len(c2_upd) >= 1)
+        self.assertEqual(len(c1_upd[-1]["args"][0]), 2)
+        self.assertEqual(len(c2_upd[-1]["args"][0]), 2)
+
+        # 3. c2 disconnects
+        c2.disconnect()
+        rec_c1_3 = c1.get_received()
+        c1_upd_after_dc = [m for m in rec_c1_3 if m["name"] == "update_peers"]
+        self.assertTrue(len(c1_upd_after_dc) >= 1)
+        self.assertEqual(len(c1_upd_after_dc[-1]["args"][0]), 1)
+        self.assertEqual(c1_upd_after_dc[-1]["args"][0][0]["username"], "Alice")
+        self.assertEqual(len(room_users["peer_room"]), 1)
+
+        # 4. c1 disconnects -> room_users purged
+        c1.disconnect()
+        self.assertNotIn("peer_room", room_users)
+
 
 if __name__ == "__main__":
     unittest.main()
