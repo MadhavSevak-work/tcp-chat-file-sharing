@@ -1369,6 +1369,75 @@
     });
   }
 
+  function handleJoinSuccess(data) {
+    if (!data) return;
+
+    if (data.status === "error") {
+      showLoginError(data.message || "Failed to enter room.");
+      return;
+    }
+
+    if (data.username) state.username = data.username;
+    if (data.host) state.host = data.host;
+    if (data.port) state.port = data.port;
+    if (data.roomId || data.room_id) state.roomId = data.roomId || data.room_id;
+
+    // Transition from login modal to main chat UI
+    if (DOM.loginOverlay) {
+      DOM.loginOverlay.classList.add("hidden");
+    }
+    if (DOM.appContainer) {
+      DOM.appContainer.classList.remove("hidden");
+    }
+
+    if (DOM.myUsername && state.username) {
+      DOM.myUsername.textContent = state.username;
+    }
+    if (DOM.myAvatar && state.username) {
+      DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
+      DOM.myAvatar.style.background = getAvatarGradient(state.username);
+      DOM.myAvatar.style.color = "#ffffff";
+    }
+    if (DOM.myEndpoint) {
+      DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
+    }
+
+    if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
+    if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
+    if (DOM.rpTcpHost) DOM.rpTcpHost.textContent = `${state.host}:${state.port}`;
+
+    if (DOM.activeChatTitle && state.roomId) {
+      DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
+      if (DOM.btnCopyRoomLink) {
+        DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (DOM.btnDrawerCopyLink) {
+        DOM.btnDrawerCopyLink.classList.remove("hidden");
+      }
+      try {
+        window.location.hash = "#room=" + encodeURIComponent(state.roomId);
+      } catch (_) {}
+    }
+    if (DOM.activeChatDesc) {
+      DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
+    }
+
+    setConnectionStatus("connected", "Connected");
+
+    logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
+    appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
+
+    // Focus chat input on desktop
+    if (window.innerWidth > 768 && DOM.messageInput) {
+      DOM.messageInput.focus();
+    }
+  }
+
+  // Expose in global scope as well
+  if (typeof window !== "undefined") {
+    window.handleJoinSuccess = handleJoinSuccess;
+  }
+
   function handleConnectClick() {
     if (state.roomMode === "create") {
       handleCreateRoom();
