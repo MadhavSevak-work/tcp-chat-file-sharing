@@ -1436,6 +1436,21 @@
       header.appendChild(e2eeBadge);
     }
 
+    // Convert raw timestamp to clean, human-readable time format (e.g., "12:45 PM")
+    let formattedTime;
+    if (timestamp) {
+      const rawTimestamp = typeof timestamp === "number" ? timestamp : parseFloat(timestamp);
+      if (!isNaN(rawTimestamp)) {
+        const dateObj = new Date(rawTimestamp * 1000); // Backend sends UNIX timestamp in seconds
+        formattedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        formattedTime = timestamp;
+      }
+    } else {
+      const dateObj = new Date();
+      formattedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     if (isPrivate) {
       const badge = document.createElement("span");
       badge.className = "msg-badge badge-private";
@@ -1449,7 +1464,7 @@
 
       const timeEl = document.createElement("span");
       timeEl.className = "msg-time";
-      timeEl.textContent = timestamp || formatTime();
+      timeEl.textContent = formattedTime;
       header.appendChild(timeEl);
     } else {
       const senderEl = document.createElement("span");
@@ -1459,7 +1474,7 @@
 
       const timeEl = document.createElement("span");
       timeEl.className = "msg-time";
-      timeEl.textContent = timestamp || formatTime();
+      timeEl.textContent = formattedTime;
       header.appendChild(timeEl);
     }
 
