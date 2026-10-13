@@ -494,10 +494,10 @@
   // INITIALIZATION & SOCKET SETUP
   // =========================================================================
 
-  // Configurable Render backend target
-  // Can be set globally via window.NETCHAT_BACKEND_URL or defaults to Render production domain
+  // Configurable backend target
+  // Can be set globally via window.NETCHAT_BACKEND_URL or defaults to origin when local, otherwise Render
   const BACKEND_URL = (typeof window !== "undefined" && window.NETCHAT_BACKEND_URL)
-    || ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && window.location.port === "5050"
+    || (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
       ? window.location.origin
       : "https://netchat-live.onrender.com");
 
@@ -795,6 +795,8 @@
   // SHAREABLE ROOM LINK CONTROLLER (AUTO-PIN & DIRECT INVITE)
   // =========================================================================
   function checkUrlRoomHash() {
+    if (state.isConnected && state.roomId) return;
+
     const rawHash = window.location.hash ? window.location.hash.substring(1) : "";
     if (!rawHash) return;
 
@@ -839,6 +841,9 @@
       inviteBanner.innerHTML = `<strong>Room Invite:</strong> Joining room <code>${escapeHtml(roomParam)}</code> (Encryption PIN loaded)`;
       inviteBanner.style.display = "block";
 
+      if (DOM.btnJoinRoomText) {
+        DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
+      }
       if (DOM.connectBtnText) {
         DOM.connectBtnText.textContent = `Join ${roomParam}`;
       }
@@ -848,12 +853,7 @@
         DOM.usernameInput.focus();
       }
 
-      // 4. Clear the hash from the browser address bar immediately so PIN is not left sitting on screen
-      try {
-        history.replaceState(null, null, ' ');
-      } catch (_) {}
-
-      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN. Address bar hash cleared.`);
+      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN.`);
     } else if (roomParam) {
       if (DOM.roomInput) DOM.roomInput.value = roomParam;
       setRoomMode("join");
@@ -870,7 +870,7 @@
     if (!state.roomId) return;
     const roomId = state.roomId;
     const roomPin = state.roomPasskey || "";
-    const inviteUrl = window.location.origin + '/#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
+    const inviteUrl = window.location.origin + window.location.pathname + '#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
 
     let copied = false;
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1299,8 +1299,11 @@
         state.roomPasskey = pin;
         state.isE2EE = true;
 
-        // Clear previous member roster before populating
-        updateUserList([]);
+        // Populate member roster from server acknowledgment or self
+        const initialPeers = (response && (response.users || response.peers) && (response.users || response.peers).length > 0)
+          ? (response.users || response.peers)
+          : [username];
+        updateUserList(initialPeers);
         typingState.activeTypers.forEach((timer) => clearTimeout(timer));
         typingState.activeTypers.clear();
         renderTypingIndicator();
@@ -1364,8 +1367,11 @@
         state.roomPasskey = pin;
         state.isE2EE = true;
 
-        // Clear previous member roster before populating
-        updateUserList([]);
+        // Populate member roster from server acknowledgment or self
+        const initialPeers = (response && (response.users || response.peers) && (response.users || response.peers).length > 0)
+          ? (response.users || response.peers)
+          : [username];
+        updateUserList(initialPeers);
         typingState.activeTypers.forEach((timer) => clearTimeout(timer));
         typingState.activeTypers.clear();
         renderTypingIndicator();
@@ -1400,6 +1406,8 @@
     if (data.port) state.port = data.port;
     if (data.roomId || data.room_id) state.roomId = data.roomId || data.room_id;
 
+    const isFirstEntry = DOM.appContainer && DOM.appContainer.classList.contains("hidden");
+
     // Transition from login modal to main chat UI
     if (DOM.loginOverlay) {
       DOM.loginOverlay.classList.add("hidden");
@@ -1432,18 +1440,25 @@
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
       }
-      try {
-        window.location.hash = "#room=" + encodeURIComponent(state.roomId);
-      } catch (_) {}
     }
-    if (DOM.activeChatDesc) {
-      DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
+    if (DOM.activeChatDesc && state.roomId) {
+      const userNames = (state.onlineUsers || []).map(u => typeof u === "string" ? u : (u.username || "")).filter(Boolean);
+      DOM.activeChatDesc.textContent = userNames.length > 1
+        ? `Zero-Knowledge AES-256-GCM Active · ${userNames.length} Online (${userNames.join(", ")})`
+        : `Zero-Knowledge AES-256-GCM Active · 1 Online (${state.username})`;
     }
 
     setConnectionStatus("connected", "Connected");
 
-    logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
-    appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
+    if (isFirstEntry) {
+      logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
+      appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
+    }
+
+    // Clean hash from URL bar once successfully joined so PIN isn't left visible
+    try {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    } catch (_) {}
 
     // Focus chat input on desktop
     if (window.innerWidth > 768 && DOM.messageInput) {
@@ -1749,7 +1764,20 @@
   function updateUserList(users) {
     if (!Array.isArray(users)) users = [];
     state.onlineUsers = users;
-    const count = users.length;
+
+    // Normalize entries whether users is a list of strings or list of objects {socket_id, username}
+    const normalizedUsers = users.map((u) => {
+      if (typeof u === "string") return { username: u, socket_id: null };
+      if (u && typeof u === "object") return { username: u.username || "", socket_id: u.socket_id || null };
+      return { username: String(u || ""), socket_id: null };
+    }).filter(u => Boolean(u.username));
+
+    // Ensure current user is in the roster if connected in a room
+    if (state.roomId && state.username && !normalizedUsers.some(u => u.username.toLowerCase() === state.username.toLowerCase())) {
+      normalizedUsers.unshift({ username: state.username, socket_id: state.socket?.id || null });
+    }
+
+    const count = normalizedUsers.length;
     if (DOM.userCount) DOM.userCount.textContent = count;
     if (DOM.mobileUserCount) DOM.mobileUserCount.textContent = count;
     if (DOM.diagPeerCount) {
@@ -1758,13 +1786,6 @@
     if (DOM.rpPeerCount) {
       DOM.rpPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
     }
-
-    // Normalize entries whether users is a list of strings or list of objects {socket_id, username}
-    const normalizedUsers = users.map((u) => {
-      if (typeof u === "string") return { username: u, socket_id: null };
-      if (u && typeof u === "object") return { username: u.username || "", socket_id: u.socket_id || null };
-      return { username: String(u || ""), socket_id: null };
-    }).filter(u => Boolean(u.username));
 
     const usernames = normalizedUsers.map(u => u.username);
 
@@ -1874,6 +1895,13 @@
         DOM.fileRecipientSelect.value = "__BROADCAST__";
       }
       updateBroadcastBadge();
+    }
+
+    if (DOM.activeChatDesc && state.roomId) {
+      const peerNames = normalizedUsers.map(u => u.username).join(", ");
+      DOM.activeChatDesc.textContent = count > 1
+        ? `Zero-Knowledge AES-256-GCM Active · ${count} Online (${peerNames})`
+        : `Zero-Knowledge AES-256-GCM Active · 1 Online (${state.username || peerNames})`;
     }
   }
 

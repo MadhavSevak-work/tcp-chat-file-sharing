@@ -487,7 +487,8 @@ def handle_create_room(data):
         "status": "success",
         "room_id": room_id,
         "username": username,
-        "peers": peers
+        "peers": peers,
+        "users": current_room_users
     }
 
 
@@ -617,7 +618,8 @@ def handle_join_room(data):
         "status": "success",
         "room_id": room_id,
         "username": username,
-        "peers": peers
+        "peers": peers,
+        "users": current_room_users
     }
 
 
