@@ -273,36 +273,50 @@ html, body {
   pointer-events: none;
 }
 
-/* Primary Button (WhatsApp Teal) */
+/* Primary Button (High-Contrast White on Black Canvas) */
 .btn-primary {
-  background-color: var(--primary-accent);
-  color: var(--accent-contrast);
+  background-color: var(--primary-accent, #f4f4f5);
+  color: #18181b !important;
   box-shadow: var(--shadow-sm);
 }
 .btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-accent-hover);
+  background-color: var(--primary-accent-hover, #ffffff);
 }
 .btn-primary:active:not(:disabled) {
-  background-color: var(--primary-accent-active);
+  background-color: var(--primary-accent-active, #e4e4e7);
+}
+.btn-primary svg {
+  color: #18181b !important;
+  stroke: #18181b !important;
+}
+.btn-primary span {
+  color: #18181b !important;
 }
 
 /* Secondary Button */
 .btn-secondary {
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
+  background-color: var(--bg-elevated, #18181b);
+  border: 1px solid var(--border-subtle, #3f3f46);
+  color: var(--text-primary, #f4f4f5) !important;
 }
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--bg-hover);
-  border-color: var(--border-strong);
+  background-color: var(--bg-hover, #27272a);
+  border-color: var(--border-strong, #52525b);
+}
+.btn-secondary svg {
+  color: #f4f4f5 !important;
+  stroke: #f4f4f5 !important;
+}
+.btn-secondary span {
+  color: #f4f4f5 !important;
 }
 
 .btn-success {
-  background-color: var(--primary-accent);
-  color: var(--accent-contrast);
+  background-color: #22c55e;
+  color: #ffffff !important;
 }
 .btn-success:hover:not(:disabled) {
-  background-color: var(--primary-accent-hover);
+  background-color: #16a34a;
 }
 
 .btn-outline-danger {
@@ -409,6 +423,7 @@ html, body {
 }
 
 input[type="text"],
+input[type="password"],
 input[type="number"],
 select {
   width: 100%;
@@ -426,7 +441,7 @@ input:focus,
 select:focus {
   outline: none;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.2);
+  box-shadow: 0 0 0 2px rgba(113, 113, 122, 0.25);
 }
 
 .field-hint {
@@ -709,8 +724,8 @@ select:focus {
 /* ==================== E2EE ROOM SELECTOR & PASSKEY ==================== */
 .room-mode-tabs {
   display: flex;
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  background-color: #18181b;
+  border: 1px solid #27272a;
   border-radius: var(--radius-sm);
   padding: 4px;
   gap: 4px;
@@ -722,7 +737,7 @@ select:focus {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: #a1a1aa;
   font-size: 0.825rem;
   font-weight: 600;
   border-radius: calc(var(--radius-sm) - 2px);
@@ -732,13 +747,13 @@ select:focus {
 }
 
 .room-mode-tab:hover {
-  color: var(--text-primary);
+  color: #f4f4f5;
 }
 
 .room-mode-tab.active {
-  background-color: var(--primary-accent);
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background-color: #27272a !important;
+  color: #f4f4f5 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .input-with-action {
