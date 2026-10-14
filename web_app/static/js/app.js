@@ -77,7 +77,8 @@
     sidebar: document.getElementById("sidebar"),
     sidebarBackdrop: document.getElementById("sidebar-backdrop"),
     sidebarCloseBtn: document.getElementById("sidebar-close-btn"),
-    btnMobileMenu: document.getElementById("btn-mobile-menu"),
+    btnSidebarToggle: document.getElementById("btn-sidebar-toggle"),
+    btnMobileMenu: document.getElementById("btn-mobile-menu") || document.getElementById("btn-sidebar-toggle"),
     sidebarStatusBadge: document.querySelector(".sidebar-brand .badge-status"),
     myAvatar: document.getElementById("my-avatar"),
     myUsername: document.getElementById("my-username"),
@@ -450,6 +451,20 @@
     }
     if (DOM.tabPeers && DOM.tabPeers.classList.contains("active")) {
       setMobileActiveTab("chat");
+    }
+  }
+
+  function toggleSidebar() {
+    if (window.innerWidth <= 768) {
+      if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
+    } else {
+      if (DOM.sidebar) {
+        DOM.sidebar.classList.toggle("collapsed");
+      }
     }
   }
 
@@ -1027,7 +1042,7 @@
       }
       const peerList = data.peers || data.members || [];
       if (DOM.activeChatDesc) {
-        DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+        DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
       }
       updateUserList(peerList);
     });
@@ -1044,7 +1059,7 @@
         const peerList = data.peers || [];
         updateUserList(peerList);
         if (DOM.activeChatDesc) {
-          DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+          DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
         }
       }
     });
@@ -1093,7 +1108,7 @@
           const peerList = data.peers || data.members;
           updateUserList(peerList);
           if (DOM.activeChatDesc) {
-            DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+            DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
           }
         }
         return;
@@ -1442,17 +1457,14 @@
       }
     }
     if (DOM.activeChatDesc && state.roomId) {
-      const userNames = (state.onlineUsers || []).map(u => typeof u === "string" ? u : (u.username || "")).filter(Boolean);
-      DOM.activeChatDesc.textContent = userNames.length > 1
-        ? `Zero-Knowledge AES-256-GCM Active · ${userNames.length} Online (${userNames.join(", ")})`
-        : `Zero-Knowledge AES-256-GCM Active · 1 Online (${state.username})`;
+      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
     }
 
     setConnectionStatus("connected", "Connected");
 
     if (isFirstEntry) {
-      logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
-      appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
+      logActivity(`Successfully connected as '${state.username}'. Room: ${state.roomId}`);
+      appendSystemMessage(`🔒 Entered ephemeral room '${state.roomId}' as '${state.username}'.`);
     }
 
     // Clean hash from URL bar once successfully joined so PIN isn't left visible
@@ -1630,7 +1642,7 @@
     if (state.isE2EE) {
       const e2eeBadge = document.createElement("span");
       e2eeBadge.className = isDecryptError ? "msg-badge badge-warning" : "msg-badge badge-success";
-      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "E2EE"}`;
+      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "Ephemeral"}`;
       header.appendChild(e2eeBadge);
     }
 
@@ -1898,10 +1910,7 @@
     }
 
     if (DOM.activeChatDesc && state.roomId) {
-      const peerNames = normalizedUsers.map(u => u.username).join(", ");
-      DOM.activeChatDesc.textContent = count > 1
-        ? `Zero-Knowledge AES-256-GCM Active · ${count} Online (${peerNames})`
-        : `Zero-Knowledge AES-256-GCM Active · 1 Online (${state.username || peerNames})`;
+      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
     }
   }
 
@@ -2588,15 +2597,12 @@
       DOM.btnLoginThemeToggle.addEventListener("click", toggleTheme);
     }
 
-    // Mobile Sidebar Drawer
-    if (DOM.btnMobileMenu) {
-      DOM.btnMobileMenu.addEventListener("click", () => {
-        if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
-          closeSidebar();
-        } else {
-          openSidebar();
-        }
-      });
+    // Sidebar Toggle & Mobile Drawer
+    if (DOM.btnSidebarToggle) {
+      DOM.btnSidebarToggle.addEventListener("click", toggleSidebar);
+    }
+    if (DOM.btnMobileMenu && DOM.btnMobileMenu !== DOM.btnSidebarToggle) {
+      DOM.btnMobileMenu.addEventListener("click", toggleSidebar);
     }
     if (DOM.sidebarCloseBtn) {
       DOM.sidebarCloseBtn.addEventListener("click", closeSidebar);

@@ -45,6 +45,10 @@
     loginOverlay: document.getElementById("login-overlay"),
     btnModeCreate: document.getElementById("btn-mode-create"),
     btnModeJoin: document.getElementById("btn-mode-join"),
+    btnCreateRoom: document.getElementById("btn-create-room"),
+    btnJoinRoom: document.getElementById("btn-join-room"),
+    btnCreateRoomText: document.getElementById("btn-create-room-text"),
+    btnJoinRoomText: document.getElementById("btn-join-room-text"),
     usernameInput: document.getElementById("username-input"),
     roomInput: document.getElementById("room-input"),
     passkeyInput: document.getElementById("passkey-input"),
@@ -55,8 +59,11 @@
     roomInputHint: document.getElementById("room-input-hint"),
     hostInput: document.getElementById("host-input"),
     portInput: document.getElementById("port-input"),
-    connectBtn: document.getElementById("connect-btn"),
+    connectBtn: document.getElementById("connect-btn") || document.getElementById("btn-create-room"),
     loginError: document.getElementById("login-error"),
+    loginErrorText: document.getElementById("login-error-text"),
+    loginStatusBadge: document.getElementById("login-status-badge"),
+    loginStatusText: document.getElementById("login-status-text"),
     gatewayDisplayName: document.getElementById("gateway-display-name"),
     gatewayDisplayEndpoint: document.getElementById("gateway-display-endpoint"),
     loginGatewayDot: document.getElementById("login-gateway-dot"),
@@ -70,7 +77,8 @@
     sidebar: document.getElementById("sidebar"),
     sidebarBackdrop: document.getElementById("sidebar-backdrop"),
     sidebarCloseBtn: document.getElementById("sidebar-close-btn"),
-    btnMobileMenu: document.getElementById("btn-mobile-menu"),
+    btnSidebarToggle: document.getElementById("btn-sidebar-toggle"),
+    btnMobileMenu: document.getElementById("btn-mobile-menu") || document.getElementById("btn-sidebar-toggle"),
     sidebarStatusBadge: document.querySelector(".sidebar-brand .badge-status"),
     myAvatar: document.getElementById("my-avatar"),
     myUsername: document.getElementById("my-username"),
@@ -104,6 +112,10 @@
     btnJumpLatest: document.getElementById("btn-jump-latest"),
     typingIndicator: document.getElementById("typing-indicator"),
     typingText: document.getElementById("typing-text"),
+    replyBanner: document.getElementById("reply-banner"),
+    replyBannerUser: document.getElementById("reply-banner-user"),
+    replyBannerSnippet: document.getElementById("reply-banner-snippet"),
+    btnCancelReply: document.getElementById("btn-cancel-reply"),
     chatForm: document.getElementById("chat-form"),
     messageInput: document.getElementById("message-input"),
     btnComposerAttach: document.getElementById("btn-composer-attach"),
@@ -249,13 +261,33 @@
   }
 
   // =========================================================================
-  // SINGLE SOURCE OF TRUTH: CONNECTION STATUS MANAGER
+  // SINGLE SOURCE OF TRUTH: CONNECTION STATUS MANAGER & MODAL BADGE
   // =========================================================================
+  function updateModalConnectionBadge(stateClass, labelText) {
+    const badge = DOM.loginStatusBadge || document.getElementById("login-status-badge");
+    const textEl = DOM.loginStatusText || document.getElementById("login-status-text");
+    if (badge) {
+      badge.className = "modal-status-badge " + stateClass;
+    }
+    if (textEl) {
+      textEl.textContent = labelText;
+    }
+  }
+
   function setConnectionStatus(status, label) {
     state.connectionStatus = status; // "connected" | "connecting" | "disconnected"
 
     const isConnected = status === "connected";
     state.isConnected = isConnected;
+
+    // Sync Minimal Modal Connection Status Badge
+    if (status === "connected") {
+      updateModalConnectionBadge("status-connected", "Connected");
+    } else if (status === "connecting") {
+      updateModalConnectionBadge("status-connecting", "Connecting...");
+    } else {
+      updateModalConnectionBadge("status-disconnected", "Offline");
+    }
 
     // Header Status Dot
     if (DOM.headerStatusDot) {
@@ -422,6 +454,20 @@
     }
   }
 
+  function toggleSidebar() {
+    if (window.innerWidth <= 768) {
+      if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
+    } else {
+      if (DOM.sidebar) {
+        DOM.sidebar.classList.toggle("collapsed");
+      }
+    }
+  }
+
   function setMobileActiveTab(tabName) {
     const tabs = [DOM.tabChat, DOM.tabPeers, DOM.tabShare, DOM.tabDiag];
     tabs.forEach((tab) => {
@@ -463,40 +509,22 @@
   // INITIALIZATION & SOCKET SETUP
   // =========================================================================
 
-  // Configurable Render backend target
-  // Can be set globally via window.NETCHAT_BACKEND_URL or defaults to Render production domain
+  // Configurable backend target
+  // Can be set globally via window.NETCHAT_BACKEND_URL or defaults to origin when local, otherwise Render
   const BACKEND_URL = (typeof window !== "undefined" && window.NETCHAT_BACKEND_URL)
-    || ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && window.location.port === "5050"
+    || (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
       ? window.location.origin
       : "https://netchat-live.onrender.com");
 
   let reconnectAttemptsCount = 0;
 
   function updateWakeupBanner(isWaking, message) {
-    if (DOM.loginGatewayDot) {
-      DOM.loginGatewayDot.className = "status-dot " + (isWaking ? "connecting" : (state.isConnected ? "connected" : "disconnected"));
-    }
-    if (DOM.loginGatewayBadge) {
-      DOM.loginGatewayBadge.className = "badge " + (isWaking ? "badge-warning" : (state.isConnected ? "badge-success" : "badge-secondary"));
-      DOM.loginGatewayBadge.textContent = isWaking ? "WAKING UP..." : (state.isConnected ? "READY" : "OFFLINE");
-    }
-    if (DOM.gatewayDisplayEndpoint) {
-      let host = "netchat-live.onrender.com";
-      try { host = new URL(BACKEND_URL).host; } catch (_) {}
-      DOM.gatewayDisplayEndpoint.textContent = isWaking
-        ? (message || "Connecting to Render server... backend may take 30s to wake up")
-        : (state.isConnected ? `Connected: ${host}` : `Target: ${host}`);
-    }
-
-    if (DOM.loginError) {
-      if (isWaking) {
-        DOM.loginError.className = "alert-banner alert-warning";
-        DOM.loginError.innerHTML = `<strong>Notice:</strong> Connecting to Render server... free-tier backend may take ~30s to wake up from idle state.`;
-        DOM.loginError.classList.remove("hidden");
-      } else if (DOM.loginError.classList.contains("alert-warning")) {
-        DOM.loginError.classList.add("hidden");
-        DOM.loginError.className = "alert-banner alert-error hidden";
-      }
+    if (isWaking) {
+      updateModalConnectionBadge("status-connecting", "Connecting...");
+    } else if (state.isConnected) {
+      updateModalConnectionBadge("status-connected", "Connected");
+    } else {
+      updateModalConnectionBadge("status-disconnected", "Offline");
     }
   }
 
@@ -619,11 +647,24 @@
 
   function setRoomMode(mode) {
     state.roomMode = mode;
+    clearLoginError();
     if (DOM.btnModeCreate && DOM.btnModeJoin) {
       DOM.btnModeCreate.classList.toggle("active", mode === "create");
       DOM.btnModeCreate.setAttribute("aria-selected", mode === "create" ? "true" : "false");
       DOM.btnModeJoin.classList.toggle("active", mode === "join");
       DOM.btnModeJoin.setAttribute("aria-selected", mode === "join" ? "true" : "false");
+    }
+
+    const btnCreate = DOM.btnCreateRoom;
+    const btnJoin = DOM.btnJoinRoom;
+    if (btnCreate && btnJoin) {
+      if (mode === "create") {
+        btnCreate.style.display = "inline-flex";
+        btnJoin.style.display = "none";
+      } else {
+        btnCreate.style.display = "none";
+        btnJoin.style.display = "inline-flex";
+      }
     }
 
     if (DOM.connectBtnText) {
@@ -664,6 +705,11 @@
 
     if (!typingState.isTyping) {
       typingState.isTyping = true;
+      state.socket.emit("typing", {
+        room_id: state.roomId,
+        username: state.username
+      });
+      // Also emit user_typing for compatibility
       state.socket.emit("user_typing", {
         room_id: state.roomId,
         username: state.username
@@ -674,6 +720,7 @@
       clearTimeout(typingState.timeout);
     }
 
+    // Debounce: reset 1.5-second timeout on every keystroke
     typingState.timeout = setTimeout(() => {
       stopTyping();
     }, 1500);
@@ -687,6 +734,10 @@
         typingState.timeout = null;
       }
       if (state.roomId && state.username && state.socket) {
+        state.socket.emit("stop_typing", {
+          room_id: state.roomId,
+          username: state.username
+        });
         state.socket.emit("user_stop_typing", {
           room_id: state.roomId,
           username: state.username
@@ -696,32 +747,71 @@
   }
 
   function renderTypingIndicator() {
-    if (!DOM.typingIndicator || !DOM.typingText) return;
+    if (!DOM.typingIndicator) return;
     const typers = Array.from(typingState.activeTypers.keys());
 
     if (typers.length === 0) {
       DOM.typingIndicator.classList.add("hidden");
-      DOM.typingText.textContent = "";
+      if (DOM.typingText) DOM.typingText.textContent = "";
       return;
     }
 
     let text = "";
     if (typers.length === 1) {
-      text = `${escapeHtml(typers[0])} is typing...`;
+      text = `${typers[0]} is typing...`;
     } else if (typers.length === 2) {
-      text = `${escapeHtml(typers[0])} and ${escapeHtml(typers[1])} are typing...`;
+      text = `${typers[0]} and ${typers[1]} are typing...`;
     } else {
-      text = `${escapeHtml(typers[0])}, ${escapeHtml(typers[1])} and ${typers.length - 2} more are typing...`;
+      text = `${typers[0]}, ${typers[1]} and ${typers.length - 2} more are typing...`;
     }
 
-    DOM.typingText.textContent = text;
+    if (DOM.typingText) {
+      DOM.typingText.textContent = text;
+    }
     DOM.typingIndicator.classList.remove("hidden");
+  }
+
+  // =========================================================================
+  // MESSAGE REPLIES CONTROLLER
+  // =========================================================================
+  let activeReply = null; // { id, sender, snippet }
+
+  function initiateReply(messageId, sender, text) {
+    const rawText = (text || "").trim();
+    const snippet = rawText.length > 70 ? rawText.substring(0, 70) + "..." : rawText;
+
+    activeReply = {
+      id: messageId || "",
+      sender: sender || "Anonymous",
+      snippet: snippet || "(attachment)"
+    };
+
+    if (DOM.replyBanner) {
+      if (DOM.replyBannerUser) DOM.replyBannerUser.textContent = activeReply.sender;
+      if (DOM.replyBannerSnippet) DOM.replyBannerSnippet.textContent = activeReply.snippet;
+      DOM.replyBanner.classList.remove("hidden");
+    }
+
+    if (DOM.messageInput) {
+      DOM.messageInput.focus();
+    }
+  }
+
+  function cancelReply() {
+    activeReply = null;
+    if (DOM.replyBanner) {
+      DOM.replyBanner.classList.add("hidden");
+      if (DOM.replyBannerUser) DOM.replyBannerUser.textContent = "";
+      if (DOM.replyBannerSnippet) DOM.replyBannerSnippet.textContent = "";
+    }
   }
 
   // =========================================================================
   // SHAREABLE ROOM LINK CONTROLLER (AUTO-PIN & DIRECT INVITE)
   // =========================================================================
   function checkUrlRoomHash() {
+    if (state.isConnected && state.roomId) return;
+
     const rawHash = window.location.hash ? window.location.hash.substring(1) : "";
     if (!rawHash) return;
 
@@ -766,6 +856,9 @@
       inviteBanner.innerHTML = `<strong>Room Invite:</strong> Joining room <code>${escapeHtml(roomParam)}</code> (Encryption PIN loaded)`;
       inviteBanner.style.display = "block";
 
+      if (DOM.btnJoinRoomText) {
+        DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
+      }
       if (DOM.connectBtnText) {
         DOM.connectBtnText.textContent = `Join ${roomParam}`;
       }
@@ -775,12 +868,7 @@
         DOM.usernameInput.focus();
       }
 
-      // 4. Clear the hash from the browser address bar immediately so PIN is not left sitting on screen
-      try {
-        history.replaceState(null, null, ' ');
-      } catch (_) {}
-
-      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN. Address bar hash cleared.`);
+      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN.`);
     } else if (roomParam) {
       if (DOM.roomInput) DOM.roomInput.value = roomParam;
       setRoomMode("join");
@@ -797,7 +885,7 @@
     if (!state.roomId) return;
     const roomId = state.roomId;
     const roomPin = state.roomPasskey || "";
-    const inviteUrl = window.location.origin + '/#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
+    const inviteUrl = window.location.origin + window.location.pathname + '#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
 
     let copied = false;
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -849,7 +937,8 @@
 
   function init() {
     initTheme();
-    setConnectionStatus("disconnected", "Disconnected");
+    updateModalConnectionBadge("status-connecting", "Connecting...");
+    setConnectionStatus("disconnected", "Connecting...");
 
     // Detect environment host for user-facing connection banner
     let hostLabel = "netchat-live.onrender.com";
@@ -871,7 +960,7 @@
   }
 
   function connectSocket() {
-    updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+    updateModalConnectionBadge("status-connecting", "Connecting...");
 
     state.socket = io(BACKEND_URL, {
       transports: ["websocket", "polling"],
@@ -883,36 +972,33 @@
     state.socket.on("connect", () => {
       logActivity(`WebSocket transport established with Gateway (${BACKEND_URL}).`);
       reconnectAttemptsCount = 0;
-      updateWakeupBanner(false);
+      updateModalConnectionBadge("status-connected", "Connected");
       if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
       if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
-      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot connected";
-      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "READY";
       startPingMonitoring();
     });
 
     state.socket.on("disconnect", () => {
       logActivity("WebSocket connection to Gateway closed.");
       setConnectionStatus("disconnected", "Disconnected");
-      if (DOM.loginGatewayDot) DOM.loginGatewayDot.className = "status-dot disconnected";
-      if (DOM.loginGatewayBadge) DOM.loginGatewayBadge.textContent = "OFFLINE";
+      updateModalConnectionBadge("status-disconnected", "Offline");
     });
 
     state.socket.on("connect_error", (error) => {
       reconnectAttemptsCount++;
-      logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount}): Render backend waking up...`);
+      logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount})...`);
       setConnectionStatus("disconnected", "Connecting...");
-      updateWakeupBanner(true, `Connecting to Render server (attempt ${reconnectAttemptsCount})... backend may take 30s to wake up`);
+      updateModalConnectionBadge("status-connecting", "Connecting...");
     });
 
     if (state.socket.io) {
       state.socket.io.on("reconnect_attempt", (attempt) => {
-        updateWakeupBanner(true, `Reconnecting to Render server (attempt ${attempt})... waking up`);
+        updateModalConnectionBadge("status-connecting", "Connecting...");
       });
 
       state.socket.io.on("reconnect", () => {
-        logActivity("Reconnected to Render backend successfully!");
-        updateWakeupBanner(false);
+        logActivity("Reconnected to backend successfully!");
+        updateModalConnectionBadge("status-connected", "Connected");
       });
     }
 
@@ -956,9 +1042,15 @@
       }
       const peerList = data.peers || data.members || [];
       if (DOM.activeChatDesc) {
-        DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+        DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
       }
       updateUserList(peerList);
+    });
+
+    state.socket.on("update_peers", (users) => {
+      if (Array.isArray(users)) {
+        updateUserList(users);
+      }
     });
 
     state.socket.on("room_peers_update", (data) => {
@@ -967,13 +1059,13 @@
         const peerList = data.peers || [];
         updateUserList(peerList);
         if (DOM.activeChatDesc) {
-          DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+          DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
         }
       }
     });
 
     // Real-Time Typing Indicator Socket Listeners
-    state.socket.on("user_typing", (data) => {
+    const handleRemoteTyping = (data) => {
       if (!data || data.room_id !== state.roomId) return;
       if (data.username && data.username.toLowerCase() !== state.username.toLowerCase()) {
         if (typingState.activeTypers.has(data.username)) {
@@ -986,16 +1078,20 @@
         typingState.activeTypers.set(data.username, timer);
         renderTypingIndicator();
       }
-    });
+    };
+    state.socket.on("typing", handleRemoteTyping);
+    state.socket.on("user_typing", handleRemoteTyping);
 
-    state.socket.on("user_stop_typing", (data) => {
+    const handleRemoteStopTyping = (data) => {
       if (!data || data.room_id !== state.roomId) return;
       if (data.username && typingState.activeTypers.has(data.username)) {
         clearTimeout(typingState.activeTypers.get(data.username));
         typingState.activeTypers.delete(data.username);
         renderTypingIndicator();
       }
-    });
+    };
+    state.socket.on("stop_typing", handleRemoteStopTyping);
+    state.socket.on("user_stop_typing", handleRemoteStopTyping);
 
     state.socket.on("receive_message", async (data) => {
       if (!data) return;
@@ -1012,7 +1108,7 @@
           const peerList = data.peers || data.members;
           updateUserList(peerList);
           if (DOM.activeChatDesc) {
-            DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Peers: ${peerList.length}`;
+            DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
           }
         }
         return;
@@ -1021,12 +1117,13 @@
       if (data.payload) {
         // Zero-Knowledge message decryption flow using in-memory passkey
         const decrypted = await E2EE.decryptMessage(data.payload, state.roomPasskey);
+        const msgId = data.id || data.message_id || ((window.crypto && typeof crypto.randomUUID === "function") ? crypto.randomUUID() : ("msg-" + Math.random().toString(36).substring(2, 9)));
         if (decrypted !== null) {
-          appendChatMessage(data.sender, decrypted, data.timestamp, false);
+          appendChatMessage(data.sender, decrypted, data.timestamp, false, null, false, msgId, data.reply_to);
           logActivity(`[E2EE Decrypt OK] Packet verified and decrypted from ${data.sender}.`);
         } else {
           // Graceful decryption failure without crashing the client app
-          appendChatMessage(data.sender, "[Unable to decrypt: Invalid Passkey]", data.timestamp, false, null, true);
+          appendChatMessage(data.sender, "[Unable to decrypt: Invalid Passkey]", data.timestamp, false, null, true, msgId, data.reply_to);
           logActivity(`[E2EE Decrypt FAIL] MAC tag mismatch / invalid passkey from ${data.sender}.`);
         }
       }
@@ -1038,13 +1135,13 @@
 
     // Chat & Networking Events
     state.socket.on("chat_message", (data) => {
-      appendChatMessage(data.sender, data.content, data.timestamp, false);
+      appendChatMessage(data.sender, data.content, data.timestamp, false, null, false, data.id, data.reply_to);
     });
 
     state.socket.on("private_message", (data) => {
       const isMe = data.sender.toLowerCase() === state.username.toLowerCase();
       const peer = isMe ? data.recipient : data.sender;
-      appendChatMessage(data.sender, data.content, data.timestamp, true, peer);
+      appendChatMessage(data.sender, data.content, data.timestamp, true, peer, false, data.id, data.reply_to);
     });
 
     state.socket.on("user_list", (data) => {
@@ -1121,69 +1218,230 @@
   // =========================================================================
   // LOGIN, E2EE ROOM SETUP & AUTHENTICATION
   // =========================================================================
-  function handleConnectClick() {
+  function setButtonsLoading(isLoading, activeBtnId = null) {
+    const btnCreate = DOM.btnCreateRoom;
+    const btnJoin = DOM.btnJoinRoom;
+
+    if (btnCreate) {
+      btnCreate.disabled = isLoading;
+      if (isLoading && activeBtnId === "btn-create-room") {
+        btnCreate.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span id="btn-create-room-text">Connecting...</span>`;
+      } else {
+        btnCreate.innerHTML = `<span id="btn-create-room-text">Create Room</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-lock"></use></svg>`;
+      }
+    }
+
+    if (btnJoin) {
+      btnJoin.disabled = isLoading;
+      if (isLoading && activeBtnId === "btn-join-room") {
+        btnJoin.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span id="btn-join-room-text">Connecting...</span>`;
+      } else {
+        btnJoin.innerHTML = `<span id="btn-join-room-text">Join Room</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
+      }
+    }
+
+    if (DOM.connectBtn && DOM.connectBtn !== btnCreate && DOM.connectBtn !== btnJoin) {
+      DOM.connectBtn.disabled = isLoading;
+    }
+  }
+
+  function showLoginError(msg) {
+    setConnectionStatus("disconnected", "Disconnected");
+    setButtonsLoading(false);
+    let errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
+    if (!errorSpan && DOM.loginError) {
+      DOM.loginError.innerHTML = `<span id="login-error-text" class="login-error-text" style="color: #ef4444; font-weight: 500;"></span>`;
+      errorSpan = DOM.loginError.querySelector("#login-error-text");
+      DOM.loginErrorText = errorSpan;
+    }
+    if (errorSpan) {
+      errorSpan.textContent = msg;
+    }
+    if (DOM.loginError) {
+      DOM.loginError.classList.remove("hidden");
+    }
+  }
+
+  function clearLoginError() {
+    const errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
+    if (errorSpan) {
+      errorSpan.textContent = "";
+    }
+    if (DOM.loginError) {
+      DOM.loginError.classList.add("hidden");
+    }
+  }
+
+  function handleCreateRoom() {
+    clearLoginError();
+
     const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
     const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
-    const passkey = DOM.passkeyInput ? DOM.passkeyInput.value : "";
+    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
 
     if (!username) {
       showLoginError("Please enter a nickname.");
+      if (DOM.usernameInput) DOM.usernameInput.focus();
       return;
     }
 
     if (!roomId) {
       showLoginError("Please enter or generate a Room ID.");
+      if (DOM.roomInput) DOM.roomInput.focus();
       return;
     }
 
-    if (!passkey) {
-      showLoginError("Please enter a Room Passkey for client-side encryption.");
+    if (!pin) {
+      showLoginError("Please enter a Room PIN.");
+      if (DOM.passkeyInput) DOM.passkeyInput.focus();
       return;
     }
 
     if (!state.socket || !state.socket.connected) {
-      showLoginError("Render backend is still waking up from idle state (~30s). Please wait a moment and try again.");
-      updateWakeupBanner(true, "Connecting to Render server... backend may take 30s to wake up");
+      showLoginError("Connecting to server. Please wait a moment and try again.");
       return;
     }
 
-    DOM.connectBtn.disabled = true;
-    DOM.connectBtn.innerHTML = `<svg class="svg-icon sm spinning" aria-hidden="true"><use href="#icon-loader-circle"></use></svg> <span>Entering E2EE Room...</span>`;
-    DOM.loginError.classList.add("hidden");
+    setButtonsLoading(true, "btn-create-room");
     setConnectionStatus("connecting", "Connecting...");
 
-    // Clear previous member roster immediately before populating the new room's roster
-    updateUserList([]);
-    typingState.activeTypers.forEach((timer) => clearTimeout(timer));
-    typingState.activeTypers.clear();
-    renderTypingIndicator();
+    state.socket.emit("create_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+      setButtonsLoading(false);
+      if (response && response.status === "success") {
+        // Save credentials in memory (zero-retention)
+        state.username = username;
+        state.roomId = roomId;
+        state.roomPasskey = pin;
+        state.isE2EE = true;
 
-    // Store strictly in client memory - never persisted to localStorage or cookies!
-    state.username = username;
-    state.roomId = roomId;
-    state.roomPasskey = passkey;
-    state.isE2EE = true;
+        // Populate member roster from server acknowledgment or self
+        const initialPeers = (response && (response.users || response.peers) && (response.users || response.peers).length > 0)
+          ? (response.users || response.peers)
+          : [username];
+        updateUserList(initialPeers);
+        typingState.activeTypers.forEach((timer) => clearTimeout(timer));
+        typingState.activeTypers.clear();
+        renderTypingIndicator();
 
-    logActivity(`Joining E2EE room '${roomId}' as '${username}' with client-side AES-256-GCM key derivation...`);
+        // Register underlying gateway TCP session
+        state.socket.emit("join", { username });
 
-    // Emit TCP join and SocketIO room join
-    state.socket.emit("join", { username });
-    state.socket.emit("join_room", { room_id: roomId, username: username });
+        // Close modal and render chat UI
+        handleJoinSuccess({
+          username: username,
+          host: state.host,
+          port: state.port,
+          roomId: roomId
+        });
+      } else {
+        const errorMsg = (response && response.message) ? response.message : "Room already exists";
+        showLoginError(errorMsg);
+      }
+    });
+  }
+
+  function handleJoinRoom() {
+    clearLoginError();
+
+    const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
+    const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
+    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
+
+    if (!username) {
+      showLoginError("Please enter a nickname.");
+      if (DOM.usernameInput) DOM.usernameInput.focus();
+      return;
+    }
+
+    if (!roomId) {
+      showLoginError("Please enter a Room ID.");
+      if (DOM.roomInput) DOM.roomInput.focus();
+      return;
+    }
+
+    if (!pin) {
+      showLoginError("Please enter the Room PIN.");
+      if (DOM.passkeyInput) DOM.passkeyInput.focus();
+      return;
+    }
+
+    if (!state.socket || !state.socket.connected) {
+      showLoginError("Connecting to server. Please wait a moment and try again.");
+      return;
+    }
+
+    setButtonsLoading(true, "btn-join-room");
+    setConnectionStatus("connecting", "Connecting...");
+
+    state.socket.emit("join_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+      setButtonsLoading(false);
+      if (response && response.status === "success") {
+        // Save credentials in memory (zero-retention)
+        state.username = username;
+        state.roomId = roomId;
+        state.roomPasskey = pin;
+        state.isE2EE = true;
+
+        // Populate member roster from server acknowledgment or self
+        const initialPeers = (response && (response.users || response.peers) && (response.users || response.peers).length > 0)
+          ? (response.users || response.peers)
+          : [username];
+        updateUserList(initialPeers);
+        typingState.activeTypers.forEach((timer) => clearTimeout(timer));
+        typingState.activeTypers.clear();
+        renderTypingIndicator();
+
+        // Register underlying gateway TCP session
+        state.socket.emit("join", { username });
+
+        // Close modal and render chat UI
+        handleJoinSuccess({
+          username: username,
+          host: state.host,
+          port: state.port,
+          roomId: roomId
+        });
+      } else {
+        const errorMsg = (response && response.message) ? response.message : "Invalid PIN or Room not found";
+        showLoginError(errorMsg);
+      }
+    });
   }
 
   function handleJoinSuccess(data) {
-    state.username = data.username;
-    state.host = data.host;
-    state.port = data.port;
+    if (!data) return;
 
-    DOM.loginOverlay.classList.add("hidden");
-    DOM.appContainer.classList.remove("hidden");
+    if (data.status === "error") {
+      showLoginError(data.message || "Failed to enter room.");
+      return;
+    }
 
-    DOM.myUsername.textContent = state.username;
-    DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
-    DOM.myAvatar.style.background = getAvatarGradient(state.username);
-    DOM.myAvatar.style.color = "#ffffff";
-    DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
+    if (data.username) state.username = data.username;
+    if (data.host) state.host = data.host;
+    if (data.port) state.port = data.port;
+    if (data.roomId || data.room_id) state.roomId = data.roomId || data.room_id;
+
+    const isFirstEntry = DOM.appContainer && DOM.appContainer.classList.contains("hidden");
+
+    // Transition from login modal to main chat UI
+    if (DOM.loginOverlay) {
+      DOM.loginOverlay.classList.add("hidden");
+    }
+    if (DOM.appContainer) {
+      DOM.appContainer.classList.remove("hidden");
+    }
+
+    if (DOM.myUsername && state.username) {
+      DOM.myUsername.textContent = state.username;
+    }
+    if (DOM.myAvatar && state.username) {
+      DOM.myAvatar.textContent = state.username.charAt(0).toUpperCase();
+      DOM.myAvatar.style.background = getAvatarGradient(state.username);
+      DOM.myAvatar.style.color = "#ffffff";
+    }
+    if (DOM.myEndpoint) {
+      DOM.myEndpoint.textContent = `${state.host}:${state.port}`;
+    }
 
     if (DOM.miniTcpTarget) DOM.miniTcpTarget.textContent = state.port;
     if (DOM.diagTcpHost) DOM.diagTcpHost.textContent = `${state.host}:${state.port}`;
@@ -1197,18 +1455,22 @@
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
       }
-      try {
-        window.location.hash = "#room=" + encodeURIComponent(state.roomId);
-      } catch (_) {}
     }
-    if (DOM.activeChatDesc) {
-      DOM.activeChatDesc.textContent = `Zero-Knowledge AES-256-GCM Active · Relay: Render`;
+    if (DOM.activeChatDesc && state.roomId) {
+      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
     }
 
     setConnectionStatus("connected", "Connected");
 
-    logActivity(`Successfully connected as '${state.username}'. E2EE Room: ${state.roomId}`);
-    appendSystemMessage(`🔒 Entered end-to-end encrypted room '${state.roomId}' as '${state.username}'.`);
+    if (isFirstEntry) {
+      logActivity(`Successfully connected as '${state.username}'. Room: ${state.roomId}`);
+      appendSystemMessage(`🔒 Entered ephemeral room '${state.roomId}' as '${state.username}'.`);
+    }
+
+    // Clean hash from URL bar once successfully joined so PIN isn't left visible
+    try {
+      history.replaceState(null, document.title, window.location.pathname + window.location.search);
+    } catch (_) {}
 
     // Focus chat input on desktop
     if (window.innerWidth > 768 && DOM.messageInput) {
@@ -1216,13 +1478,17 @@
     }
   }
 
-  function showLoginError(msg) {
-    setConnectionStatus("disconnected", "Disconnected");
-    DOM.loginError.textContent = msg;
-    DOM.loginError.classList.remove("hidden");
-    DOM.connectBtn.disabled = false;
-    const btnLabel = state.roomMode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
-    DOM.connectBtn.innerHTML = `<span>${btnLabel}</span> <svg class="svg-icon" aria-hidden="true"><use href="#icon-send"></use></svg>`;
+  // Expose in global scope as well
+  if (typeof window !== "undefined") {
+    window.handleJoinSuccess = handleJoinSuccess;
+  }
+
+  function handleConnectClick() {
+    if (state.roomMode === "create") {
+      handleCreateRoom();
+    } else {
+      handleJoinRoom();
+    }
   }
 
   // =========================================================================
@@ -1237,15 +1503,32 @@
 
     DOM.messageInput.value = "";
 
+    // Generate unique ID for every sent message using crypto.randomUUID()
+    const msgId = (window.crypto && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : ("msg-" + Date.now() + "-" + Math.random().toString(36).substring(2, 9));
+
+    // Capture reply context if active
+    const replyPayload = activeReply ? {
+      id: activeReply.id,
+      sender: activeReply.sender,
+      snippet: activeReply.snippet
+    } : null;
+
     // E2EE Room encryption flow
     if (state.roomId && state.roomPasskey) {
       try {
         const ciphertextBase64 = await E2EE.encryptMessage(text, state.roomPasskey);
-        state.socket.emit("send_message", {
+        const msgPacket = {
+          id: msgId,
           room_id: state.roomId,
           username: state.username,
           payload: ciphertextBase64
-        });
+        };
+        if (replyPayload) {
+          msgPacket.reply_to = replyPayload;
+        }
+        state.socket.emit("send_message", msgPacket);
         logActivity(`Encrypted and dispatched packet to room '${state.roomId}'.`);
       } catch (err) {
         console.error("Encryption error:", err);
@@ -1254,15 +1537,24 @@
     } else if (state.activeChatTarget) {
       // Send Private Whisper
       state.socket.emit("send_private", {
+        id: msgId,
         recipient: state.activeChatTarget,
-        content: text
+        content: text,
+        reply_to: replyPayload
       });
       logActivity(`Sent private message to ${state.activeChatTarget}.`);
     } else {
       // Send Public Broadcast
-      state.socket.emit("send_chat", { content: text });
+      state.socket.emit("send_chat", {
+        id: msgId,
+        content: text,
+        reply_to: replyPayload
+      });
       logActivity(`Sent public broadcast message.`);
     }
+
+    // Frontend Cleanup: Clear active reply context variable and hide reply banner
+    cancelReply();
 
     scrollToBottom(true);
   }
@@ -1327,16 +1619,22 @@
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false) {
+  function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false, messageId = null, replyTo = null) {
     if (DOM.emptyState) {
       DOM.emptyState.style.display = "none";
     }
 
     const wasNearBottom = isUserNearBottom();
 
+    // Unique Message ID
+    const msgId = messageId || ((window.crypto && typeof crypto.randomUUID === "function")
+      ? crypto.randomUUID()
+      : ("msg-" + Date.now() + "-" + Math.random().toString(36).substring(2, 9)));
+
     const isMe = sender && state.username && sender.toLowerCase() === state.username.toLowerCase();
     const bubble = document.createElement("div");
     bubble.className = `message-bubble ${isMe ? "mine" : ""} ${isPrivate ? "private" : ""} ${isDecryptError ? "decrypt-error" : ""}`;
+    bubble.dataset.messageId = msgId;
 
     const header = document.createElement("div");
     header.className = "msg-header";
@@ -1344,8 +1642,23 @@
     if (state.isE2EE) {
       const e2eeBadge = document.createElement("span");
       e2eeBadge.className = isDecryptError ? "msg-badge badge-warning" : "msg-badge badge-success";
-      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "E2EE"}`;
+      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "Ephemeral"}`;
       header.appendChild(e2eeBadge);
+    }
+
+    // Convert raw timestamp to clean, human-readable time format (e.g., "12:45 PM")
+    let formattedTime;
+    if (timestamp) {
+      const rawTimestamp = typeof timestamp === "number" ? timestamp : parseFloat(timestamp);
+      if (!isNaN(rawTimestamp)) {
+        const dateObj = new Date(rawTimestamp * 1000); // Backend sends UNIX timestamp in seconds
+        formattedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        formattedTime = timestamp;
+      }
+    } else {
+      const dateObj = new Date();
+      formattedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
     if (isPrivate) {
@@ -1361,7 +1674,7 @@
 
       const timeEl = document.createElement("span");
       timeEl.className = "msg-time";
-      timeEl.textContent = timestamp || formatTime();
+      timeEl.textContent = formattedTime;
       header.appendChild(timeEl);
     } else {
       const senderEl = document.createElement("span");
@@ -1371,16 +1684,62 @@
 
       const timeEl = document.createElement("span");
       timeEl.className = "msg-time";
-      timeEl.textContent = timestamp || formatTime();
+      timeEl.textContent = formattedTime;
       header.appendChild(timeEl);
+    }
+
+    // Small Reply Button on every rendered chat message
+    if (!isDecryptError) {
+      const replyBtn = document.createElement("button");
+      replyBtn.type = "button";
+      replyBtn.className = "msg-reply-btn";
+      replyBtn.title = "Reply to this message";
+      replyBtn.setAttribute("aria-label", `Reply to ${sender}`);
+      replyBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-reply"></use></svg><span>Reply</span>`;
+      replyBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        initiateReply(msgId, sender, content);
+      });
+      header.appendChild(replyBtn);
+    }
+
+    bubble.appendChild(header);
+
+    // If reply_to payload exists, render styled blockquote or nested div directly above the message text
+    if (replyTo && (replyTo.snippet || replyTo.sender)) {
+      const quoteDiv = document.createElement("div");
+      quoteDiv.className = "msg-reply-quote";
+      if (replyTo.id) {
+        quoteDiv.dataset.replyTargetId = replyTo.id;
+        quoteDiv.title = "Jump to original quoted message";
+        quoteDiv.addEventListener("click", () => {
+          const target = document.querySelector(`[data-message-id="${replyTo.id}"]`);
+          if (target) {
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            target.classList.add("msg-highlight-pulse");
+            setTimeout(() => target.classList.remove("msg-highlight-pulse"), 1600);
+          }
+        });
+      }
+
+      const quoteSender = document.createElement("div");
+      quoteSender.className = "msg-reply-quote-sender";
+      quoteSender.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-reply"></use></svg><span>${escapeHtml(replyTo.sender || "User")}</span>`;
+
+      const quoteSnippet = document.createElement("div");
+      quoteSnippet.className = "msg-reply-quote-snippet";
+      quoteSnippet.textContent = replyTo.snippet || "";
+
+      quoteDiv.appendChild(quoteSender);
+      quoteDiv.appendChild(quoteSnippet);
+      bubble.appendChild(quoteDiv);
     }
 
     const body = document.createElement("div");
     body.className = "msg-content" + (isDecryptError ? " msg-decrypt-error" : "");
     body.textContent = content;
-
-    bubble.appendChild(header);
     bubble.appendChild(body);
+
     DOM.messagesContainer.appendChild(bubble);
 
     state.messagesCount++;
@@ -1415,8 +1774,22 @@
   // ONLINE USERS & ROOM NAVIGATION
   // =========================================================================
   function updateUserList(users) {
+    if (!Array.isArray(users)) users = [];
     state.onlineUsers = users;
-    const count = users.length;
+
+    // Normalize entries whether users is a list of strings or list of objects {socket_id, username}
+    const normalizedUsers = users.map((u) => {
+      if (typeof u === "string") return { username: u, socket_id: null };
+      if (u && typeof u === "object") return { username: u.username || "", socket_id: u.socket_id || null };
+      return { username: String(u || ""), socket_id: null };
+    }).filter(u => Boolean(u.username));
+
+    // Ensure current user is in the roster if connected in a room
+    if (state.roomId && state.username && !normalizedUsers.some(u => u.username.toLowerCase() === state.username.toLowerCase())) {
+      normalizedUsers.unshift({ username: state.username, socket_id: state.socket?.id || null });
+    }
+
+    const count = normalizedUsers.length;
     if (DOM.userCount) DOM.userCount.textContent = count;
     if (DOM.mobileUserCount) DOM.mobileUserCount.textContent = count;
     if (DOM.diagPeerCount) {
@@ -1426,8 +1799,10 @@
       DOM.rpPeerCount.textContent = `${count} Peer${count === 1 ? "" : "s"}`;
     }
 
+    const usernames = normalizedUsers.map(u => u.username);
+
     // Reset active whisper target if the user is no longer in this room
-    if (state.activeChatTarget && !users.some(u => u.toLowerCase() === state.activeChatTarget.toLowerCase())) {
+    if (state.activeChatTarget && !usernames.some(name => name.toLowerCase() === state.activeChatTarget.toLowerCase())) {
       state.activeChatTarget = null;
       if (DOM.btnPublicRoom) DOM.btnPublicRoom.classList.add("active");
       if (DOM.activeChatTitle && state.roomId) {
@@ -1441,87 +1816,102 @@
       }
     }
 
-    // Refresh Sidebar Users
-    DOM.usersNavList.innerHTML = "";
-    const previousSelected = DOM.fileRecipientSelect.value;
-    DOM.fileRecipientSelect.innerHTML = `
-      <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
-      <option value="">-- Choose Online Peer --</option>
-    `;
+    // Clear the DOM container under the ONLINE PEERS header
+    if (DOM.usersNavList) {
+      DOM.usersNavList.innerHTML = "";
+    }
 
-    users.forEach((user) => {
-      const isMe = user.toLowerCase() === state.username.toLowerCase();
+    const previousSelected = DOM.fileRecipientSelect ? DOM.fileRecipientSelect.value : "";
+    if (DOM.fileRecipientSelect) {
+      DOM.fileRecipientSelect.innerHTML = `
+        <option value="__BROADCAST__">🌐 Entire Server (All Peers)</option>
+        <option value="">-- Choose Online Peer --</option>
+      `;
+    }
 
-      const li = document.createElement("li");
-      li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
-      li.setAttribute("role", "button");
-      li.setAttribute("tabindex", "0");
+    // Loop through users array and append a clean, styled list item for each username
+    normalizedUsers.forEach((userObj) => {
+      const user = userObj.username;
+      const isMe = user.toLowerCase() === (state.username || "").toLowerCase();
 
-      const avatarBg = getAvatarGradient(user);
-      const avatarEl = document.createElement("div");
-      avatarEl.className = "peer-avatar";
-      avatarEl.style.background = avatarBg;
-      avatarEl.style.color = "#ffffff";
-      avatarEl.textContent = user.charAt(0).toUpperCase();
-
-      const titleEl = document.createElement("span");
-      titleEl.className = "nav-title";
-      titleEl.textContent = `${user} ${isMe ? "(You)" : ""}`;
-
-      li.appendChild(avatarEl);
-      li.appendChild(titleEl);
-
-      if (!isMe) {
-        const fileBtn = document.createElement("button");
-        fileBtn.className = "btn-send-file-tiny";
-        fileBtn.title = `Send File to ${user}`;
-        fileBtn.setAttribute("aria-label", `Send file to ${user}`);
-        fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
-        li.appendChild(fileBtn);
-      }
-
-      if (!isMe) {
-        li.addEventListener("click", (e) => {
-          if (!e.target.closest(".btn-send-file-tiny")) {
-            switchToPrivateChat(user);
-            closeSidebar();
-            setMobileActiveTab("chat");
-          }
-        });
-
-        li.addEventListener("keydown", (e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            switchToPrivateChat(user);
-            closeSidebar();
-            setMobileActiveTab("chat");
-          }
-        });
-
-        const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
-        if (tinyFileBtn) {
-          tinyFileBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            closeSidebar();
-            openFileModal(user);
-          });
-        }
-
+      if (DOM.fileRecipientSelect && !isMe) {
         const opt = document.createElement("option");
         opt.value = user;
         opt.textContent = user;
         DOM.fileRecipientSelect.appendChild(opt);
       }
 
-      DOM.usersNavList.appendChild(li);
+      if (DOM.usersNavList) {
+        const li = document.createElement("li");
+        li.className = `nav-menu-item ${state.activeChatTarget === user ? "active" : ""}`;
+        li.setAttribute("role", "button");
+        li.setAttribute("tabindex", "0");
+
+        const avatarBg = getAvatarGradient(user);
+        const avatarEl = document.createElement("div");
+        avatarEl.className = "peer-avatar";
+        avatarEl.style.background = avatarBg;
+        avatarEl.style.color = "#ffffff";
+        avatarEl.textContent = user.charAt(0).toUpperCase();
+
+        const titleEl = document.createElement("span");
+        titleEl.className = "nav-title";
+        titleEl.textContent = `${user} ${isMe ? "(You)" : ""}`;
+
+        li.appendChild(avatarEl);
+        li.appendChild(titleEl);
+
+        if (!isMe) {
+          const fileBtn = document.createElement("button");
+          fileBtn.className = "btn-send-file-tiny";
+          fileBtn.title = `Send File to ${user}`;
+          fileBtn.setAttribute("aria-label", `Send file to ${user}`);
+          fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
+          li.appendChild(fileBtn);
+
+          li.addEventListener("click", (e) => {
+            if (!e.target.closest(".btn-send-file-tiny")) {
+              switchToPrivateChat(user);
+              closeSidebar();
+              setMobileActiveTab("chat");
+            }
+          });
+
+          li.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              switchToPrivateChat(user);
+              closeSidebar();
+              setMobileActiveTab("chat");
+            }
+          });
+
+          const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
+          if (tinyFileBtn) {
+            tinyFileBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              closeSidebar();
+              openFileModal(user);
+            });
+          }
+        }
+
+        DOM.usersNavList.appendChild(li);
+      }
     });
 
-    if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
-      DOM.fileRecipientSelect.value = previousSelected;
-    } else if (!DOM.fileRecipientSelect.value) {
-      DOM.fileRecipientSelect.value = "__BROADCAST__";
+    if (DOM.fileRecipientSelect) {
+      if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
+        DOM.fileRecipientSelect.value = previousSelected;
+      } else if (!DOM.fileRecipientSelect.value) {
+        DOM.fileRecipientSelect.value = "__BROADCAST__";
+      }
+      updateBroadcastBadge();
     }
-    updateBroadcastBadge();
+
+    if (DOM.activeChatDesc && state.roomId) {
+      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+    }
   }
 
   function switchToPublicChat() {
@@ -2207,15 +2597,12 @@
       DOM.btnLoginThemeToggle.addEventListener("click", toggleTheme);
     }
 
-    // Mobile Sidebar Drawer
-    if (DOM.btnMobileMenu) {
-      DOM.btnMobileMenu.addEventListener("click", () => {
-        if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
-          closeSidebar();
-        } else {
-          openSidebar();
-        }
-      });
+    // Sidebar Toggle & Mobile Drawer
+    if (DOM.btnSidebarToggle) {
+      DOM.btnSidebarToggle.addEventListener("click", toggleSidebar);
+    }
+    if (DOM.btnMobileMenu && DOM.btnMobileMenu !== DOM.btnSidebarToggle) {
+      DOM.btnMobileMenu.addEventListener("click", toggleSidebar);
     }
     if (DOM.sidebarCloseBtn) {
       DOM.sidebarCloseBtn.addEventListener("click", closeSidebar);
@@ -2332,31 +2719,45 @@
     }
     if (DOM.btnGenerateRoom) {
       DOM.btnGenerateRoom.addEventListener("click", () => {
+        clearLoginError();
         if (DOM.roomInput) DOM.roomInput.value = generateRandomRoomId();
       });
     }
     if (DOM.btnTogglePasskey) {
       DOM.btnTogglePasskey.addEventListener("click", togglePasskeyVisibility);
     }
+
+    // Modal Input Listeners (Clear errors on input modification)
+    if (DOM.usernameInput) {
+      DOM.usernameInput.addEventListener("input", clearLoginError);
+      DOM.usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick();
+      });
+    }
     if (DOM.roomInput) {
+      DOM.roomInput.addEventListener("input", clearLoginError);
       DOM.roomInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") handleConnectClick();
       });
     }
     if (DOM.passkeyInput) {
+      DOM.passkeyInput.addEventListener("input", clearLoginError);
       DOM.passkeyInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") handleConnectClick();
       });
     }
 
-    // Connect Button & Enter key
-    if (DOM.connectBtn) {
-      DOM.connectBtn.addEventListener("click", handleConnectClick);
+    // Independent Action Button Listeners
+    if (DOM.btnCreateRoom) {
+      DOM.btnCreateRoom.addEventListener("click", handleCreateRoom);
     }
-    if (DOM.usernameInput) {
-      DOM.usernameInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") handleConnectClick();
-      });
+    if (DOM.btnJoinRoom) {
+      DOM.btnJoinRoom.addEventListener("click", handleJoinRoom);
+    }
+
+    // Legacy Fallback Connect Button
+    if (DOM.connectBtn && DOM.connectBtn !== DOM.btnCreateRoom && DOM.connectBtn !== DOM.btnJoinRoom) {
+      DOM.connectBtn.addEventListener("click", handleConnectClick);
     }
 
     // Chat Submission & Typing Listener
@@ -2368,10 +2769,16 @@
       DOM.messageInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           stopTyping();
+        } else if (e.key === "Escape" && activeReply) {
+          cancelReply();
         } else {
           handleInputTyping();
         }
       });
+    }
+
+    if (DOM.btnCancelReply) {
+      DOM.btnCancelReply.addEventListener("click", cancelReply);
     }
 
     // Copy Invite Link Button

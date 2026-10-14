@@ -239,7 +239,7 @@
           </div>
           <div class="brand-text-wrap">
             <span class="app-brand-text">NetChat</span>
-            <span class="brand-live-badge">E2EE</span>
+            <span class="brand-live-badge">Ephemeral</span>
           </div>
         </div>
       </div>
@@ -378,27 +378,6 @@
         </ul>
       </div>
 
-      <!-- Telemetry Mini-Card in Sidebar -->
-      <div class="telemetry-card" id="diagnostics-mini-btn" role="button" tabindex="0" title="Open Network Diagnostics" aria-label="Open Network Diagnostics">
-        <div class="telemetry-header">
-          <span class="telemetry-title">
-            <svg class="svg-icon xs text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
-            <span>TELEMETRY</span>
-          </span>
-          <span class="telemetry-ping text-mono" id="mini-ping">-- ms</span>
-        </div>
-        <div class="telemetry-grid">
-          <div class="telemetry-row">
-            <span class="telemetry-label">Transport</span>
-            <span class="telemetry-val text-success" id="mini-transport">WebSocket</span>
-          </div>
-          <div class="telemetry-row">
-            <span class="telemetry-label">TCP Target</span>
-            <span class="telemetry-val text-primary text-mono" id="mini-tcp-target">5000</span>
-          </div>
-        </div>
-      </div>
-
       <!-- User Profile Footer -->
       <div class="sidebar-user-footer">
         <div class="user-avatar" id="my-avatar" aria-hidden="true">
@@ -406,7 +385,6 @@
         </div>
         <div class="user-details">
           <span class="user-name" id="my-username">Connecting...</span>
-          <span class="user-node text-mono" id="my-endpoint">127.0.0.1:5000</span>
         </div>
         <button id="btn-sidebar-disconnect" class="btn-icon" title="Disconnect Session" aria-label="Disconnect Session">
           <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
@@ -420,8 +398,8 @@
       <!-- Top Header -->
       <header class="app-header">
         <div class="header-left">
-          <!-- Mobile Menu Drawer Toggle Button -->
-          <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
+          <!-- Collapsible Sidebar Hamburger Toggle Button -->
+          <button type="button" id="btn-sidebar-toggle" class="btn-icon header-btn sidebar-toggle-btn" title="Toggle Sidebar" aria-label="Toggle navigation sidebar">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
           </button>
 
@@ -463,12 +441,6 @@
           <button id="btn-open-file-panel" class="btn btn-secondary header-btn" title="Share File with Peer" aria-label="Share File with Peer">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
             <span class="btn-text">Share File</span>
-          </button>
-
-          <!-- Desktop Quick Action: Diagnostics -->
-          <button id="btn-open-diagnostics" class="btn btn-secondary header-btn" title="Network Diagnostics" aria-label="Network Diagnostics">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-activity"></use></svg>
-            <span class="btn-text">Diagnostics</span>
           </button>
 
           <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->

@@ -880,7 +880,23 @@ select:focus {
   flex-direction: column;
   flex-shrink: 0;
   z-index: 50;
-  transition: transform var(--transition-normal);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.25s ease, 
+              border-color 0.3s ease, 
+              transform var(--transition-normal);
+  overflow: hidden;
+}
+
+@media (min-width: 769px) {
+  .sidebar.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    border-right-width: 0 !important;
+    border-right-color: transparent !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    visibility: hidden;
+  }
 }
 
 .sidebar-brand {
@@ -1169,6 +1185,25 @@ select:focus {
   align-items: center;
   gap: 12px;
   min-width: 0;
+}
+.sidebar-toggle-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.sidebar-toggle-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--primary-accent);
+  color: var(--primary-accent);
 }
 .mobile-menu-btn {
   display: none;
