@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
   <meta name="description" content="NetChat Live — TCP-Based Multi-Client Chat and File Sharing System. Real-time Layer 4 socket communication with SHA-256 integrity verification.">
   <title>NetChat Live — TCP Multi-Client Chat & File Sharing (Computer Networks Lab)</title>
   
-  <!-- Early Theme Detection Script (Defaults to clean Light theme) -->
+  <!-- Early Theme Detection Script (Defaults to sleek Dark theme) -->
   <script>
     (function () {
       try {
@@ -14,10 +14,10 @@
         if (savedTheme === 'light' || savedTheme === 'dark') {
           document.documentElement.setAttribute('data-theme', savedTheme);
         } else {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.setAttribute('data-theme', 'dark');
         }
       } catch (e) {
-        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.setAttribute('data-theme', 'dark');
       }
     })();
   </script>
@@ -26,7 +26,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   
-  <!-- Tailwind CSS Framework CDN & Modern SaaS Theme Extensions -->
+  <!-- Tailwind CSS Framework CDN & Modern Dark Theme Extensions -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -37,22 +37,6 @@
             sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
             display: ['Outfit', 'sans-serif'],
             mono: ['JetBrains Mono', 'monospace'],
-          },
-          colors: {
-            brand: {
-              50: '#f0fdfa',
-              100: '#ccfbf1',
-              200: '#99f6e4',
-              500: '#14b8a6',
-              600: '#0d9488',
-              700: '#0f766e',
-            },
-            sage: {
-              50: '#f6f8f6',
-              100: '#e8eee9',
-              200: '#d5e0d7',
-              300: '#b8cbbd',
-            }
           }
         }
       }
@@ -61,7 +45,7 @@
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
-<body class="bg-[#e8eee9] min-h-screen text-gray-800 antialiased flex items-center justify-center p-0 md:p-6 lg:p-8 selection:bg-teal-100 selection:text-teal-900 overflow-hidden">
+<body class="bg-black min-h-screen text-zinc-100 antialiased flex items-center justify-center p-0 md:p-6 lg:p-8 selection:bg-zinc-800 selection:text-zinc-100 overflow-hidden">
 
   <!-- ==================== LUCIDE & BRAND SVG SYMBOL DEFINITIONS ==================== -->
   <svg style="display: none;" aria-hidden="true">
@@ -248,8 +232,8 @@
   </svg>
 
   <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
-  <div id="login-overlay" class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="login-title">
-    <div class="login-card bg-white rounded-3xl shadow-2xl border border-gray-100 p-6 sm:p-8 max-w-md w-full">
+  <div id="login-overlay" class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="login-title">
+    <div class="login-card bg-zinc-950 rounded-3xl shadow-2xl border border-zinc-800 p-6 sm:p-8 max-w-md w-full text-zinc-100">
       
       <!-- Top Action Bar for Login (Theme Toggle & Minimal Connection Status Badge) -->
       <div class="login-top-bar">
@@ -329,16 +313,16 @@
   </div>
 
   <!-- Mobile Sidebar Backdrop Overlay -->
-  <div id="sidebar-backdrop" class="sidebar-backdrop hidden fixed inset-0 z-40 bg-gray-900/30 backdrop-blur-xs md:hidden" aria-hidden="true"></div>
+  <div id="sidebar-backdrop" class="sidebar-backdrop hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden" aria-hidden="true"></div>
 
   <!-- ==================== MAIN APPLICATION LAYOUT ==================== -->
-  <div id="app-container" class="app-layout hidden w-full max-w-7xl h-screen md:h-[90vh] md:max-h-[920px] bg-white rounded-none md:rounded-3xl shadow-none md:shadow-xl border-0 md:border md:border-gray-200/80 overflow-hidden flex flex-row relative">
+  <div id="app-container" class="app-layout hidden w-full max-w-7xl h-screen md:h-[90vh] md:max-h-[920px] bg-black md:bg-zinc-950 rounded-none md:rounded-3xl shadow-none md:shadow-2xl border-0 md:border md:border-zinc-800/80 overflow-hidden flex flex-row relative">
 
     <!-- LEFT NAVIGATION SIDEBAR (Collapsible Drawer on Mobile) -->
-    <aside class="sidebar fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-white -translate-x-full transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:flex md:w-80 md:flex-col md:shrink-0 md:border-r md:border-gray-100 lg:border-gray-200 h-full overflow-hidden" id="sidebar" aria-label="Sidebar Navigation">
+    <aside class="sidebar hidden md:flex fixed inset-y-0 left-0 z-50 w-72 sm:w-80 bg-zinc-950 border-r border-zinc-800 transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:w-80 md:flex-col md:shrink-0 h-full overflow-hidden" id="sidebar" aria-label="Sidebar Navigation">
       
       <!-- Branding & Mobile Close Button -->
-      <div class="sidebar-brand bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between shrink-0">
+      <div class="sidebar-brand bg-zinc-950 border-b border-zinc-800/80 px-5 py-4 flex items-center justify-between shrink-0">
         <div class="app-brand" aria-label="NetChat Live">
           <div class="brand-symbol-wrap">
             <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
@@ -446,80 +430,80 @@
     </aside>
 
     <!-- MAIN CHAT CONVERSATION VIEW -->
-    <main class="chat-main flex-1 flex flex-col h-full bg-white min-w-0 overflow-hidden relative" id="chat-main-area">
+    <main class="chat-main flex-1 flex flex-col h-full bg-black md:bg-zinc-950 min-w-0 overflow-hidden relative" id="chat-main-area">
       
-      <!-- Top Header (Clean white header with peer/room name and green Online dot indicator) -->
-      <header class="app-header bg-white border-b border-gray-100 md:border-gray-200 px-4 md:px-6 py-3.5 flex items-center justify-between shrink-0">
+      <!-- Top Header (Minimalist top bar with room name, connection dot, and sleek frosted backdrop) -->
+      <header class="app-header bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 px-4 md:px-6 py-3.5 flex items-center justify-between shrink-0 sticky top-0 z-20">
         <div class="header-left flex items-center gap-3 min-w-0">
           <!-- Mobile Menu Drawer Toggle Button -->
-          <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn md:hidden p-2 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
+          <button type="button" id="btn-mobile-menu" class="btn-icon mobile-menu-btn md:hidden p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 transition" title="Open Navigation Drawer" aria-label="Open navigation drawer" aria-expanded="false" aria-controls="sidebar">
             <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-menu"></use></svg>
           </button>
 
           <!-- Mobile Compact Brand Badge -->
           <div class="header-mobile-brand flex md:hidden items-center gap-1.5" aria-label="NetChat Live">
-            <div class="brand-symbol-wrap">
-              <svg class="svg-icon app-brand-icon w-5 h-5 text-teal-600" aria-hidden="true"><use href="#icon-server"></use></svg>
+            <div class="brand-symbol-wrap w-6 h-6 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+              <svg class="svg-icon app-brand-icon w-4 h-4 text-zinc-100" aria-hidden="true"><use href="#icon-server"></use></svg>
             </div>
-            <div class="brand-text-wrap font-semibold text-gray-900 text-sm">
+            <div class="brand-text-wrap font-semibold text-zinc-100 text-sm">
               <span class="app-brand-text">NetChat</span>
             </div>
           </div>
 
-          <div class="header-channel-icon hidden sm:flex w-9 h-9 rounded-xl bg-teal-50 text-teal-600 items-center justify-center shrink-0 border border-teal-100/60" id="header-icon-wrap" aria-hidden="true">
+          <div class="header-channel-icon hidden sm:flex w-9 h-9 rounded-xl bg-zinc-900 text-zinc-300 items-center justify-center shrink-0 border border-zinc-800" id="header-icon-wrap" aria-hidden="true">
             <svg class="svg-icon w-4 h-4" id="header-channel-icon"><use href="#icon-globe"></use></svg>
           </div>
           <div class="header-title-meta flex flex-col min-w-0">
             <div class="header-title-row flex items-center gap-2">
-              <h2 id="active-chat-title" class="text-sm md:text-base font-semibold text-gray-900 truncate">Public Room</h2>
-              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-100 shrink-0" title="Online status">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h2 id="active-chat-title" class="text-sm md:text-base font-semibold text-zinc-100 truncate">Public Room</h2>
+              <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 shrink-0" title="Online status">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span>Online</span>
               </span>
-              <button type="button" id="btn-copy-room-link" class="btn-copy-invite hidden text-xs text-teal-600 hover:text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-0.5 rounded-full font-medium transition" title="Copy Invite Link" aria-label="Copy Invite Link">
+              <button type="button" id="btn-copy-room-link" class="btn-copy-invite hidden text-xs text-zinc-300 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-2.5 py-0.5 rounded-full font-medium transition" title="Copy Invite Link" aria-label="Copy Invite Link">
                 <svg class="svg-icon xs w-3 h-3" id="icon-copy-invite"><use href="#icon-link"></use></svg>
                 <span class="copy-invite-text" id="copy-invite-text">Share Link</span>
               </button>
             </div>
-            <span class="header-desc text-xs text-gray-400 truncate hidden sm:block" id="active-chat-desc">Unified stream broadcast to all active network peers</span>
+            <span class="header-desc text-xs text-zinc-400 truncate hidden sm:block" id="active-chat-desc">Unified stream broadcast to all active network peers</span>
           </div>
         </div>
 
         <div class="header-right flex items-center gap-2 shrink-0">
           <!-- Live Telemetry Pill / Connection Status -->
-          <div class="status-pill-badge hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 rounded-full border border-emerald-100" id="header-status-pill" title="Connection Status" aria-live="polite">
-            <span class="status-dot connected w-2 h-2 rounded-full bg-emerald-500" id="header-status-dot"></span>
+          <div class="status-pill-badge hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-400 bg-emerald-950/50 rounded-full border border-emerald-800/40" id="header-status-pill" title="Connection Status" aria-live="polite">
+            <span class="status-dot connected w-2 h-2 rounded-full bg-emerald-400" id="header-status-dot"></span>
             <span id="header-status-text">Connected</span>
-            <span id="header-latency-text" class="status-latency hidden text-xs font-mono text-emerald-600 border-l border-emerald-200 pl-1.5"></span>
+            <span id="header-latency-text" class="status-latency hidden text-xs font-mono text-emerald-400 border-l border-emerald-800/50 pl-1.5"></span>
           </div>
 
           <!-- Desktop Quick Action: Share File -->
-          <button id="btn-open-file-panel" class="btn btn-secondary header-btn hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition shadow-sm" title="Share File with Peer" aria-label="Share File with Peer">
-            <svg class="svg-icon w-3.5 h-3.5 text-gray-500" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          <button id="btn-open-file-panel" class="btn btn-secondary header-btn hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-zinc-300 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-100 transition shadow-sm" title="Share File with Peer" aria-label="Share File with Peer">
+            <svg class="svg-icon w-3.5 h-3.5 text-zinc-400" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
             <span class="btn-text">Share File</span>
           </button>
 
           <!-- Desktop Quick Action: Diagnostics -->
-          <button id="btn-open-diagnostics" class="btn btn-secondary header-btn hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition shadow-sm" title="Network Diagnostics" aria-label="Network Diagnostics">
-            <svg class="svg-icon w-3.5 h-3.5 text-gray-500" aria-hidden="true"><use href="#icon-activity"></use></svg>
+          <button id="btn-open-diagnostics" class="btn btn-secondary header-btn hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-zinc-300 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 hover:border-zinc-700 hover:text-zinc-100 transition shadow-sm" title="Network Diagnostics" aria-label="Network Diagnostics">
+            <svg class="svg-icon w-3.5 h-3.5 text-zinc-400" aria-hidden="true"><use href="#icon-activity"></use></svg>
             <span class="btn-text">Diagnostics</span>
           </button>
 
           <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->
-          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn p-2 rounded-xl text-gray-500 hover:text-gray-800 hover:bg-gray-100 border border-transparent sm:border-gray-200 transition" title="Switch to light mode" aria-label="Switch to light mode">
+          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900 border border-transparent sm:border-zinc-800 transition" title="Switch to light mode" aria-label="Switch to light mode">
             <svg class="svg-icon theme-icon-sun w-4 h-4" aria-hidden="true"><use href="#icon-sun"></use></svg>
             <svg class="svg-icon theme-icon-moon w-4 h-4" aria-hidden="true"><use href="#icon-moon"></use></svg>
           </button>
 
           <!-- Connection Control (Disconnect Session) -->
-          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn p-2 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 border border-transparent sm:border-gray-200 transition" title="Disconnect Session" aria-label="Disconnect Session">
+          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn p-2 rounded-xl text-zinc-400 hover:text-rose-400 hover:bg-rose-950/40 border border-transparent sm:border-zinc-800 transition" title="Disconnect Session" aria-label="Disconnect Session">
             <svg class="svg-icon w-4 h-4" aria-hidden="true"><use href="#icon-unplug"></use></svg>
           </button>
         </div>
       </header>
 
       <!-- Messages History Scroll Container -->
-      <div class="messages-viewport flex-1 overflow-y-auto p-4 md:p-6 space-y-3 bg-[#fafafa] md:bg-white relative" id="messages-container" role="log" aria-live="polite" aria-label="Message stream">
+      <div class="messages-viewport flex-1 overflow-y-auto p-4 md:p-6 space-y-3 bg-black md:bg-zinc-950 relative" id="messages-container" role="log" aria-live="polite" aria-label="Message stream">
         
         <!-- Empty State Default -->
         <div class="empty-feed" id="empty-state">
@@ -547,9 +531,9 @@
       </button>
 
       <!-- Message Composer Footer -->
-      <footer class="composer-container">
+      <footer class="composer-container bg-transparent border-t-0 p-0 relative shrink-0">
         <!-- Subtle Live Typing Indicator -->
-        <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
+        <div id="typing-indicator" class="typing-indicator hidden px-4 py-1 text-xs text-zinc-400" aria-live="polite">
           <span class="typing-dots" aria-hidden="true">
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
@@ -577,34 +561,34 @@
         </div>
 
         <!-- Message Reply Context Banner -->
-        <div id="reply-banner" class="reply-banner hidden mb-2.5 bg-gray-50 border border-gray-200 border-l-4 border-l-teal-500 rounded-xl p-2.5 flex items-center justify-between gap-3 shadow-xs" aria-live="polite">
+        <div id="reply-banner" class="reply-banner hidden mx-4 mb-2 bg-zinc-900/90 border border-zinc-800 border-l-4 border-l-zinc-400 rounded-2xl p-2.5 flex items-center justify-between gap-3 shadow-md backdrop-blur-sm" aria-live="polite">
           <div class="reply-banner-content flex items-center gap-2 min-w-0 flex-1">
-            <svg class="svg-icon xs reply-icon text-teal-600 shrink-0" aria-hidden="true"><use href="#icon-reply"></use></svg>
+            <svg class="svg-icon xs reply-icon text-zinc-300 shrink-0" aria-hidden="true"><use href="#icon-reply"></use></svg>
             <div class="reply-banner-text text-xs min-w-0">
-              <span class="reply-banner-title text-teal-700 font-semibold">Replying to <strong id="reply-banner-user"></strong>:</span>
-              <span id="reply-banner-snippet" class="reply-banner-snippet text-gray-500 truncate ml-1"></span>
+              <span class="reply-banner-title text-zinc-200 font-semibold">Replying to <strong id="reply-banner-user"></strong>:</span>
+              <span id="reply-banner-snippet" class="reply-banner-snippet text-zinc-400 truncate ml-1"></span>
             </div>
           </div>
-          <button type="button" id="btn-cancel-reply" class="btn-cancel-reply p-1 text-gray-400 hover:text-gray-600 rounded-full transition" title="Cancel Reply" aria-label="Cancel reply">
+          <button type="button" id="btn-cancel-reply" class="btn-cancel-reply p-1 text-zinc-400 hover:text-zinc-200 rounded-full transition" title="Cancel Reply" aria-label="Cancel reply">
             <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-x"></use></svg>
           </button>
         </div>
 
-        <form id="chat-form" class="composer-form bg-white border border-gray-200 rounded-2xl flex items-center gap-1.5 md:gap-2 p-1.5 shadow-sm focus-within:border-teal-500 focus-within:ring-2 focus-within:ring-teal-500/20 transition">
-          <button type="button" id="btn-composer-attach" class="composer-btn-attach p-2 text-gray-400 hover:text-teal-600 hover:bg-gray-50 rounded-xl transition shrink-0" title="Attach and Send File" aria-label="Attach file">
+        <form id="chat-form" class="composer-form m-4 rounded-full bg-zinc-900 border border-zinc-800 flex items-center gap-1.5 md:gap-2 p-1.5 shadow-lg focus-within:border-zinc-700 focus-within:ring-2 focus-within:ring-zinc-700/40 transition">
+          <button type="button" id="btn-composer-attach" class="composer-btn-attach p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full transition shrink-0" title="Attach and Send File" aria-label="Attach file">
             <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
           </button>
 
-          <button type="button" id="btn-composer-emoji" class="composer-btn-emoji p-2 text-gray-400 hover:text-teal-600 hover:bg-gray-50 rounded-xl transition shrink-0" title="Insert Emoji" aria-label="Insert emoji" aria-expanded="false" aria-controls="emoji-popover">
+          <button type="button" id="btn-composer-emoji" class="composer-btn-emoji p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-full transition shrink-0" title="Insert Emoji" aria-label="Insert emoji" aria-expanded="false" aria-controls="emoji-popover">
             <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-smile"></use></svg>
           </button>
           
           <div class="composer-input-wrapper flex-1 relative min-w-0">
-            <input type="text" id="message-input" class="w-full bg-transparent border-0 focus:ring-0 text-sm md:text-base text-gray-800 placeholder-gray-400 py-1.5 px-2 outline-none" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" aria-label="Message text">
-            <span class="composer-kbd-hint hidden sm:inline-block absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 pointer-events-none" aria-hidden="true">Enter ↵</span>
+            <input type="text" id="message-input" class="w-full bg-transparent border-0 focus:ring-0 text-sm md:text-base text-zinc-100 placeholder-zinc-500 py-1.5 px-2 outline-none" placeholder="Type a message to everyone... (Press Enter to send)" autocomplete="off" autocorrect="on" autocapitalize="sentences" spellcheck="true" aria-label="Message text">
+            <span class="composer-kbd-hint hidden sm:inline-block absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-700 pointer-events-none" aria-hidden="true">Enter ↵</span>
           </div>
 
-          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send bg-teal-600 hover:bg-teal-700 text-white rounded-xl px-4 py-2 flex items-center gap-1.5 font-medium text-sm transition shadow-sm shrink-0" title="Send Message" aria-label="Send message">
+          <button type="submit" id="btn-send-message" class="btn btn-primary composer-btn-send bg-zinc-100 hover:bg-white text-zinc-950 font-medium rounded-full px-4 py-2 flex items-center gap-1.5 text-sm transition shadow-sm shrink-0" title="Send Message" aria-label="Send message">
             <span class="send-text hidden sm:inline">Send</span>
             <svg class="svg-icon w-4 h-4" aria-hidden="true"><use href="#icon-send"></use></svg>
           </button>
@@ -633,7 +617,7 @@
     </main>
 
     <!-- RIGHT PANEL (Optional/Collapsible Network Diagnostics on Desktop) -->
-    <aside class="right-panel hidden lg:flex flex-col w-80 bg-white border-l border-gray-100 md:border-gray-200 shrink-0 h-full overflow-y-auto" id="right-panel" aria-label="Network Diagnostics Panel">
+    <aside class="right-panel hidden lg:flex flex-col w-80 bg-zinc-950 border-l border-zinc-800/80 shrink-0 h-full overflow-y-auto" id="right-panel" aria-label="Network Diagnostics Panel">
       <div class="right-panel-header">
         <div class="right-panel-title">
           <svg class="svg-icon sm text-primary" aria-hidden="true"><use href="#icon-activity"></use></svg>
