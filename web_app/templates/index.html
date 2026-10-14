@@ -166,6 +166,10 @@
       <symbol id="icon-chevron-right" viewBox="0 0 24 24">
         <path d="m9 18 6-6-6-6"/>
       </symbol>
+      <!-- Expand / Collapse: ChevronLeft -->
+      <symbol id="icon-chevron-left" viewBox="0 0 24 24">
+        <path d="m15 18-6-6 6-6"/>
+      </symbol>
       <!-- Private Chat: Lock -->
       <symbol id="icon-lock" viewBox="0 0 24 24">
         <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
@@ -239,7 +243,6 @@
           </div>
           <div class="brand-text-wrap">
             <span class="app-brand-text">NetChat</span>
-            <span class="brand-live-badge">Ephemeral</span>
           </div>
         </div>
       </div>
@@ -392,6 +395,13 @@
       </div>
     </aside>
 
+    <!-- SIDEBAR RESIZER & SLIDER HANDLE -->
+    <div class="sidebar-resizer" id="sidebar-resizer" role="separator" aria-orientation="vertical" aria-label="Resize sidebar">
+      <button type="button" class="resizer-toggle-btn" id="btn-resizer-toggle" title="Collapse / Expand Sidebar" aria-label="Collapse or expand sidebar">
+        <svg class="svg-icon xs resizer-icon" aria-hidden="true" id="resizer-chevron"><use href="#icon-chevron-left"></use></svg>
+      </button>
+    </div>
+
     <!-- MAIN CHAT CONVERSATION VIEW -->
     <main class="chat-main" id="chat-main-area">
       
@@ -425,7 +435,7 @@
                 <span class="copy-invite-text" id="copy-invite-text">Share Link</span>
               </button>
             </div>
-            <span class="header-desc" id="active-chat-desc">Unified stream broadcast to all active network peers</span>
+            <span class="header-desc hidden" id="active-chat-desc"></span>
           </div>
         </div>
 

@@ -897,6 +897,88 @@ select:focus {
     pointer-events: none !important;
     visibility: hidden;
   }
+  .sidebar.collapsed + .sidebar-resizer {
+    margin-left: 0;
+  }
+  .sidebar.collapsed + .sidebar-resizer .resizer-toggle-btn {
+    left: 9px;
+  }
+}
+
+/* ==================== SIDEBAR RESIZER & SPLITTER ==================== */
+.sidebar-resizer {
+  width: 8px;
+  height: 100%;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  flex-shrink: 0;
+  z-index: 55;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -4px;
+  margin-right: -4px;
+  transition: background-color var(--transition-fast);
+}
+
+.sidebar-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background-color: var(--border-subtle);
+  transition: background-color var(--transition-fast), width var(--transition-fast);
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer.dragging::after {
+  background-color: var(--primary-accent);
+  width: 2px;
+  box-shadow: 0 0 6px rgba(0, 168, 132, 0.4);
+}
+
+.resizer-toggle-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 18px;
+  height: 38px;
+  border-radius: 4px;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 60;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.resizer-toggle-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--primary-accent);
+  color: var(--primary-accent);
+  box-shadow: 0 0 8px rgba(0, 168, 132, 0.4);
+}
+
+.resizer-toggle-btn .svg-icon {
+  width: 12px;
+  height: 12px;
+  pointer-events: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-resizer {
+    display: none !important;
+  }
 }
 
 .sidebar-brand {
@@ -1109,13 +1191,16 @@ select:focus {
 
 /* User Profile Footer */
 .sidebar-user-footer {
-  height: 56px;
-  padding: 0 14px;
+  height: 64px;
+  min-height: 64px;
+  padding: 0 16px;
   border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   background-color: var(--bg-header);
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
 .user-avatar {
   width: 32px;
@@ -1665,13 +1750,19 @@ html[data-theme="light"] .message-bubble.mine .msg-reply-quote-snippet {
 
 /* Fixed Bottom Message Composer */
 .composer-container {
-  padding: 8px 16px 10px;
+  height: 64px;
+  min-height: 64px;
+  padding: 10px 16px;
   background-color: var(--bg-header);
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  position: sticky;
+  position: relative;
   bottom: 0;
   z-index: 10;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* Subtle Live Typing Indicator */

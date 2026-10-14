@@ -464,8 +464,104 @@
     } else {
       if (DOM.sidebar) {
         DOM.sidebar.classList.toggle("collapsed");
+        updateResizerChevron();
       }
     }
+  }
+
+  function updateResizerChevron() {
+    const chevronIcon = document.getElementById("resizer-chevron");
+    if (!chevronIcon || !DOM.sidebar) return;
+    const isCollapsed = DOM.sidebar.classList.contains("collapsed");
+    const useEl = chevronIcon.querySelector("use");
+    if (useEl) {
+      useEl.setAttribute("href", isCollapsed ? "#icon-chevron-right" : "#icon-chevron-left");
+    }
+    const toggleBtn = document.getElementById("btn-resizer-toggle");
+    if (toggleBtn) {
+      toggleBtn.setAttribute("title", isCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
+      toggleBtn.setAttribute("aria-label", isCollapsed ? "Expand Sidebar" : "Collapse Sidebar");
+    }
+  }
+
+  function initSidebarResizer() {
+    const resizer = document.getElementById("sidebar-resizer");
+    const toggleBtn = document.getElementById("btn-resizer-toggle");
+    if (!resizer || !DOM.sidebar) return;
+
+    let isDragging = false;
+    let startX = 0;
+    let startWidth = 0;
+    const MIN_WIDTH = 200;
+    const MAX_WIDTH = 400;
+
+    try {
+      const savedWidth = localStorage.getItem("netchat_sidebar_width");
+      if (savedWidth) {
+        const parsed = parseInt(savedWidth, 10);
+        if (parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) {
+          DOM.sidebar.style.width = parsed + "px";
+        }
+      }
+    } catch (_) {}
+
+    updateResizerChevron();
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleSidebar();
+      });
+    }
+
+    resizer.addEventListener("mousedown", (e) => {
+      if (e.target.closest("#btn-resizer-toggle")) return;
+      if (window.innerWidth <= 768) return;
+
+      isDragging = true;
+      startX = e.clientX;
+      startWidth = DOM.sidebar.getBoundingClientRect().width;
+      resizer.classList.add("dragging");
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      DOM.sidebar.style.transition = "none";
+
+      const onMouseMove = (moveEvent) => {
+        if (!isDragging) return;
+        const delta = moveEvent.clientX - startX;
+        let newWidth = startWidth + delta;
+        newWidth = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, newWidth));
+
+        if (DOM.sidebar.classList.contains("collapsed")) {
+          DOM.sidebar.classList.remove("collapsed");
+          updateResizerChevron();
+        }
+
+        DOM.sidebar.style.width = newWidth + "px";
+      };
+
+      const onMouseUp = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        resizer.classList.remove("dragging");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        DOM.sidebar.style.transition = "";
+
+        const finalWidth = DOM.sidebar.getBoundingClientRect().width;
+        try {
+          if (finalWidth >= MIN_WIDTH && finalWidth <= MAX_WIDTH) {
+            localStorage.setItem("netchat_sidebar_width", Math.round(finalWidth));
+          }
+        } catch (_) {}
+
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      };
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    });
   }
 
   function setMobileActiveTab(tabName) {
@@ -937,6 +1033,7 @@
 
   function init() {
     initTheme();
+    initSidebarResizer();
     updateModalConnectionBadge("status-connecting", "Connecting...");
     setConnectionStatus("disconnected", "Connecting...");
 
@@ -1042,7 +1139,8 @@
       }
       const peerList = data.peers || data.members || [];
       if (DOM.activeChatDesc) {
-        DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+        DOM.activeChatDesc.textContent = "";
+        DOM.activeChatDesc.classList.add("hidden");
       }
       updateUserList(peerList);
     });
@@ -1059,7 +1157,8 @@
         const peerList = data.peers || [];
         updateUserList(peerList);
         if (DOM.activeChatDesc) {
-          DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+          DOM.activeChatDesc.textContent = "";
+          DOM.activeChatDesc.classList.add("hidden");
         }
       }
     });
@@ -1108,7 +1207,8 @@
           const peerList = data.peers || data.members;
           updateUserList(peerList);
           if (DOM.activeChatDesc) {
-            DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+            DOM.activeChatDesc.textContent = "";
+            DOM.activeChatDesc.classList.add("hidden");
           }
         }
         return;
@@ -1456,15 +1556,15 @@
         DOM.btnDrawerCopyLink.classList.remove("hidden");
       }
     }
-    if (DOM.activeChatDesc && state.roomId) {
-      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+    if (DOM.activeChatDesc) {
+      DOM.activeChatDesc.textContent = "";
+      DOM.activeChatDesc.classList.add("hidden");
     }
 
     setConnectionStatus("connected", "Connected");
 
     if (isFirstEntry) {
       logActivity(`Successfully connected as '${state.username}'. Room: ${state.roomId}`);
-      appendSystemMessage(`🔒 Entered ephemeral room '${state.roomId}' as '${state.username}'.`);
     }
 
     // Clean hash from URL bar once successfully joined so PIN isn't left visible
@@ -1639,10 +1739,10 @@
     const header = document.createElement("div");
     header.className = "msg-header";
 
-    if (state.isE2EE) {
+    if (state.isE2EE && isDecryptError) {
       const e2eeBadge = document.createElement("span");
-      e2eeBadge.className = isDecryptError ? "msg-badge badge-warning" : "msg-badge badge-success";
-      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> ${isDecryptError ? "AUTH FAIL" : "Ephemeral"}`;
+      e2eeBadge.className = "msg-badge badge-warning";
+      e2eeBadge.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-lock"></use></svg> AUTH FAIL`;
       header.appendChild(e2eeBadge);
     }
 
@@ -1910,7 +2010,8 @@
     }
 
     if (DOM.activeChatDesc && state.roomId) {
-      DOM.activeChatDesc.textContent = "Memory-only routing. Messages are dropped when the session ends.";
+      DOM.activeChatDesc.textContent = "";
+      DOM.activeChatDesc.classList.add("hidden");
     }
   }
 
