@@ -31,7 +31,8 @@
     roomId: null,
     roomPasskey: null, // Strictly in-memory (never persisted)
     roomMode: "create", // "create" | "join"
-    isE2EE: true
+    isE2EE: true,
+    isMobileSidebarOpen: false
   };
 
   // DOM Elements Cache
@@ -78,6 +79,8 @@
     sidebarBackdrop: document.getElementById("sidebar-backdrop"),
     sidebarCloseBtn: document.getElementById("sidebar-close-btn"),
     btnSidebarToggle: document.getElementById("btn-sidebar-toggle"),
+    btnMobileChevronToggle: document.getElementById("btn-mobile-chevron-toggle"),
+    mobileChevronIcon: document.getElementById("mobile-chevron-icon"),
     btnMobileMenu: document.getElementById("btn-mobile-menu") || document.getElementById("btn-sidebar-toggle"),
     sidebarStatusBadge: document.querySelector(".sidebar-brand .badge-status"),
     myAvatar: document.getElementById("my-avatar"),
@@ -419,48 +422,72 @@
   // =========================================================================
   // MOBILE NAVIGATION DRAWER & TABS
   // =========================================================================
-  function openSidebar() {
+  function setMobileSidebar(isOpen) {
+    state.isMobileSidebarOpen = !!isOpen;
     if (!DOM.sidebar) return;
-    DOM.sidebar.classList.add("open");
-    document.body.classList.add("drawer-open");
-    if (DOM.sidebarBackdrop) {
-      DOM.sidebarBackdrop.classList.remove("hidden");
-      requestAnimationFrame(() => {
-        DOM.sidebarBackdrop.classList.add("active");
-      });
+    if (isOpen) {
+      DOM.sidebar.classList.remove("-translate-x-full");
+      DOM.sidebar.classList.add("translate-x-0", "open");
+      if (DOM.sidebarBackdrop) {
+        DOM.sidebarBackdrop.classList.remove("hidden", "opacity-0", "pointer-events-none");
+        DOM.sidebarBackdrop.classList.add("opacity-100", "pointer-events-auto", "active");
+      }
+      document.body.classList.add("drawer-open");
+      if (DOM.btnMobileMenu) {
+        DOM.btnMobileMenu.setAttribute("aria-expanded", "true");
+      }
+    } else {
+      DOM.sidebar.classList.remove("translate-x-0", "open");
+      DOM.sidebar.classList.add("-translate-x-full");
+      if (DOM.sidebarBackdrop) {
+        DOM.sidebarBackdrop.classList.remove("opacity-100", "pointer-events-auto", "active");
+        DOM.sidebarBackdrop.classList.add("opacity-0", "pointer-events-none");
+        setTimeout(() => {
+          if (!state.isMobileSidebarOpen && DOM.sidebarBackdrop) {
+            DOM.sidebarBackdrop.classList.add("hidden");
+          }
+        }, 300);
+      }
+      document.body.classList.remove("drawer-open");
+      if (DOM.btnMobileMenu) {
+        DOM.btnMobileMenu.setAttribute("aria-expanded", "false");
+      }
+      if (DOM.tabPeers && DOM.tabPeers.classList.contains("active")) {
+        setMobileActiveTab("chat");
+      }
     }
-    if (DOM.btnMobileMenu) {
-      DOM.btnMobileMenu.setAttribute("aria-expanded", "true");
-    }
+    updateMobileChevron();
+  }
+
+  function openSidebar() {
+    setMobileSidebar(true);
   }
 
   function closeSidebar() {
-    if (!DOM.sidebar) return;
-    DOM.sidebar.classList.remove("open");
-    document.body.classList.remove("drawer-open");
-    if (DOM.sidebarBackdrop) {
-      DOM.sidebarBackdrop.classList.remove("active");
-      setTimeout(() => {
-        if (!DOM.sidebar.classList.contains("open")) {
-          DOM.sidebarBackdrop.classList.add("hidden");
-        }
-      }, 200);
+    setMobileSidebar(false);
+  }
+
+  function toggleMobileSidebar() {
+    setMobileSidebar(!state.isMobileSidebarOpen);
+  }
+
+  function updateMobileChevron() {
+    const icon = document.getElementById("mobile-chevron-icon");
+    if (!icon) return;
+    const useEl = icon.querySelector("use");
+    if (useEl) {
+      useEl.setAttribute("href", state.isMobileSidebarOpen ? "#icon-chevron-left" : "#icon-chevron-right");
     }
-    if (DOM.btnMobileMenu) {
-      DOM.btnMobileMenu.setAttribute("aria-expanded", "false");
-    }
-    if (DOM.tabPeers && DOM.tabPeers.classList.contains("active")) {
-      setMobileActiveTab("chat");
+    const btn = document.getElementById("btn-mobile-chevron-toggle");
+    if (btn) {
+      btn.setAttribute("title", state.isMobileSidebarOpen ? "Close Sidebar" : "Open Sidebar");
+      btn.setAttribute("aria-label", state.isMobileSidebarOpen ? "Close navigation sidebar" : "Open navigation sidebar");
     }
   }
 
   function toggleSidebar() {
     if (window.innerWidth <= 768) {
-      if (DOM.sidebar && DOM.sidebar.classList.contains("open")) {
-        closeSidebar();
-      } else {
-        openSidebar();
-      }
+      toggleMobileSidebar();
     } else {
       if (DOM.sidebar) {
         DOM.sidebar.classList.toggle("collapsed");
@@ -1034,6 +1061,7 @@
   function init() {
     initTheme();
     initSidebarResizer();
+    updateMobileChevron();
     updateModalConnectionBadge("status-connecting", "Connecting...");
     setConnectionStatus("disconnected", "Connecting...");
 
@@ -2699,6 +2727,12 @@
     }
 
     // Sidebar Toggle & Mobile Drawer
+    if (DOM.btnMobileChevronToggle) {
+      DOM.btnMobileChevronToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleMobileSidebar();
+      });
+    }
     if (DOM.btnSidebarToggle) {
       DOM.btnSidebarToggle.addEventListener("click", toggleSidebar);
     }
