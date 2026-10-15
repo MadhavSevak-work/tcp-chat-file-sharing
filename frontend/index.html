@@ -257,6 +257,11 @@
           </div>
         </div>
         <p class="subtitle">Server Based Chatting Platform</p>
+        <!-- Custom PWA Install Button in Login Overlay -->
+        <button type="button" id="btn-login-pwa-install" class="btn btn-secondary pwa-install-btn hidden" style="margin-top: 10px; width: 100%; justify-content: center; font-size: 0.85rem;" title="Install NetChat Live App" aria-label="Install NetChat Live App">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+          <span>Install NetChat Live App</span>
+        </button>
       </div>
 
       <div class="login-body">
@@ -364,6 +369,10 @@
             <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
             <span class="nav-title" id="drawer-theme-label">Switch Theme</span>
           </li>
+          <li class="nav-menu-item hidden pwa-install-btn" id="btn-drawer-pwa-install" role="button" tabindex="0" aria-label="Install NetChat Live App">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+            <span class="nav-title">Install App</span>
+          </li>
         </ul>
       </div>
 
@@ -463,6 +472,12 @@
           <button id="btn-open-file-panel" class="btn btn-secondary header-btn" title="Share File with Peer" aria-label="Share File with Peer">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
             <span class="btn-text">Share File</span>
+          </button>
+
+          <!-- PWA Install Action: Install App (Visible when installable) -->
+          <button type="button" id="btn-pwa-install" class="btn btn-secondary header-btn pwa-install-btn hidden" title="Install NetChat Live App" aria-label="Install NetChat Live App">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+            <span class="btn-text">Install App</span>
           </button>
 
           <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->
@@ -899,21 +914,219 @@
     </div>
   </div>
 
+  <!-- iOS Safari PWA Installation Fallback Modal -->
+  <div id="ios-install-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="ios-modal-title">
+    <div class="modal-card" style="max-width: 380px; text-align: center;">
+      <div class="modal-header" style="justify-content: flex-end; padding-bottom: 0;">
+        <button type="button" class="btn-icon" id="btn-close-ios-modal" aria-label="Close dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="padding: 10px 20px 24px;">
+        <div style="width: 52px; height: 52px; border-radius: 12px; background: rgba(0, 168, 132, 0.15); border: 1px solid rgba(0, 168, 132, 0.3); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px; color: var(--primary-accent);">
+          <svg class="svg-icon" style="width: 28px; height: 28px;"><use href="#icon-download"></use></svg>
+        </div>
+        <h3 id="ios-modal-title" style="font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: var(--text-primary);">Install NetChat Live</h3>
+        <p style="font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 20px;">
+          To install on your Apple device:<br>
+          <strong style="color: var(--text-primary); display: block; margin-top: 8px;">Tap the Share button below, then select 'Add to Home Screen'</strong>
+        </p>
+        <button type="button" class="btn btn-primary" id="btn-ios-got-it" style="width: 100%; justify-content: center;">Got It</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PWA Install Toast Container -->
+  <div id="pwa-toast" class="pwa-toast hidden" role="alert" aria-live="polite">
+    <div class="pwa-toast-content">
+      <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
+      <span id="pwa-toast-text">Tap the Share button below, then select 'Add to Home Screen'</span>
+    </div>
+  </div>
+
   <script src="js/app.js"></script>
 
-  <!-- PWA Service Worker Registration -->
+  <!-- PWA Installation Controller & Service Worker Registration -->
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/sw.js')
-          .then(function (registration) {
-            console.log('[PWA] Service Worker registered with scope:', registration.scope);
-          })
-          .catch(function (error) {
-            console.warn('[PWA] Service Worker registration failed:', error);
-          });
+    (function () {
+      let deferredPrompt = null;
+
+      // 3. Detect if already running in standalone mode
+      function isRunningStandalone() {
+        return Boolean(
+          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+          window.navigator.standalone === true ||
+          (document.referrer && document.referrer.includes('android-app://'))
+        );
+      }
+
+      function isIosDevice() {
+        const ua = window.navigator.userAgent.toLowerCase();
+        return /iphone|ipad|ipod/.test(ua) || 
+          (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
+      }
+
+      function getInstallButtons() {
+        return document.querySelectorAll('.pwa-install-btn, #btn-pwa-install, #btn-drawer-pwa-install, #btn-login-pwa-install');
+      }
+
+      function showInstallButtons() {
+        if (isRunningStandalone()) return;
+        getInstallButtons().forEach((btn) => {
+          btn.classList.remove('hidden');
+        });
+      }
+
+      function hideInstallButtons() {
+        getInstallButtons().forEach((btn) => {
+          btn.classList.add('hidden');
+        });
+      }
+
+      function showToast(message, duration = 5000) {
+        const toast = document.getElementById('pwa-toast');
+        const toastText = document.getElementById('pwa-toast-text');
+        if (toast && toastText) {
+          toastText.textContent = message;
+          toast.classList.remove('hidden');
+          clearTimeout(window.__pwaToastTimer);
+          window.__pwaToastTimer = setTimeout(() => {
+            toast.classList.add('hidden');
+          }, duration);
+        }
+      }
+
+      function showIosInstallModal() {
+        const modal = document.getElementById('ios-install-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+        }
+        showToast("Tap the Share button below, then select 'Add to Home Screen'");
+      }
+
+      function hideIosInstallModal() {
+        const modal = document.getElementById('ios-install-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+        }
+      }
+
+      // 2. Button click handler
+      async function handleInstallClick(e) {
+        if (e && e.preventDefault) e.preventDefault();
+
+        if (deferredPrompt) {
+          // Native browser installation flow
+          deferredPrompt.prompt();
+          try {
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('User response:', outcome);
+          } catch (err) {
+            console.warn('[PWA] Error reading userChoice:', err);
+          }
+          deferredPrompt = null;
+          hideInstallButtons();
+        } else if (isIosDevice() && !isRunningStandalone()) {
+          // 4. iOS / Safari fallback
+          showIosInstallModal();
+        } else {
+          console.log('[PWA] Install button clicked, but no deferredPrompt available.');
+          showToast("Install prompt is not active. Use your browser's install menu.");
+        }
+      }
+
+      // 1. Audit & implement the install prompt listener
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent default mini-infobar prompt
+        e.preventDefault();
+        // Store the event in variable
+        deferredPrompt = e;
+        window.deferredPrompt = e;
+        console.log('[PWA] beforeinstallprompt event captured and stored.');
+
+        // Show custom "Install App" button in UI only when this event fires
+        if (!isRunningStandalone()) {
+          showInstallButtons();
+        }
       });
-    }
+
+      // 3. Listen for appinstalled
+      window.addEventListener('appinstalled', () => {
+        console.log('[PWA] NetChat Live application installed successfully.');
+        deferredPrompt = null;
+        window.deferredPrompt = null;
+        hideInstallButtons();
+        hideIosInstallModal();
+      });
+
+      // iOS Safari detection: if running on iOS Safari and not standalone, show install button
+      if (isIosDevice() && !isRunningStandalone()) {
+        showInstallButtons();
+      }
+
+      // 5. Debugging Helper
+      window.triggerTestInstall = function (options = {}) {
+        console.log('[PWA Debug] triggerTestInstall() called.');
+        showInstallButtons();
+
+        if (!deferredPrompt && !isIosDevice()) {
+          deferredPrompt = {
+            prompt: () => console.log('[PWA Debug] deferredPrompt.prompt() executed.'),
+            userChoice: Promise.resolve({ outcome: options.outcome || 'accepted' })
+          };
+          window.deferredPrompt = deferredPrompt;
+          console.log('[PWA Debug] Mock deferredPrompt initialized for testing.');
+        }
+
+        if (options.immediate) {
+          handleInstallClick();
+        }
+
+        return 'Install buttons are now visible! Click any Install button in UI or run triggerTestInstall({ immediate: true }) to test click handler.';
+      };
+
+      // DOM Initialization
+      function setupPwaUi() {
+        getInstallButtons().forEach((btn) => {
+          btn.addEventListener('click', handleInstallClick);
+        });
+
+        const closeBtn = document.getElementById('btn-close-ios-modal');
+        const gotItBtn = document.getElementById('btn-ios-got-it');
+        const iosModal = document.getElementById('ios-install-modal');
+
+        if (closeBtn) closeBtn.addEventListener('click', hideIosInstallModal);
+        if (gotItBtn) gotItBtn.addEventListener('click', hideIosInstallModal);
+        if (iosModal) {
+          iosModal.addEventListener('click', (e) => {
+            if (e.target === iosModal) hideIosInstallModal();
+          });
+        }
+
+        if (isRunningStandalone()) {
+          hideInstallButtons();
+        }
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupPwaUi);
+      } else {
+        setupPwaUi();
+      }
+
+      // Service Worker Registration
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function (registration) {
+              console.log('[PWA] Service Worker registered with scope:', registration.scope);
+            })
+            .catch(function (error) {
+              console.warn('[PWA] Service Worker registration failed:', error);
+            });
+        });
+      }
+    })();
   </script>
 </body>
 </html>
