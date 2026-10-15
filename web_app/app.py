@@ -442,6 +442,7 @@ def handle_create_room(data):
     """
     sid = request.sid
     if not isinstance(data, dict):
+        emit("room_error", {"message": "Invalid payload format."})
         return {"status": "error", "message": "Invalid payload format."}
 
     room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
@@ -449,16 +450,20 @@ def handle_create_room(data):
     pin = str(data.get("pin") or data.get("passkey") or "").strip()
 
     if not room_id:
+        emit("room_error", {"message": "Room ID is required."})
         return {"status": "error", "message": "Room ID is required."}
     if not username:
+        emit("room_error", {"message": "Username is required."})
         return {"status": "error", "message": "Username is required."}
     if not pin:
-        return {"status": "error", "message": "PIN is required."}
+        emit("room_error", {"message": "Please enter a Room PIN."})
+        return {"status": "error", "message": "Please enter a Room PIN."}
 
     with room_lock:
         # Check if room already exists
         room_exists = (room_id in room_records) or (room_id in room_members and len(room_members[room_id]) > 0)
         if room_exists:
+            emit("room_error", {"message": "Room already exists"})
             return {"status": "error", "message": "Room already exists"}
 
         # If user was previously in another room, clean up old room first

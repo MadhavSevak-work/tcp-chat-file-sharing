@@ -1664,7 +1664,12 @@
   }
 
   function showLoginError(msg, highlightUsername = false) {
-    setConnectionStatus("disconnected", "Disconnected");
+    // Keep connection indicator green/connected if socket is active
+    if (state.socket && state.socket.connected) {
+      setConnectionStatus("connected", "Connected");
+    } else {
+      setConnectionStatus("disconnected", "Disconnected");
+    }
     setButtonsLoading(false);
     let errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
     if (!errorSpan && DOM.loginError) {
@@ -1697,7 +1702,10 @@
     }
   }
 
-  function handleCreateRoom() {
+  function handleCreateRoom(e) {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
     clearLoginError();
 
     const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
@@ -1728,9 +1736,8 @@
     }
 
     setButtonsLoading(true, "btn-create-room");
-    setConnectionStatus("connecting", "Connecting...");
 
-    state.socket.emit("create_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+    state.socket.emit("create_room", { room_id: roomId, pin: pin, passkey: pin, username: username }, (response) => {
       setButtonsLoading(false);
       if (response && response.status === "success") {
         // Save credentials in memory (zero-retention)
@@ -1765,7 +1772,10 @@
     });
   }
 
-  function handleJoinRoom() {
+  function handleJoinRoom(e) {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
     clearLoginError();
 
     const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
@@ -1796,9 +1806,8 @@
     }
 
     setButtonsLoading(true, "btn-join-room");
-    setConnectionStatus("connecting", "Connecting...");
 
-    state.socket.emit("join_room", { room_id: roomId, pin: pin, username: username }, (response) => {
+    state.socket.emit("join_room", { room_id: roomId, pin: pin, passkey: pin, username: username }, (response) => {
       setButtonsLoading(false);
       if (response && response.status === "success") {
         // Save credentials in memory (zero-retention)
@@ -1916,11 +1925,14 @@
     window.handleJoinSuccess = handleJoinSuccess;
   }
 
-  function handleConnectClick() {
+  function handleConnectClick(e) {
+    if (e && typeof e.preventDefault === "function") {
+      e.preventDefault();
+    }
     if (state.roomMode === "create") {
-      handleCreateRoom();
+      handleCreateRoom(e);
     } else {
-      handleJoinRoom();
+      handleJoinRoom(e);
     }
   }
 
@@ -3174,16 +3186,22 @@
         if (e.key === "Enter") handleConnectClick();
       });
     }
+    if (DOM.usernameInput) {
+      DOM.usernameInput.addEventListener("input", clearLoginError);
+      DOM.usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") handleConnectClick(e);
+      });
+    }
     if (DOM.roomInput) {
       DOM.roomInput.addEventListener("input", clearLoginError);
       DOM.roomInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") handleConnectClick();
+        if (e.key === "Enter") handleConnectClick(e);
       });
     }
     if (DOM.passkeyInput) {
       DOM.passkeyInput.addEventListener("input", clearLoginError);
       DOM.passkeyInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") handleConnectClick();
+        if (e.key === "Enter") handleConnectClick(e);
       });
     }
 
