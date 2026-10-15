@@ -2917,10 +2917,9 @@ body.drawer-open {
     white-space: nowrap;
     min-width: 0;
   }
-  .btn-copy-invite {
-    padding: 2px 7px;
-    font-size: 0.65rem;
-    flex-shrink: 0;
+  .btn-copy-invite,
+  #btn-copy-room-link {
+    display: none !important;
   }
 
   /* Responsive Typing Indicator */
