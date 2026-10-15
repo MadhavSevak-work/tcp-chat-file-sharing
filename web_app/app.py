@@ -204,6 +204,16 @@ def pwa_icons(filename):
     return send_from_directory(os.path.join(BASE_DIR, "static", "icons"), filename)
 
 
+@app.route("/favicon.ico", methods=["GET"])
+def favicon():
+    """Serves application favicon.ico to prevent browser 404s and shortcut fallback tiles."""
+    return send_from_directory(
+        os.path.join(BASE_DIR, "static"),
+        "favicon.ico",
+        mimetype="image/x-icon",
+    )
+
+
 @app.route("/health", methods=["GET", "OPTIONS"])
 @app.route("/api/health", methods=["GET", "OPTIONS"])
 def health_check():
