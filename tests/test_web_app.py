@@ -33,7 +33,37 @@ class TestWebApp(unittest.TestCase):
         # /app renders the HTML UI
         res_app = self.client.get("/app")
         self.assertEqual(res_app.status_code, 200)
-        self.assertIn(b"NetChat", res_app.data)
+        self.assertIn(b"NetChat Live - Server Based Chatting Platform", res_app.data)
+        self.assertNotIn(b"Computer Networks Lab", res_app.data)
+
+    def test_01b_pwa_metadata_and_endpoints(self):
+        """PWA manifest, service worker, and icon endpoints should return 200 with valid metadata."""
+        # 1. Manifest
+        res_manifest = self.client.get("/manifest.json")
+        self.assertEqual(res_manifest.status_code, 200)
+        manifest_data = json.loads(res_manifest.data)
+        self.assertEqual(manifest_data.get("name"), "NetChat Live - Server Based Chatting Platform")
+        self.assertEqual(manifest_data.get("short_name"), "NetChat Live")
+        self.assertEqual(manifest_data.get("display"), "standalone")
+        self.assertEqual(manifest_data.get("theme_color"), "#09090b")
+        self.assertEqual(manifest_data.get("background_color"), "#09090b")
+
+        # 2. Service Worker
+        res_sw = self.client.get("/sw.js")
+        self.assertEqual(res_sw.status_code, 200)
+        self.assertIn(b"self.skipWaiting()", res_sw.data)
+        self.assertIn(b"clients.claim()", res_sw.data)
+        self.assertIn(b"fetch(event.request)", res_sw.data)
+        self.assertEqual(res_sw.headers.get("Service-Worker-Allowed"), "/")
+
+        # 3. Icons
+        res_icon192 = self.client.get("/icons/icon-192.png")
+        self.assertEqual(res_icon192.status_code, 200)
+        self.assertTrue(res_icon192.data.startswith(b"\x89PNG"))
+
+        res_icon512 = self.client.get("/icons/icon-512.png")
+        self.assertEqual(res_icon512.status_code, 200)
+        self.assertTrue(res_icon512.data.startswith(b"\x89PNG"))
 
     def test_02_api_status(self):
         """GET /api/status should return JSON telemetry data."""

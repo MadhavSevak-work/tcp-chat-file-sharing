@@ -175,6 +175,35 @@ def web_ui():
     return render_template("index.html")
 
 
+@app.route("/manifest.json", methods=["GET"])
+def manifest():
+    """Serves the PWA Web App Manifest."""
+    return send_from_directory(
+        os.path.join(BASE_DIR, "static"),
+        "manifest.json",
+        mimetype="application/manifest+json",
+    )
+
+
+@app.route("/sw.js", methods=["GET"])
+def service_worker():
+    """Serves the PWA Service Worker with root scope permissions."""
+    response = send_from_directory(
+        os.path.join(BASE_DIR, "static"),
+        "sw.js",
+        mimetype="application/javascript",
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+@app.route("/icons/<path:filename>", methods=["GET"])
+def pwa_icons(filename):
+    """Serves PWA application icons."""
+    return send_from_directory(os.path.join(BASE_DIR, "static", "icons"), filename)
+
+
 @app.route("/health", methods=["GET", "OPTIONS"])
 @app.route("/api/health", methods=["GET", "OPTIONS"])
 def health_check():

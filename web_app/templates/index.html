@@ -3,8 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
-  <meta name="description" content="NetChat Live — TCP-Based Multi-Client Chat and File Sharing System. Real-time Layer 4 socket communication with SHA-256 integrity verification.">
-  <title>NetChat Live — TCP Multi-Client Chat & File Sharing (Computer Networks Lab)</title>
+  <meta name="title" content="NetChat Live - Server Based Chatting Platform">
+  <meta name="description" content="NetChat Live - Server Based Chatting Platform. Minimalist ephemeral zero-retention server-based chatting platform.">
+  <title>NetChat Live - Server Based Chatting Platform</title>
+
+  <!-- PWA & Mobile Web App Meta Tags -->
+  <meta name="theme-color" content="#09090b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NetChat Live">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
   
   <!-- Early Theme Detection Script (Prevents Theme Flash) -->
   <script>
@@ -237,14 +247,16 @@
       </div>
 
       <div class="login-header">
-        <div class="app-brand" aria-label="NetChat Live">
+        <div class="app-brand" aria-label="NetChat Live - Server Based Chatting Platform" title="NetChat Live - Server Based Chatting Platform">
           <div class="brand-symbol-wrap">
             <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-lock"></use></svg>
           </div>
           <div class="brand-text-wrap">
             <span class="app-brand-text">NetChat</span>
+            <span class="brand-live-badge">LIVE</span>
           </div>
         </div>
+        <p class="subtitle">Server Based Chatting Platform</p>
       </div>
 
       <div class="login-body">
@@ -311,7 +323,7 @@
       
       <!-- Branding & Mobile Close Button -->
       <div class="sidebar-brand">
-        <div class="app-brand" aria-label="NetChat Live">
+        <div class="app-brand" aria-label="NetChat Live - Server Based Chatting Platform" title="NetChat Live - Server Based Chatting Platform">
           <div class="brand-symbol-wrap">
             <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
           </div>
@@ -414,7 +426,7 @@
           </button>
 
           <!-- Mobile Compact Brand Badge -->
-          <div class="header-mobile-brand" aria-label="NetChat Live">
+          <div class="header-mobile-brand" aria-label="NetChat Live - Server Based Chatting Platform" title="NetChat Live - Server Based Chatting Platform">
             <div class="brand-symbol-wrap">
               <svg class="svg-icon app-brand-icon" aria-hidden="true"><use href="#icon-server"></use></svg>
             </div>
@@ -888,5 +900,20 @@
   </div>
 
   <script src="/static/js/app.js"></script>
+
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js')
+          .then(function (registration) {
+            console.log('[PWA] Service Worker registered with scope:', registration.scope);
+          })
+          .catch(function (error) {
+            console.warn('[PWA] Service Worker registration failed:', error);
+          });
+      });
+    }
+  </script>
 </body>
 </html>
