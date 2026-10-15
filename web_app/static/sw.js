@@ -6,7 +6,7 @@
  * communication and REST endpoints function without caching interference.
  */
 
-const CACHE_NAME = 'netchat-v6';
+const CACHE_NAME = 'netchat-v7';
 
 self.addEventListener('install', (event) => {
   // Activate immediately without waiting for existing clients to close

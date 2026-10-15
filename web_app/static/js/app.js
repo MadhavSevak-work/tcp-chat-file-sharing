@@ -1650,7 +1650,28 @@
   // =========================================================================
   // LOGIN, E2EE ROOM SETUP & AUTHENTICATION
   // =========================================================================
+  // Persistent Client Session Identifier (for resilient spot re-claiming)
+  const getClientSessionId = () => {
+    try {
+      let sId = sessionStorage.getItem("netchat_session_id");
+      if (!sId) {
+        sId = (window.crypto && typeof crypto.randomUUID === "function")
+          ? crypto.randomUUID()
+          : "sess-" + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+        sessionStorage.setItem("netchat_session_id", sId);
+      }
+      return sId;
+    } catch (_) {
+      return "sess-" + Math.random().toString(36).substring(2, 12);
+    }
+  };
+
+  let isSubmittingAuth = false;
+
   function setButtonsLoading(isLoading, activeBtnId = null) {
+    if (!isLoading) {
+      isSubmittingAuth = false;
+    }
     const btnCreate = DOM.btnCreateRoom;
     const btnJoin = DOM.btnJoinRoom;
 
@@ -1678,6 +1699,7 @@
   }
 
   function showLoginError(msg, highlightUsername = false) {
+    isSubmittingAuth = false;
     // Keep connection indicator green/connected if socket is active
     if (state.socket && state.socket.connected) {
       setConnectionStatus("connected", "Connected");
@@ -1720,6 +1742,8 @@
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
+    if (isSubmittingAuth) return;
+    isSubmittingAuth = true;
     clearLoginError();
 
     const userEl = DOM.usernameInput || document.getElementById("username-input");
@@ -1731,31 +1755,44 @@
     const pin = passEl ? passEl.value.trim() : "";
 
     if (!username) {
+      isSubmittingAuth = false;
       showLoginError("Please enter a nickname.");
       if (userEl) userEl.focus();
       return;
     }
 
     if (!roomId) {
+      isSubmittingAuth = false;
       showLoginError("Please enter or generate a Room ID.");
       if (roomEl) roomEl.focus();
       return;
     }
 
     if (!pin) {
+      isSubmittingAuth = false;
       showLoginError("Please enter a Room PIN.");
       if (passEl) passEl.focus();
       return;
     }
 
     if (!state.socket || !state.socket.connected) {
+      isSubmittingAuth = false;
       showLoginError("Connecting to server. Please wait a moment and try again.");
       return;
     }
 
     setButtonsLoading(true, "btn-create-room");
 
-    state.socket.emit("create_room", { room_id: roomId, pin: pin, passkey: pin, username: username }, (response) => {
+    const payload = {
+      room_id: roomId,
+      pin: pin,
+      passkey: pin,
+      username: username,
+      session_id: getClientSessionId()
+    };
+
+    state.socket.emit("create_room", payload, (response) => {
+      isSubmittingAuth = false;
       setButtonsLoading(false);
       if (response && response.status === "success") {
         // Save credentials in memory (zero-retention)
@@ -1794,6 +1831,8 @@
     if (e && typeof e.preventDefault === "function") {
       e.preventDefault();
     }
+    if (isSubmittingAuth) return;
+    isSubmittingAuth = true;
     clearLoginError();
 
     const userEl = DOM.usernameInput || document.getElementById("username-input");
@@ -1805,31 +1844,44 @@
     const pin = passEl ? passEl.value.trim() : "";
 
     if (!username) {
+      isSubmittingAuth = false;
       showLoginError("Please enter a nickname.");
       if (userEl) userEl.focus();
       return;
     }
 
     if (!roomId) {
+      isSubmittingAuth = false;
       showLoginError("Please enter a Room ID.");
       if (roomEl) roomEl.focus();
       return;
     }
 
     if (!pin) {
+      isSubmittingAuth = false;
       showLoginError("Please enter the Room PIN.");
       if (passEl) passEl.focus();
       return;
     }
 
     if (!state.socket || !state.socket.connected) {
+      isSubmittingAuth = false;
       showLoginError("Connecting to server. Please wait a moment and try again.");
       return;
     }
 
     setButtonsLoading(true, "btn-join-room");
 
-    state.socket.emit("join_room", { room_id: roomId, pin: pin, passkey: pin, username: username }, (response) => {
+    const payload = {
+      room_id: roomId,
+      pin: pin,
+      passkey: pin,
+      username: username,
+      session_id: getClientSessionId()
+    };
+
+    state.socket.emit("join_room", payload, (response) => {
+      isSubmittingAuth = false;
       setButtonsLoading(false);
       if (response && response.status === "success") {
         // Save credentials in memory (zero-retention)
@@ -1858,19 +1910,19 @@
           roomId: roomId
         });
       } else {
-        const errorMsg = (response && response.message) ? response.message : "Invalid PIN or Room not found";
-        const isUserErr = errorMsg.toLowerCase().includes("username");
-        showLoginError(errorMsg, isUserErr);
-        if (isUserErr && DOM.usernameInput) {
-          DOM.usernameInput.classList.add("input-error");
-          DOM.usernameInput.focus();
-        }
+        const errorMsg = (response && response.message)
+          ? response.message
+          : "Invalid credentials or room does not exist.";
+        showLoginError(errorMsg, errorMsg.includes("Username"));
       }
     });
   }
 
+
   function handleJoinSuccess(data) {
     if (!data) return;
+    isSubmittingAuth = false;
+    setButtonsLoading(false);
 
     if (data.status === "error") {
       showLoginError(data.message || "Failed to enter room.");

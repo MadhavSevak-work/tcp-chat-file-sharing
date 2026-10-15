@@ -78,7 +78,21 @@ room_users = {}         # room_id -> [ {"socket_id": socket_id, "username": user
 room_members = {}       # room_id -> { socket_id: username, ... }
 socket_to_room = {}     # socket_id -> room_id
 room_records = {}       # room_id -> { "pin_hash": hash, "created_at": time.time() }
+socket_to_ip = {}       # socket_id -> client_ip
+socket_to_session = {}  # socket_id -> {"session_id": session_id, "ip": client_ip, "username": username, "joined_at": float}
 room_lock = threading.Lock()
+
+
+def is_socket_active(s_id: str) -> bool:
+    """Checks if a given socket ID is actively connected to the server."""
+    if not s_id:
+        return False
+    try:
+        if hasattr(socketio, "server") and hasattr(socketio.server, "eio") and hasattr(socketio.server.eio, "sockets"):
+            return s_id in socketio.server.eio.sockets
+    except Exception:
+        pass
+    return True
 
 
 def hash_room_pin(pin: str) -> str:
@@ -117,11 +131,14 @@ class SlidingWindowRateLimiter:
             self.records.pop(key, None)
 
 
-# TASK 4: Connection throttling: max 5 connection attempts per IP per minute (60s)
-ip_connection_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=60.0)
+# Connection throttling: max 60 connection attempts per IP per minute (allows multiple devices on same local Wi-Fi)
+ip_connection_limiter = SlidingWindowRateLimiter(max_requests=60, window_seconds=60.0)
 
-# TASK 4: Message throttling: max 5 incoming chat messages per active socket per second (1.0s)
-socket_message_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=1.0)
+# Per-socket join/create throttling: max 20 attempts per socket per 10 seconds
+socket_join_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=10.0)
+
+# Message throttling: max 10 incoming chat messages per active socket per second (1.0s)
+socket_message_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=1.0)
 
 
 def get_client_ip() -> str:
@@ -374,6 +391,7 @@ def handle_connect():
         })
         return False
 
+    socket_to_ip[sid] = client_ip
     logger.info(f"[SocketIO] Client connected: {sid} (IP: {client_ip})")
     emit("gateway_ready", {
         "gateway": "TCP-WebSocket Gateway v1.0",
@@ -388,6 +406,9 @@ def handle_disconnect():
     logger.info(f"[SocketIO] Client disconnected: {sid}")
     gateway_manager.remove_session(sid)
     socket_message_limiter.reset(sid)
+    socket_join_limiter.reset(sid)
+    socket_to_ip.pop(sid, None)
+    socket_to_session.pop(sid, None)
 
     # Clean up user's room membership strictly per room
     with room_lock:
@@ -428,6 +449,40 @@ def handle_disconnect():
                     room_records.pop(r_id, None)
 
 
+@socketio.on("leave_room")
+def handle_leave_room(data=None):
+    """Gracefully leaves an E2EE room channel and cleans up active room membership."""
+    sid = request.sid
+    with room_lock:
+        r_id = socket_to_room.pop(sid, None)
+        if not r_id and isinstance(data, dict):
+            r_id = data.get("room_id")
+        if r_id:
+            leave_room(r_id)
+            if r_id in room_users:
+                room_users[r_id] = [u for u in room_users[r_id] if u.get("socket_id") != sid]
+                socketio.emit("update_peers", list(room_users[r_id]), to=r_id)
+                if not room_users[r_id]:
+                    room_users.pop(r_id, None)
+            if r_id in room_members and sid in room_members[r_id]:
+                departed_user = room_members[r_id].pop(sid, None)
+                peers_remaining = list(room_members[r_id].values())
+                emit("room_peers_update", {"room_id": r_id, "peers": peers_remaining}, room=r_id)
+                if departed_user:
+                    emit("receive_message", {
+                        "type": "system",
+                        "sender": "System",
+                        "room_id": r_id,
+                        "message": f"🔒 {departed_user} left the room.",
+                        "peers": peers_remaining,
+                        "timestamp": time.time()
+                    }, room=r_id)
+                if not room_members[r_id]:
+                    room_members.pop(r_id, None)
+                    room_records.pop(r_id, None)
+        socket_to_session.pop(sid, None)
+
+
 # ============================================================================
 # ZERO-KNOWLEDGE E2EE ROOM HANDLERS
 # ============================================================================
@@ -441,6 +496,12 @@ def handle_create_room(data):
       {'status': 'error', 'message': ...}
     """
     sid = request.sid
+    client_ip = get_client_ip()
+
+    if not socket_join_limiter.is_allowed(sid):
+        emit("room_error", {"message": "Rate limit exceeded. Please wait a moment."})
+        return {"status": "error", "message": "Rate limit exceeded. Please wait a moment."}
+
     if not isinstance(data, dict):
         emit("room_error", {"message": "Invalid payload format."})
         return {"status": "error", "message": "Invalid payload format."}
@@ -448,6 +509,7 @@ def handle_create_room(data):
     room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
     username = str(data.get("username", "")).strip()
     pin = str(data.get("pin") or data.get("passkey") or "").strip()
+    client_session_id = str(data.get("session_id") or "").strip()
 
     if not room_id:
         emit("room_error", {"message": "Room ID is required."})
@@ -462,6 +524,22 @@ def handle_create_room(data):
     with room_lock:
         # Check if room already exists
         room_exists = (room_id in room_records) or (room_id in room_members and len(room_members[room_id]) > 0)
+        if room_exists:
+            # Clean up stale orphaned sockets before determining existence
+            active_m = room_members.get(room_id, {})
+            stale_sids = [s for s in list(active_m.keys()) if not is_socket_active(s)]
+            for s in stale_sids:
+                logger.info(f"[E2EE Cleanup] Removing stale orphaned socket {s} from room {room_id}")
+                active_m.pop(s, None)
+                socket_to_room.pop(s, None)
+                socket_to_session.pop(s, None)
+                if room_id in room_users:
+                    room_users[room_id] = [u for u in room_users[room_id] if u.get("socket_id") != s]
+            if not active_m:
+                room_members.pop(room_id, None)
+                room_records.pop(room_id, None)
+                room_exists = False
+
         if room_exists:
             emit("room_error", {"message": "Room already exists"})
             return {"status": "error", "message": "Room already exists"}
@@ -508,6 +586,13 @@ def handle_create_room(data):
         room_users[room_id].append({"socket_id": sid, "username": username})
 
         socket_to_room[sid] = room_id
+        socket_to_ip[sid] = client_ip
+        socket_to_session[sid] = {
+            "session_id": client_session_id,
+            "ip": client_ip,
+            "username": username,
+            "joined_at": time.time()
+        }
         peers = list(room_members[room_id].values())
         current_room_users = list(room_users[room_id])
 
@@ -540,17 +625,23 @@ def handle_create_room(data):
 def handle_join_room(data):
     """
     Validates PIN and joins client to existing E2EE room channel.
-    Returns direct Socket.IO acknowledgment dictionary:
-      {'status': 'success', 'room_id': ..., 'username': ...} or
-      {'status': 'error', 'message': ...}
+    Resolves ghost sockets and allows reconnecting sessions to re-claim their username.
     """
     sid = request.sid
+    client_ip = get_client_ip()
+
+    if not socket_join_limiter.is_allowed(sid):
+        err = {"status": "error", "message": "Rate limit exceeded. Please wait a moment."}
+        emit("room_error", {"message": err["message"]})
+        return err
+
     if not isinstance(data, dict):
         return {"status": "error", "message": "Invalid payload format."}
 
     room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
     username = str(data.get("username", "")).strip()
     pin = str(data.get("pin") or data.get("passkey") or "").strip()
+    client_session_id = str(data.get("session_id") or "").strip()
 
     if not room_id:
         err = {"status": "error", "message": "Room ID is required."}
@@ -562,8 +653,20 @@ def handle_join_room(data):
         return err
 
     with room_lock:
+        active_room_members = room_members.get(room_id, {})
+
+        # Step 1: Detect and clean up any stale/orphaned socket IDs in this room
+        stale_sids = [s for s in list(active_room_members.keys()) if not is_socket_active(s)]
+        for s in stale_sids:
+            logger.info(f"[E2EE Cleanup] Removing stale orphaned socket {s} from room {room_id}")
+            active_room_members.pop(s, None)
+            socket_to_room.pop(s, None)
+            socket_to_session.pop(s, None)
+            if room_id in room_users:
+                room_users[room_id] = [u for u in room_users[room_id] if u.get("socket_id") != s]
+
         # Check if room exists
-        room_exists = (room_id in room_records) or (room_id in room_members and len(room_members[room_id]) > 0)
+        room_exists = (room_id in room_records) or (len(active_room_members) > 0)
         if not room_exists:
             # If PIN was supplied, enforce that room must exist
             if pin:
@@ -585,11 +688,36 @@ def handle_join_room(data):
                     emit("room_error", {"message": err["message"]})
                     return err
 
-        # Enforce room-scoped username uniqueness (case-insensitive)
+        # Step 2: Enforce room-scoped username uniqueness with ghost socket re-claim resolution
         clean_target_user = username.strip().lower()
-        active_room_members = room_members.get(room_id, {})
-        for peer_sid, peer_name in active_room_members.items():
-            if peer_sid != sid and str(peer_name).strip().lower() == clean_target_user:
+        existing_owner_sid = None
+        for peer_sid, peer_name in list(active_room_members.items()):
+            if str(peer_name).strip().lower() == clean_target_user:
+                existing_owner_sid = peer_sid
+                break
+
+        if existing_owner_sid:
+            is_same_socket = (existing_owner_sid == sid)
+            existing_sess = socket_to_session.get(existing_owner_sid, {})
+            is_same_session = bool(
+                client_session_id and existing_sess.get("session_id") == client_session_id
+            )
+            is_same_client_ip = (existing_sess.get("ip") == client_ip)
+
+            if is_same_socket or is_same_session or is_same_client_ip:
+                # Reconnection / re-claiming existing spot gracefully
+                logger.info(
+                    f"[E2EE Re-claim] User '{username}' re-claimed spot in room '{room_id}' "
+                    f"(old_sid={existing_owner_sid}, new_sid={sid})"
+                )
+                if existing_owner_sid != sid:
+                    active_room_members.pop(existing_owner_sid, None)
+                    socket_to_room.pop(existing_owner_sid, None)
+                    socket_to_session.pop(existing_owner_sid, None)
+                    if room_id in room_users:
+                        room_users[room_id] = [u for u in room_users[room_id] if u.get("socket_id") != existing_owner_sid]
+            else:
+                # Genuine collision with another active user in the same room
                 err = {
                     "status": "error",
                     "message": "Username is already taken in this room. Please choose another."
@@ -639,6 +767,13 @@ def handle_join_room(data):
         room_users[room_id].append({"socket_id": sid, "username": username})
 
         socket_to_room[sid] = room_id
+        socket_to_ip[sid] = client_ip
+        socket_to_session[sid] = {
+            "session_id": client_session_id,
+            "ip": client_ip,
+            "username": username,
+            "joined_at": time.time()
+        }
         peers = list(room_members[room_id].values())
         current_room_users = list(room_users[room_id])
 
@@ -779,13 +914,13 @@ def handle_join(data):
     host = DEFAULT_HOST
     port = DEFAULT_CHAT_PORT
 
-    # TASK 4: Connection Throttling check
-    if not ip_connection_limiter.is_allowed(client_ip):
-        logger.warning(f"[RateLimit] Throttled join attempt from IP: {client_ip}")
+    # Connection Throttling check (per-socket / per-session)
+    if not socket_join_limiter.is_allowed(sid):
+        logger.warning(f"[RateLimit] Throttled join attempt from socket: {sid}")
         emit("join_error", {
             "type": "error",
             "code": "RATE_LIMIT_EXCEEDED",
-            "message": "Connection rate limit exceeded. Please wait."
+            "message": "Connection rate limit exceeded. Please wait a moment."
         })
         return
 
@@ -795,15 +930,17 @@ def handle_join(data):
         emit("join_error", {"type": "error", "code": "INVALID_USERNAME", "message": val_msg})
         return
 
-    # TASK 5: Nickname Collision Prevention in Gateway Registry
+    # Nickname Collision Prevention in Gateway Registry (with re-claim support)
+    existing_sess = gateway_manager.get_session(sid)
     if gateway_manager.is_nickname_taken(val_msg):
-        logger.warning(f"[Gateway] Nickname collision detected for '{val_msg}'")
-        emit("join_error", {
-            "type": "error",
-            "code": "NICKNAME_TAKEN",
-            "message": "Nickname already in use. Please choose another."
-        })
-        return
+        if not (existing_sess and existing_sess.username == val_msg):
+            logger.warning(f"[Gateway] Nickname collision detected for '{val_msg}'")
+            emit("join_error", {
+                "type": "error",
+                "code": "NICKNAME_TAKEN",
+                "message": "Nickname already in use. Please choose another."
+            })
+            return
 
     # Callback executed by the background TCP thread to push messages to this browser
     def emit_to_browser(event_name: str, payload: dict):
