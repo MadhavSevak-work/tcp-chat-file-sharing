@@ -1028,14 +1028,24 @@
 
   function generateShareUrl(roomId, pin) {
     const id = roomId || state.roomId || "";
-    const passkey = (pin !== undefined && pin !== null)
+    const roomPin = (pin !== undefined && pin !== null)
       ? String(pin).trim()
       : (state.roomPasskey ? String(state.roomPasskey).trim() : "");
-    let url = `${window.location.origin}/?room=${encodeURIComponent(id)}`;
-    if (passkey) {
-      url += `&pin=${encodeURIComponent(passkey)}`;
+
+    // Dynamically read the current domain using window.location.origin
+    const baseOrigin = (typeof window !== "undefined" && window.location && window.location.origin)
+      ? window.location.origin
+      : "https://netchat-live.onrender.com";
+
+    const joinUrl = new URL(baseOrigin);
+    if (id) {
+      joinUrl.searchParams.set("room", id);
     }
-    return url;
+    if (roomPin) {
+      joinUrl.searchParams.set("pin", roomPin);
+    }
+    const finalUrl = joinUrl.toString();
+    return finalUrl;
   }
 
   let qrCodeInstance = null;
@@ -1095,16 +1105,18 @@
   function openShareRoomModal() {
     if (!state.roomId) return;
     const roomId = state.roomId;
-    const shareUrl = generateShareUrl(roomId, state.roomPasskey);
+    const roomPin = state.roomPasskey || "";
+    const finalUrl = generateShareUrl(roomId, roomPin);
 
     if (DOM.shareRoomIdVal) {
       DOM.shareRoomIdVal.textContent = roomId;
     }
     if (DOM.shareRoomUrlInput) {
-      DOM.shareRoomUrlInput.value = shareUrl;
+      DOM.shareRoomUrlInput.value = finalUrl;
     }
 
-    renderRoomQrCode(shareUrl);
+    // Ensure finalUrl is the exact string passed to the QR code rendering library
+    renderRoomQrCode(finalUrl);
 
     if (DOM.shareRoomModal) {
       DOM.shareRoomModal.classList.remove("hidden");
@@ -1118,15 +1130,16 @@
   }
 
   async function handleCopyShareUrl() {
-    const url = (DOM.shareRoomUrlInput && DOM.shareRoomUrlInput.value)
+    // Ensure the Copy Link action copies the exact finalUrl
+    const finalUrl = (DOM.shareRoomUrlInput && DOM.shareRoomUrlInput.value)
       ? DOM.shareRoomUrlInput.value
       : generateShareUrl(state.roomId, state.roomPasskey);
-    if (!url) return;
+    if (!finalUrl) return;
 
     let copied = false;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
-        await navigator.clipboard.writeText(url);
+        await navigator.clipboard.writeText(finalUrl);
         copied = true;
       } catch (_) {}
     }
