@@ -340,10 +340,11 @@
         </div>
         <div class="sidebar-brand-actions">
           <span class="badge-status offline" title="Network Connection Status" id="sidebar-status-badge">
-            <span class="status-dot disconnected"></span>
-            <span class="badge-text">OFFLINE</span>
+            <span class="status-dot disconnected" id="sidebar-status-dot"></span>
+            <span class="badge-text" id="sidebar-status-text">OFFLINE</span>
+            <span id="drawer-latency-text" class="status-latency hidden"></span>
           </span>
-          <button type="button" id="sidebar-close-btn" class="btn-icon mobile-only" title="Close Menu" aria-label="Close navigation sidebar">
+          <button type="button" id="sidebar-close-btn" class="btn-icon mobile-only min-w-[44px] min-h-[44px]" title="Close Menu" aria-label="Close navigation sidebar">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
           </button>
         </div>
@@ -370,7 +371,11 @@
             <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
             <span class="nav-title" id="drawer-theme-label">Switch Theme</span>
           </li>
-          <li class="nav-menu-item hidden pwa-install-btn" id="btn-drawer-pwa-install" role="button" tabindex="0" aria-label="Install NetChat Live App">
+          <li class="nav-menu-item" id="btn-drawer-disconnect" role="button" tabindex="0" aria-label="Disconnect Session">
+            <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
+            <span class="nav-title">Disconnect Session</span>
+          </li>
+          <li class="nav-menu-item hidden pwa-install-btn pwa-hide-standalone" id="btn-drawer-pwa-install" role="button" tabindex="0" aria-label="Install NetChat Live App">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
             <span class="nav-title">Install App</span>
           </li>
@@ -427,12 +432,12 @@
     <!-- MAIN CHAT CONVERSATION VIEW -->
     <main class="chat-main" id="chat-main-area">
       
-      <!-- Top Header -->
-      <header class="app-header">
-        <div class="header-left">
-          <!-- Collapsible Sidebar Hamburger Toggle Button -->
-          <button type="button" id="btn-sidebar-toggle" class="btn-icon header-btn sidebar-toggle-btn" title="Toggle Sidebar" aria-label="Toggle navigation sidebar">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+      <!-- Top Header (Decluttered, Responsive Spacing, Anti-overflow) -->
+      <header class="app-header flex justify-between items-center gap-2 overflow-x-hidden w-full max-w-[100vw]">
+        <div class="header-left flex items-center gap-2 min-w-0 flex-1">
+          <!-- Collapsible Sidebar Hamburger Toggle Button (3 horizontal lines for mobile) -->
+          <button type="button" id="btn-sidebar-toggle" class="btn-icon header-btn sidebar-toggle-btn block md:hidden min-w-[44px] min-h-[44px] p-2" title="Toggle Navigation Menu" aria-label="Toggle navigation menu">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-menu"></use></svg>
           </button>
 
           <!-- Mobile Compact Brand Badge -->
@@ -461,40 +466,40 @@
           </div>
         </div>
 
-        <div class="header-right">
-          <!-- Live Telemetry Pill / Connection Status -->
-          <div class="status-pill-badge" id="header-status-pill" title="Connection Status" aria-live="polite">
+        <div class="header-right flex items-center gap-2 flex-shrink-0">
+          <!-- Desktop-Only: Live Telemetry Pill / Connection Status (Moved to Drawer on Mobile) -->
+          <div class="status-pill-badge hidden md:flex" id="header-status-pill" title="Connection Status" aria-live="polite">
             <span class="status-dot disconnected" id="header-status-dot"></span>
             <span id="header-status-text">Disconnected</span>
             <span id="header-latency-text" class="status-latency hidden"></span>
           </div>
 
           <!-- Share Room / Invite Button (Emerald) -->
-          <button id="btn-header-share-room" class="btn btn-emerald header-btn hidden" title="Share Room & QR Code" aria-label="Share Room & QR Code">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-link"></use></svg>
-            <span class="btn-text">Share Room</span>
+          <button id="btn-header-share-room" class="btn btn-emerald header-btn hidden min-h-[44px] px-3 py-2" title="Share Room & QR Code" aria-label="Share Room & QR Code">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-link"></use></svg>
+            <span class="btn-text hidden sm:inline">Share Room</span>
           </button>
 
-          <!-- Desktop Quick Action: Share File -->
-          <button id="btn-open-file-panel" class="btn btn-secondary header-btn" title="Share File with Peer" aria-label="Share File with Peer">
+          <!-- PWA Install Action: Icon-Only on Mobile, Text on Desktop, Hidden if Standalone -->
+          <button type="button" id="btn-pwa-install" class="btn btn-secondary header-btn pwa-install-btn pwa-hide-standalone hidden min-w-[44px] min-h-[44px] p-2" title="Install NetChat Live App" aria-label="Install NetChat Live App">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-download"></use></svg>
+            <span class="hidden sm:inline btn-text">Install App</span>
+          </button>
+
+          <!-- Desktop-Only Quick Action: Share File (Available in Drawer on Mobile) -->
+          <button id="btn-open-file-panel" class="btn btn-secondary header-btn hidden md:inline-flex" title="Share File with Peer" aria-label="Share File with Peer">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
             <span class="btn-text">Share File</span>
           </button>
 
-          <!-- PWA Install Action: Install App (Visible when installable) -->
-          <button type="button" id="btn-pwa-install" class="btn btn-secondary header-btn pwa-install-btn hidden" title="Install NetChat Live App" aria-label="Install NetChat Live App">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-download"></use></svg>
-            <span class="btn-text">Install App</span>
-          </button>
-
-          <!-- Theme Toggle Button (Alongside Diagnostics and Connection Control) -->
-          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn" title="Switch to light mode" aria-label="Switch to light mode">
+          <!-- Desktop-Only Theme Toggle (Available in Drawer on Mobile) -->
+          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn hidden md:inline-flex" title="Switch to light mode" aria-label="Switch to light mode">
             <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
             <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
           </button>
 
-          <!-- Connection Control (Disconnect Session) -->
-          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn" title="Disconnect Session" aria-label="Disconnect Session">
+          <!-- Desktop-Only Connection Control (Available in Drawer on Mobile) -->
+          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn hidden md:inline-flex" title="Disconnect Session" aria-label="Disconnect Session">
             <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
           </button>
         </div>
@@ -997,13 +1002,17 @@
     (function () {
       let deferredPrompt = null;
 
-      // 3. Detect if already running in standalone mode
+      // 3. Detect if already running in standalone mode (installed PWA)
+      const isInstalled = Boolean(
+        (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+        (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
+        (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) ||
+        window.navigator.standalone === true ||
+        (document.referrer && document.referrer.includes('android-app://'))
+      );
+
       function isRunningStandalone() {
-        return Boolean(
-          (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-          window.navigator.standalone === true ||
-          (document.referrer && document.referrer.includes('android-app://'))
-        );
+        return isInstalled;
       }
 
       function isIosDevice() {
@@ -1013,11 +1022,24 @@
       }
 
       function getInstallButtons() {
-        return document.querySelectorAll('.pwa-install-btn, #btn-pwa-install, #btn-drawer-pwa-install, #btn-login-pwa-install');
+        return document.querySelectorAll('.pwa-install-btn, #btn-pwa-install, #btn-drawer-pwa-install, #btn-login-pwa-install, .pwa-hide-standalone');
+      }
+
+      // If already installed, completely remove install buttons and banner from DOM
+      if (isInstalled) {
+        getInstallButtons().forEach((btn) => {
+          if (btn && btn.parentNode) {
+            btn.remove();
+          }
+        });
+        const toast = document.getElementById('pwa-toast');
+        if (toast && toast.parentNode) {
+          toast.remove();
+        }
       }
 
       function showInstallButtons() {
-        if (isRunningStandalone()) return;
+        if (isInstalled || isRunningStandalone()) return;
         getInstallButtons().forEach((btn) => {
           btn.classList.remove('hidden');
         });

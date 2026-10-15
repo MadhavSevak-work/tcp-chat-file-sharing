@@ -2885,22 +2885,10 @@ body.drawer-open {
     flex-shrink: 0;
   }
 
-  .status-pill-badge {
-    height: 38px;
-    padding: 0 10px;
-    font-size: 0.75rem;
-    border-radius: var(--radius-sm);
-    gap: 6px;
-  }
-
-  .header-btn.btn-icon-only {
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-    min-height: 44px;
-    padding: 0;
-  }
-
+  /* Declutter Mobile Header: Hide secondary status indicators and toggles from mobile view */
+  #header-status-pill,
+  #btn-disconnect,
+  #btn-theme-toggle,
   #btn-open-file-panel,
   #btn-open-diagnostics {
     display: none !important;
@@ -3576,5 +3564,102 @@ body.drawer-open {
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
 }
+
+/* ==========================================================================
+   PWA Standalone Mode & Responsive Header Enhancements
+   ========================================================================== */
+
+/* 1. Hide Install Button in Standalone Mode (Already Installed) */
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .pwa-hide-standalone,
+  .pwa-install-btn,
+  #btn-pwa-install,
+  #btn-drawer-pwa-install,
+  #btn-login-pwa-install,
+  #pwa-toast {
+    display: none !important;
+  }
+}
+
+/* 2. Responsive Header Spacing & Anti-Overflow */
+.app-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  overflow-x: hidden !important;
+  width: 100% !important;
+  max-width: 100vw !important;
+  box-sizing: border-box !important;
+}
+
+/* 3. Icon-Only Install Button on Mobile Screens */
+#btn-pwa-install .btn-text,
+#btn-pwa-install .hidden.sm\:inline {
+  display: none !important;
+}
+
+@media (min-width: 640px) {
+  #btn-pwa-install .btn-text,
+  #btn-pwa-install .hidden.sm\:inline {
+    display: inline !important;
+  }
+}
+
+/* 4. Mobile Header Decluttering & Hamburger Menu Layout */
+@media (max-width: 768px) {
+  #btn-sidebar-toggle {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
+    flex-shrink: 0;
+  }
+
+  /* Secondary controls hidden on mobile (accessible in drawer) */
+  #header-status-pill,
+  #btn-disconnect,
+  #btn-theme-toggle,
+  #btn-open-file-panel,
+  #btn-open-diagnostics {
+    display: none !important;
+  }
+
+  /* Mobile install button styling */
+  #btn-pwa-install {
+    padding: 0.5rem !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  #btn-pwa-install.hidden {
+    display: none !important;
+  }
+
+  #btn-header-share-room {
+    min-height: 44px !important;
+    flex-shrink: 0;
+  }
+
+  /* Prevent any element in header from overflowing viewport */
+  .app-header,
+  .app-header * {
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+}
+
+@media (min-width: 769px) {
+  #btn-sidebar-toggle {
+    display: none !important;
+  }
+}
+
 
 

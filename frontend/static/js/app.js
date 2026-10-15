@@ -88,6 +88,7 @@
     usersNavList: document.getElementById("users-nav-list"),
     btnPublicRoom: document.getElementById("btn-public-room"),
     btnSidebarDisconnect: document.getElementById("btn-sidebar-disconnect"),
+    btnDrawerDisconnect: document.getElementById("btn-drawer-disconnect"),
     btnDrawerShareFile: document.getElementById("btn-drawer-share-file"),
     btnDrawerDiagnostics: document.getElementById("btn-drawer-diagnostics"),
     btnDrawerTheme: document.getElementById("btn-drawer-theme"),
@@ -95,6 +96,9 @@
     btnDrawerCopyLink: document.getElementById("btn-drawer-copy-link"),
     iconDrawerCopyLink: document.getElementById("icon-drawer-copy-link"),
     drawerCopyLinkTitle: document.getElementById("drawer-copy-link-title"),
+    drawerLatencyText: document.getElementById("drawer-latency-text"),
+    btnPwaInstall: document.getElementById("btn-pwa-install"),
+    btnDrawerPwaInstall: document.getElementById("btn-drawer-pwa-install"),
 
     // Chat Header & Messages
     activeChatTitle: document.getElementById("active-chat-title"),
@@ -338,10 +342,20 @@
       DOM.rpLatency.textContent = (isConnected && state.latencyMs > 0) ? `${state.latencyMs} ms` : "-- ms";
     }
 
-    // Sidebar status badge (CSS status dot + readable text)
+    // Sidebar status badge (CSS status dot + readable text + latency/ping)
     if (DOM.sidebarStatusBadge) {
       DOM.sidebarStatusBadge.className = "badge-status " + (isConnected ? "online" : (status === "connecting" ? "connecting" : "offline"));
-      DOM.sidebarStatusBadge.innerHTML = `<span class="status-dot ${status}"></span><span class="badge-text">${isConnected ? "ONLINE" : (status === "connecting" ? "CONNECTING" : "OFFLINE")}</span>`;
+      const pingText = (isConnected && state.latencyMs > 0) ? ` • ${state.latencyMs}ms` : "";
+      DOM.sidebarStatusBadge.innerHTML = `<span class="status-dot ${status}"></span><span class="badge-text">${isConnected ? "ONLINE" : (status === "connecting" ? "CONNECTING" : "OFFLINE")}${pingText}</span>`;
+    }
+    if (DOM.drawerLatencyText) {
+      if (isConnected && state.latencyMs > 0) {
+        DOM.drawerLatencyText.textContent = `${state.latencyMs} ms`;
+        DOM.drawerLatencyText.classList.remove("hidden");
+      } else {
+        DOM.drawerLatencyText.textContent = "";
+        DOM.drawerLatencyText.classList.add("hidden");
+      }
     }
 
     // Header connection control (Unplug for disconnect, RefreshCw for reconnect)
@@ -1107,7 +1121,32 @@
     openShareRoomModal();
   }
 
+  // PWA Standalone Detection & Complete DOM Removal
+  const isPwaInstalled = Boolean(
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) ||
+    window.navigator.standalone === true ||
+    (document.referrer && document.referrer.includes('android-app://'))
+  );
+
+  function checkPwaInstalled() {
+    if (isPwaInstalled) {
+      if (DOM.btnPwaInstall && DOM.btnPwaInstall.parentNode) {
+        DOM.btnPwaInstall.remove();
+      }
+      if (DOM.btnDrawerPwaInstall && DOM.btnDrawerPwaInstall.parentNode) {
+        DOM.btnDrawerPwaInstall.remove();
+      }
+      const pwaToast = document.getElementById("pwa-toast");
+      if (pwaToast && pwaToast.parentNode) {
+        pwaToast.remove();
+      }
+    }
+  }
+
   function init() {
+    checkPwaInstalled();
     initTheme();
     initSidebarResizer();
     updateModalConnectionBadge("status-connecting", "Connecting...");
@@ -3069,6 +3108,7 @@
     };
     if (DOM.btnDisconnect) DOM.btnDisconnect.addEventListener("click", disconnectHandler);
     if (DOM.btnSidebarDisconnect) DOM.btnSidebarDisconnect.addEventListener("click", disconnectHandler);
+    if (DOM.btnDrawerDisconnect) DOM.btnDrawerDisconnect.addEventListener("click", disconnectHandler);
 
     if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
     if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
