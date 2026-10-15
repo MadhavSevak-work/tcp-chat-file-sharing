@@ -51,6 +51,7 @@
     btnJoinRoomText: document.getElementById("btn-join-room-text"),
     usernameInput: document.getElementById("username-input"),
     roomInput: document.getElementById("room-input"),
+    passkeyInput: document.getElementById("passkey-input"),
     btnGenerateRoom: document.getElementById("btn-generate-room"),
     btnScanQr: document.getElementById("btn-scan-qr"),
     btnScanQrSecondary: document.getElementById("btn-scan-qr-secondary"),
@@ -1708,25 +1709,29 @@
     }
     clearLoginError();
 
-    const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
-    const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
-    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
+    const userEl = DOM.usernameInput || document.getElementById("username-input");
+    const roomEl = DOM.roomInput || document.getElementById("room-input");
+    const passEl = DOM.passkeyInput || document.getElementById("passkey-input");
+
+    const username = userEl ? userEl.value.trim() : "";
+    const roomId = roomEl ? roomEl.value.trim().toLowerCase() : "";
+    const pin = passEl ? passEl.value.trim() : "";
 
     if (!username) {
       showLoginError("Please enter a nickname.");
-      if (DOM.usernameInput) DOM.usernameInput.focus();
+      if (userEl) userEl.focus();
       return;
     }
 
     if (!roomId) {
       showLoginError("Please enter or generate a Room ID.");
-      if (DOM.roomInput) DOM.roomInput.focus();
+      if (roomEl) roomEl.focus();
       return;
     }
 
     if (!pin) {
       showLoginError("Please enter a Room PIN.");
-      if (DOM.passkeyInput) DOM.passkeyInput.focus();
+      if (passEl) passEl.focus();
       return;
     }
 
@@ -1778,25 +1783,29 @@
     }
     clearLoginError();
 
-    const username = DOM.usernameInput ? DOM.usernameInput.value.trim() : "";
-    const roomId = DOM.roomInput ? DOM.roomInput.value.trim().toLowerCase() : "";
-    const pin = DOM.passkeyInput ? DOM.passkeyInput.value.trim() : "";
+    const userEl = DOM.usernameInput || document.getElementById("username-input");
+    const roomEl = DOM.roomInput || document.getElementById("room-input");
+    const passEl = DOM.passkeyInput || document.getElementById("passkey-input");
+
+    const username = userEl ? userEl.value.trim() : "";
+    const roomId = roomEl ? roomEl.value.trim().toLowerCase() : "";
+    const pin = passEl ? passEl.value.trim() : "";
 
     if (!username) {
       showLoginError("Please enter a nickname.");
-      if (DOM.usernameInput) DOM.usernameInput.focus();
+      if (userEl) userEl.focus();
       return;
     }
 
     if (!roomId) {
       showLoginError("Please enter a Room ID.");
-      if (DOM.roomInput) DOM.roomInput.focus();
+      if (roomEl) roomEl.focus();
       return;
     }
 
     if (!pin) {
       showLoginError("Please enter the Room PIN.");
-      if (DOM.passkeyInput) DOM.passkeyInput.focus();
+      if (passEl) passEl.focus();
       return;
     }
 
