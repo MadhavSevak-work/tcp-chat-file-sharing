@@ -6,14 +6,26 @@
  * communication and REST endpoints function without caching interference.
  */
 
+const CACHE_NAME = 'netchat-v3';
+
 self.addEventListener('install', (event) => {
   // Activate immediately without waiting for existing clients to close
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  // Claim active clients immediately
-  event.waitUntil(self.clients.claim());
+  // Purge any outdated caches to discard stale manifests/icons
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
