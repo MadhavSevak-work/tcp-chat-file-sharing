@@ -3772,3 +3772,855 @@ body.drawer-open {
 .transition-colors {
   transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease !important;
 }
+
+/* ==========================================================================
+   WebRTC P2P Video/Audio Calling & RTCDataChannel File Transfers
+   ========================================================================== */
+
+#btn-header-call {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+#btn-header-call.hidden {
+  display: none !important;
+}
+
+#btn-header-audio-call {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+#btn-header-audio-call.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   Floating Audio Call Bar (Minimalist Non-Intrusive Dock)
+   ========================================================================== */
+.webrtc-audio-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  max-width: 90vw;
+  animation: audioBarSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.webrtc-audio-bar.hidden {
+  display: none !important;
+}
+
+@keyframes audioBarSlideUp {
+  from { transform: translate(-50%, 40px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.audio-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(18, 19, 24, 0.92);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 15px rgba(16, 185, 129, 0.2);
+  padding: 8px 16px;
+  border-radius: 9999px;
+}
+
+.audio-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-bar-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.audio-bar-title {
+  line-height: 1.1;
+}
+
+.audio-bar-participants {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+/* Participant chips inside audio bar */
+.audio-participant-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 3px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  color: #e4e4e7;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.audio-participant-chip.speaking {
+  border-color: #10B981;
+  background: rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.4);
+}
+
+.participant-avatar-mini {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: white;
+}
+
+.audio-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-bar-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.audio-bar-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.audio-bar-btn.active-off {
+  background: #dc2626 !important;
+  color: #fff !important;
+}
+
+.audio-bar-btn-leave {
+  background: #ef4444 !important;
+  color: #fff !important;
+}
+
+.audio-bar-btn-leave:hover {
+  background: #dc2626 !important;
+}
+
+/* ==========================================================================
+   Room Call Announcement Toast Banner
+   ========================================================================== */
+.call-announcement-banner {
+  position: fixed;
+  top: 70px;
+  right: 20px;
+  z-index: 9997;
+  background: rgba(18, 19, 24, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  border-radius: 16px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  animation: announcementSlideIn 0.3s ease;
+}
+
+.call-announcement-banner.hidden {
+  display: none !important;
+}
+
+@keyframes announcementSlideIn {
+  from { transform: translateY(-20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.announcement-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.announcement-ring {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.announcement-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   Responsive Video Grid (1-on-1 to 4-6 Tiles Mesh)
+   ========================================================================== */
+.webrtc-video-grid {
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+}
+
+.webrtc-video-grid[data-count="1"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.webrtc-video-grid[data-count="2"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: 1fr;
+}
+
+@media (max-width: 640px) {
+  .webrtc-video-grid[data-count="2"] {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(2, 1fr);
+  }
+}
+
+.webrtc-video-grid[data-count="3"],
+.webrtc-video-grid[data-count="4"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.webrtc-video-grid[data-count="5"],
+.webrtc-video-grid[data-count="6"] {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+@media (max-width: 768px) {
+  .webrtc-video-grid[data-count="5"],
+  .webrtc-video-grid[data-count="6"] {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+  }
+}
+
+/* Individual Video Tile */
+.video-tile {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 140px;
+  background: #090a0f;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.video-tile.speaking {
+  border-color: #10B981 !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.5);
+}
+
+.webrtc-tile-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.video-tile.local-tile .webrtc-tile-video {
+  transform: scaleX(-1);
+}
+
+.tile-avatar-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: #0d0e14;
+}
+
+.tile-avatar-circle {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.video-tile.speaking .tile-avatar-circle {
+  animation: tileSpeakingRing 1.4s infinite;
+}
+
+@keyframes tileSpeakingRing {
+  0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1.04); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.tile-meta {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  padding: 2px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tile-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #fff;
+}
+
+.tile-speaking-indicator {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+}
+
+.btn-call-peer-tiny {
+  background: none;
+  border: none;
+  color: var(--text-muted, #71717a);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-xs, 4px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  margin-left: 2px;
+}
+
+.btn-call-peer-tiny:hover {
+  color: #10B981;
+  background-color: rgba(16, 185, 129, 0.12);
+}
+
+/* Call Overlay Modal */
+.webrtc-call-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  padding: 16px;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+
+.webrtc-call-overlay.hidden {
+  display: none !important;
+}
+
+/* Minimized PiP mode for overlay (lets user chat while calling) */
+.webrtc-call-overlay.minimized {
+  position: fixed;
+  inset: auto 20px 20px auto;
+  width: 320px;
+  height: 220px;
+  background-color: transparent;
+  backdrop-filter: none;
+  padding: 0;
+  z-index: 9999;
+}
+
+@media (max-width: 640px) {
+  .webrtc-call-overlay.minimized {
+    inset: auto 12px 75px auto;
+    width: 220px;
+    height: 150px;
+  }
+}
+
+.webrtc-call-card {
+  width: 100%;
+  max-width: 860px;
+  height: 82vh;
+  max-height: 640px;
+  background-color: #0d0e12;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.webrtc-call-overlay.minimized .webrtc-call-card {
+  max-width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+/* Call Top Bar */
+.webrtc-call-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+}
+
+.webrtc-peer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.webrtc-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10B981;
+  box-shadow: 0 0 10px #10B981;
+  animation: webrtc-pulse 1.8s infinite;
+}
+
+@keyframes webrtc-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.webrtc-call-timer {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.12);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  color: #cbd5e1;
+}
+
+.webrtc-icon-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.webrtc-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Video Stage */
+.webrtc-video-stage {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #060709;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.webrtc-remote-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background-color: #060709;
+}
+
+.webrtc-remote-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: #94a3b8;
+}
+
+.webrtc-placeholder-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.35);
+}
+
+.webrtc-placeholder-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+/* Local PiP Window in bottom corner */
+.webrtc-local-pip {
+  position: absolute;
+  bottom: 85px;
+  right: 20px;
+  width: 180px;
+  height: 115px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background-color: #000;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  z-index: 15;
+  transition: all 0.2s ease;
+}
+
+.webrtc-call-overlay.minimized .webrtc-local-pip {
+  width: 80px;
+  height: 52px;
+  bottom: 8px;
+  right: 8px;
+  border-radius: 6px;
+}
+
+.webrtc-local-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1); /* Mirror camera */
+}
+
+.webrtc-pip-tag {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  font-size: 0.65rem;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.webrtc-connecting-badge {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  z-index: 10;
+}
+
+/* Call Controls Floating Bar */
+.webrtc-controls-bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(18, 19, 24, 0.88);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 8px 18px;
+  border-radius: 9999px;
+  z-index: 20;
+}
+
+.webrtc-call-overlay.minimized .webrtc-controls-bar {
+  display: none;
+}
+
+.webrtc-ctrl-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.webrtc-ctrl-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  transform: translateY(-2px);
+}
+
+.webrtc-ctrl-btn.active-off {
+  background: #dc2626 !important;
+  color: #fff !important;
+}
+
+.webrtc-ctrl-end {
+  background: #ef4444 !important;
+  color: #fff !important;
+}
+
+.webrtc-ctrl-end:hover {
+  background: #dc2626 !important;
+}
+
+/* Incoming Call Modal */
+.webrtc-incoming-card {
+  max-width: 360px !important;
+  text-align: center;
+  padding: 24px !important;
+  background: #111217 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+.webrtc-incoming-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.webrtc-incoming-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.15);
+  border: 2px solid rgba(16, 185, 129, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: webrtc-ring 1.5s infinite;
+}
+
+@keyframes webrtc-ring {
+  0% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  70% { transform: scale(1.04); box-shadow: 0 0 0 12px rgba(16, 185, 129, 0); }
+  100% { transform: scale(0.96); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.webrtc-incoming-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.webrtc-incoming-subtitle {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin: 0 0 6px 0;
+}
+
+.webrtc-incoming-buttons {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+}
+
+.webrtc-btn-decline {
+  flex: 1;
+  background-color: #27272a !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.webrtc-btn-decline:hover {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+.webrtc-btn-accept {
+  flex: 1;
+  background-color: #10b981 !important;
+  color: #fff !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.webrtc-btn-accept:hover {
+  background-color: #059669 !important;
+}
+
+/* ==========================================================================
+   P2P Direct File Transfer Cards in Message Stream
+   ========================================================================== */
+.message-p2p-transfer {
+  max-width: 440px;
+  margin: 8px 0;
+}
+
+.p2p-transfer-card {
+  background: var(--bg-surface-elevated, #181920);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.p2p-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.p2p-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #10B981;
+  flex-shrink: 0;
+}
+
+.p2p-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.p2p-card-filename {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.p2p-card-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.p2p-progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.p2p-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+  border-radius: 9999px;
+  transition: width 0.1s linear;
+}
+
+.p2p-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.725rem;
+}
+
+.p2p-status-text {
+  font-weight: 600;
+  color: #10B981;
+}
+
+.p2p-badge-zero {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.p2p-download-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: #10b981;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  margin-top: 4px;
+}
+
+.p2p-download-btn:hover {
+  background-color: #059669;
+}
+

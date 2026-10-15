@@ -88,6 +88,8 @@ def is_socket_active(s_id: str) -> bool:
     if not s_id:
         return False
     try:
+        if hasattr(socketio, "server") and hasattr(socketio.server, "manager") and hasattr(socketio.server.manager, "is_connected"):
+            return bool(socketio.server.manager.is_connected(s_id, "/"))
         if hasattr(socketio, "server") and hasattr(socketio.server, "eio") and hasattr(socketio.server.eio, "sockets"):
             return s_id in socketio.server.eio.sockets
     except Exception:
@@ -602,12 +604,14 @@ def handle_create_room(data):
         "room_id": room_id,
         "username": username,
         "peers": peers,
+        "users": current_room_users,
         "e2ee": True
     }, room=sid)
 
     emit("room_peers_update", {
         "room_id": room_id,
-        "peers": peers
+        "peers": peers,
+        "users": current_room_users
     }, room=room_id)
 
     socketio.emit("update_peers", current_room_users, to=room_id)
@@ -785,13 +789,15 @@ def handle_join_room(data):
         "room_id": room_id,
         "username": username,
         "peers": peers,
+        "users": current_room_users,
         "e2ee": True
     }, room=sid)
 
     # Emit an updated member list strictly to that room
     emit("room_peers_update", {
         "room_id": room_id,
-        "peers": peers
+        "peers": peers,
+        "users": current_room_users
     }, room=room_id)
 
     socketio.emit("update_peers", current_room_users, to=room_id)
@@ -1013,6 +1019,146 @@ def handle_send_private(data):
     session = gateway_manager.get_session(sid)
     if session and session.is_connected:
         session.send_private(recipient, content)
+
+
+# ============================================================================
+# WEBRTC SIGNALING ROUTER (ZERO-RETENTION P2P CALLING & DIRECT DATA CHANNELS)
+# ============================================================================
+
+@socketio.on("webrtc_offer")
+def handle_webrtc_offer(data):
+    """Relays WebRTC SDP Offer directly to target peer or room with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        return
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    target_sid = data.get("target_sid")
+    sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
+    payload = {
+        "sender_sid": sid,
+        "sender": sender_name,
+        "offer": data.get("offer"),
+        "type": data.get("type", "video"),
+        "metadata": data.get("metadata", {})
+    }
+    if target_sid:
+        emit("webrtc_offer", payload, room=target_sid)
+    elif room_id:
+        emit("webrtc_offer", payload, room=room_id, include_self=False)
+
+
+@socketio.on("webrtc_answer")
+def handle_webrtc_answer(data):
+    """Relays WebRTC SDP Answer directly to offering peer with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        return
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    target_sid = data.get("target_sid")
+    sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
+    payload = {
+        "sender_sid": sid,
+        "sender": sender_name,
+        "answer": data.get("answer"),
+        "type": data.get("type", "video")
+    }
+    if target_sid:
+        emit("webrtc_answer", payload, room=target_sid)
+    elif room_id:
+        emit("webrtc_answer", payload, room=room_id, include_self=False)
+
+
+@socketio.on("webrtc_ice_candidate")
+def handle_webrtc_ice_candidate(data):
+    """Relays ICE candidates directly between peers with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        return
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    target_sid = data.get("target_sid")
+    payload = {
+        "sender_sid": sid,
+        "candidate": data.get("candidate")
+    }
+    if target_sid:
+        emit("webrtc_ice_candidate", payload, room=target_sid)
+    elif room_id:
+        emit("webrtc_ice_candidate", payload, room=room_id, include_self=False)
+
+
+@socketio.on("webrtc_call_end")
+def handle_webrtc_call_end(data):
+    """Relays Call Terminated signal to peer with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    target_sid = data.get("target_sid")
+    payload = {
+        "sender_sid": sid,
+        "reason": data.get("reason", "ended")
+    }
+    if target_sid:
+        emit("webrtc_call_end", payload, room=target_sid)
+    elif room_id:
+        emit("webrtc_call_end", payload, room=room_id, include_self=False)
+
+
+@socketio.on("call_started")
+def handle_call_started(data):
+    """Broadcasts a room-wide call announcement to all peers in the room with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    if not room_id:
+        return
+    sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
+    payload = {
+        "room_id": room_id,
+        "sender_sid": sid,
+        "sender": sender_name,
+        "call_type": data.get("call_type", "audio")
+    }
+    emit("call_started", payload, room=room_id, include_self=False)
+
+
+@socketio.on("call_user_joined")
+def handle_call_user_joined(data):
+    """Notifies existing call mesh members that a new participant joined with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    if not room_id:
+        return
+    sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
+    payload = {
+        "room_id": room_id,
+        "sender_sid": sid,
+        "sender": sender_name,
+        "call_type": data.get("call_type", "audio")
+    }
+    emit("call_user_joined", payload, room=room_id, include_self=False)
+
+
+@socketio.on("call_user_left")
+def handle_call_user_left(data):
+    """Notifies mesh participants that a member left the call with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    room_id = socket_to_room.get(sid) or data.get("room_id")
+    if not room_id:
+        return
+    sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
+    payload = {
+        "room_id": room_id,
+        "sender_sid": sid,
+        "sender": sender_name
+    }
+    emit("call_user_left", payload, room=room_id, include_self=False)
+
 
 
 @socketio.on("file_chunk")

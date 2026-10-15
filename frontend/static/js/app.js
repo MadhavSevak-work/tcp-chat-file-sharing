@@ -34,6 +34,42 @@
     isE2EE: true
   };
 
+  // WebRTC Audio/Video & RTCDataChannel P2P State
+  const webrtcState = {
+    peerConnection: null,
+    dataChannel: null,
+    localStream: null,
+    remoteStream: null,
+    activeTargetSid: null,
+    activeTargetName: null,
+    callType: "video", // "video" | "audio"
+    callStatus: "idle", // "idle" | "calling" | "incoming" | "connected"
+    callTimerInterval: null,
+    callDurationSec: 0,
+    isAudioMuted: false,
+    isVideoMuted: false,
+    pendingIceCandidates: [],
+    pendingIncomingOffer: null,
+    queuedP2PFile: null,
+    rxTransfer: null
+  };
+
+  // Full-Room Multi-Peer WebRTC Mesh State
+  const webrtcMesh = {
+    active: false,
+    callType: "audio", // "audio" | "video"
+    localStream: null,
+    peers: {}, // { [peerSid]: { pc, dc, username, audioEl, videoEl, stream, analyser, source, isSpeaking, pendingCandidates } }
+    isAudioMuted: false,
+    isVideoMuted: false,
+    audioContext: null,
+    localAnalyser: null,
+    localSource: null,
+    speakingCheckInterval: null,
+    callTimerInterval: null,
+    callDurationSec: 0
+  };
+
   // DOM Elements Cache
   const DOM = {
     // Theme toggles
@@ -144,6 +180,45 @@
     emojiPopover: document.getElementById("emoji-popover"),
     emojiGrid: document.getElementById("emoji-grid"),
     btnDisconnect: document.getElementById("btn-disconnect"),
+
+    // WebRTC Audio/Video & Direct P2P File Elements
+    btnHeaderAudioCall: document.getElementById("btn-header-audio-call"),
+    btnHeaderCall: document.getElementById("btn-header-call"),
+    p2pFileInput: document.getElementById("p2p-file-input"),
+    webrtcAudioBar: document.getElementById("webrtc-audio-bar"),
+    audioBarParticipants: document.getElementById("audio-bar-participants"),
+    audioBarTimer: document.getElementById("audio-bar-timer"),
+    btnAudioBarMic: document.getElementById("btn-audio-bar-mic"),
+    audioBarMicIcon: document.getElementById("audio-bar-mic-icon"),
+    btnAudioBarCam: document.getElementById("btn-audio-bar-cam"),
+    btnAudioBarLeave: document.getElementById("btn-audio-bar-leave"),
+    webrtcCallAnnouncement: document.getElementById("webrtc-call-announcement"),
+    announcementCaller: document.getElementById("announcement-caller"),
+    btnAnnouncementJoin: document.getElementById("btn-announcement-join"),
+    btnAnnouncementDismiss: document.getElementById("btn-announcement-dismiss"),
+    remoteAudioContainer: document.getElementById("remote-audio-container"),
+    webrtcVideoGrid: document.getElementById("webrtc-video-grid"),
+    webrtcCallOverlay: document.getElementById("webrtc-call-overlay"),
+    webrtcCallCard: document.getElementById("webrtc-call-card"),
+    webrtcPeerName: document.getElementById("webrtc-peer-name"),
+    webrtcCallTimer: document.getElementById("webrtc-call-timer"),
+    btnWebrtcMinimize: document.getElementById("btn-webrtc-minimize"),
+    webrtcRemoteVideo: document.getElementById("webrtc-remote-video"),
+    webrtcRemotePlaceholder: document.getElementById("webrtc-remote-placeholder"),
+    webrtcPlaceholderText: document.getElementById("webrtc-placeholder-text"),
+    webrtcLocalPip: document.getElementById("webrtc-local-pip"),
+    webrtcLocalVideo: document.getElementById("webrtc-local-video"),
+    webrtcConnectingBadge: document.getElementById("webrtc-connecting-badge"),
+    webrtcConnectingText: document.getElementById("webrtc-connecting-text"),
+    btnWebrtcMic: document.getElementById("btn-webrtc-mic"),
+    webrtcIconMic: document.getElementById("webrtc-icon-mic"),
+    btnWebrtcCam: document.getElementById("btn-webrtc-cam"),
+    webrtcIconCam: document.getElementById("webrtc-icon-cam"),
+    btnWebrtcEnd: document.getElementById("btn-webrtc-end"),
+    webrtcIncomingModal: document.getElementById("webrtc-incoming-modal"),
+    webrtcCallerName: document.getElementById("webrtc-caller-name"),
+    btnWebrtcDecline: document.getElementById("btn-webrtc-decline"),
+    btnWebrtcAccept: document.getElementById("btn-webrtc-accept"),
 
     // Mobile Bottom Tab Bar
     mobileTabBar: document.getElementById("mobile-tab-bar"),
@@ -1623,6 +1698,35 @@
       logActivity(`File transfer rejected by ${data.recipient}.`);
     });
 
+    // WebRTC Signaling Router Listeners (Zero Retention)
+    state.socket.on("webrtc_offer", (data) => {
+      handleIncomingWebrtcOffer(data);
+    });
+
+    state.socket.on("webrtc_answer", (data) => {
+      handleIncomingWebrtcAnswer(data);
+    });
+
+    state.socket.on("webrtc_ice_candidate", (data) => {
+      handleIncomingIceCandidate(data);
+    });
+
+    state.socket.on("webrtc_call_end", (data) => {
+      handleIncomingCallEnd(data);
+    });
+
+    state.socket.on("call_started", (data) => {
+      handleCallStarted(data);
+    });
+
+    state.socket.on("call_user_joined", (data) => {
+      handleCallUserJoined(data);
+    });
+
+    state.socket.on("call_user_left", (data) => {
+      handleCallUserLeft(data);
+    });
+
     // Latency Telemetry
     state.socket.on("pong_measure", (data) => {
       if (data && data.client_time) {
@@ -2381,15 +2485,22 @@
         li.appendChild(titleEl);
 
         if (!isMe) {
+          const callBtn = document.createElement("button");
+          callBtn.className = "btn-call-peer-tiny";
+          callBtn.title = `Call ${user} (P2P Video)`;
+          callBtn.setAttribute("aria-label", `Call ${user}`);
+          callBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-video"></use></svg>`;
+          li.appendChild(callBtn);
+
           const fileBtn = document.createElement("button");
           fileBtn.className = "btn-send-file-tiny";
-          fileBtn.title = `Send File to ${user}`;
+          fileBtn.title = `Send P2P File to ${user}`;
           fileBtn.setAttribute("aria-label", `Send file to ${user}`);
           fileBtn.innerHTML = `<svg class="svg-icon xs" aria-hidden="true"><use href="#icon-paperclip"></use></svg>`;
           li.appendChild(fileBtn);
 
           li.addEventListener("click", (e) => {
-            if (!e.target.closest(".btn-send-file-tiny")) {
+            if (!e.target.closest(".btn-send-file-tiny") && !e.target.closest(".btn-call-peer-tiny")) {
               switchToPrivateChat(user);
               closeSidebar();
               setMobileActiveTab("chat");
@@ -2405,19 +2516,31 @@
             }
           });
 
-          const tinyFileBtn = li.querySelector(".btn-send-file-tiny");
-          if (tinyFileBtn) {
-            tinyFileBtn.addEventListener("click", (e) => {
-              e.stopPropagation();
-              closeSidebar();
-              openFileModal(user);
-            });
-          }
+          callBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeSidebar();
+            startWebrtcCall(userObj.socket_id, user, "video");
+          });
+
+          fileBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            closeSidebar();
+            triggerP2PFileSelect(userObj.socket_id, user);
+          });
         }
 
         DOM.usersNavList.appendChild(li);
       }
     });
+
+    const otherPeers = normalizedUsers.filter(u => u.username.toLowerCase() !== (state.username || "").toLowerCase());
+    const hasOtherPeers = otherPeers.length > 0 && Boolean(state.roomId);
+    if (DOM.btnHeaderAudioCall) {
+      DOM.btnHeaderAudioCall.classList.toggle("hidden", !hasOtherPeers);
+    }
+    if (DOM.btnHeaderCall) {
+      DOM.btnHeaderCall.classList.toggle("hidden", !hasOtherPeers);
+    }
 
     if (DOM.fileRecipientSelect) {
       if (previousSelected && Array.from(DOM.fileRecipientSelect.options).some(o => o.value === previousSelected)) {
@@ -3112,6 +3235,1589 @@
   }
 
   // =========================================================================
+  // WEBRTC PEER-TO-PEER AUDIO/VIDEO CALLING & RTCDATACHANNEL FILE TRANSFERS
+  // =========================================================================
+
+  const RTC_CONFIG = {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" }
+    ]
+  };
+
+  /**
+   * Resolves target peer socket ID and username for WebRTC interactions
+   */
+  function resolveWebRtcTarget(targetSid, targetName) {
+    if (targetSid && targetName) return { sid: targetSid, username: targetName };
+    if (state.activeChatTarget) {
+      const match = (state.onlineUsers || []).find(u => {
+        const un = typeof u === "string" ? u : (u?.username || "");
+        return un.toLowerCase() === state.activeChatTarget.toLowerCase();
+      });
+      if (match) {
+        return {
+          sid: typeof match === "object" ? match.socket_id : null,
+          username: state.activeChatTarget
+        };
+      }
+    }
+    // If only 1 other peer in room, pick them
+    const otherUsers = (state.onlineUsers || []).map(u => {
+      if (typeof u === "string") return { username: u, socket_id: null };
+      return { username: u?.username || "", socket_id: u?.socket_id || null };
+    }).filter(u => u.username && u.username.toLowerCase() !== (state.username || "").toLowerCase());
+
+    if (otherUsers.length > 0) {
+      return { sid: otherUsers[0].socket_id, username: otherUsers[0].username };
+    }
+    return { sid: null, username: null };
+  }
+
+  /**
+   * Initiates an outgoing WebRTC P2P Audio/Video Call
+   */
+  async function startWebrtcCall(targetSid, targetName, callType = "video") {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("WebRTC Audio/Video requires a secure HTTPS context or localhost.");
+      return;
+    }
+
+    const resolved = resolveWebRtcTarget(targetSid, targetName);
+    if (!resolved.username) {
+      appendSystemMessage("⚠️ No peer found in this room to call.");
+      return;
+    }
+
+    targetSid = resolved.sid;
+    targetName = resolved.username;
+
+    logActivity(`[WebRTC] Starting ${callType} call with '${targetName}'...`);
+
+    // Reset any previous peer connection
+    endWebrtcCall(false);
+
+    webrtcState.callType = callType;
+    webrtcState.activeTargetSid = targetSid;
+    webrtcState.activeTargetName = targetName;
+    webrtcState.callStatus = "calling";
+    webrtcState.pendingIceCandidates = [];
+
+    // Update UI elements
+    if (DOM.webrtcPeerName) DOM.webrtcPeerName.textContent = `${targetName}`;
+    if (DOM.webrtcCallTimer) DOM.webrtcCallTimer.textContent = "00:00";
+    if (DOM.webrtcConnectingBadge) {
+      DOM.webrtcConnectingBadge.classList.remove("hidden");
+      if (DOM.webrtcConnectingText) DOM.webrtcConnectingText.textContent = `Calling ${targetName}...`;
+    }
+    if (DOM.webrtcCallOverlay) {
+      DOM.webrtcCallOverlay.classList.remove("hidden");
+      DOM.webrtcCallOverlay.classList.remove("minimized");
+    }
+
+    try {
+      // 1. Acquire local camera / microphone stream
+      const constraints = {
+        video: callType === "video" ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false,
+        audio: true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      webrtcState.localStream = stream;
+      if (DOM.webrtcLocalVideo) {
+        DOM.webrtcLocalVideo.srcObject = stream;
+      }
+
+      // 2. Instantiate RTCPeerConnection
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      webrtcState.peerConnection = pc;
+
+      // Add local media tracks
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
+
+      // 3. Create RTCDataChannel for simultaneous zero-retention P2P data / file sharing
+      const dc = pc.createDataChannel("p2p_channel", { ordered: true });
+      setupP2PDataChannel(dc, targetSid, targetName);
+
+      // Handle remote incoming tracks
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          webrtcState.remoteStream = event.streams[0];
+          if (DOM.webrtcRemoteVideo) {
+            DOM.webrtcRemoteVideo.srcObject = event.streams[0];
+          }
+          if (DOM.webrtcConnectingBadge) {
+            DOM.webrtcConnectingBadge.classList.add("hidden");
+          }
+        }
+      };
+
+      // Handle ICE candidates generated by browser
+      pc.onicecandidate = (event) => {
+        if (event.candidate && state.socket) {
+          state.socket.emit("webrtc_ice_candidate", {
+            target_sid: targetSid,
+            room_id: state.roomId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          onWebrtcCallConnected();
+        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          logActivity(`[WebRTC] Connection state: ${pc.connectionState}`);
+          endWebrtcCall(false);
+        }
+      };
+
+      // 4. Generate Offer & set local description
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // 5. Send Offer over zero-retention Flask signaling router
+      state.socket.emit("webrtc_offer", {
+        target_sid: targetSid,
+        room_id: state.roomId,
+        sender: state.username,
+        offer: offer,
+        type: callType
+      });
+
+      logActivity(`[WebRTC] Signaling SDP Offer dispatched to ${targetName}.`);
+
+    } catch (err) {
+      logActivity(`[WebRTC Error] Could not start call: ${err.message}`);
+      appendSystemMessage(`⚠️ Call error: ${err.message}`);
+      endWebrtcCall(false);
+    }
+  }
+
+  // =========================================================================
+  // MULTI-PEER FULL-MESH WEBRTC COMMUNICATION PIPELINE (AUDIO/VIDEO & P2P DATA)
+  // =========================================================================
+
+  function setupAudioContext() {
+    if (!webrtcMesh.audioContext) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        webrtcMesh.audioContext = new AudioCtx();
+      }
+    }
+    if (webrtcMesh.audioContext && webrtcMesh.audioContext.state === "suspended") {
+      webrtcMesh.audioContext.resume().catch(() => {});
+    }
+  }
+
+  function setupLocalAudioAnalyser(stream) {
+    try {
+      setupAudioContext();
+      if (!webrtcMesh.audioContext) return;
+      const audioTrack = stream.getAudioTracks()[0];
+      if (!audioTrack) return;
+      const mediaStream = new MediaStream([audioTrack]);
+      const source = webrtcMesh.audioContext.createMediaStreamSource(mediaStream);
+      const analyser = webrtcMesh.audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.4;
+      source.connect(analyser);
+      webrtcMesh.localAnalyser = analyser;
+      webrtcMesh.localSource = source;
+      startVoiceActivityMonitoring();
+    } catch (e) {
+      console.warn("Local AudioContext setup failed:", e);
+    }
+  }
+
+  function setupRemoteAudioAnalyser(peerSid, stream) {
+    try {
+      setupAudioContext();
+      if (!webrtcMesh.audioContext) return;
+      const audioTrack = stream.getAudioTracks()[0];
+      if (!audioTrack) return;
+      const mediaStream = new MediaStream([audioTrack]);
+      const source = webrtcMesh.audioContext.createMediaStreamSource(mediaStream);
+      const analyser = webrtcMesh.audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.4;
+      source.connect(analyser);
+      if (webrtcMesh.peers[peerSid]) {
+        webrtcMesh.peers[peerSid].analyser = analyser;
+        webrtcMesh.peers[peerSid].source = source;
+      }
+    } catch (e) {
+      console.warn("Remote AudioContext setup failed:", e);
+    }
+  }
+
+  function startVoiceActivityMonitoring() {
+    if (webrtcMesh.speakingCheckInterval) clearInterval(webrtcMesh.speakingCheckInterval);
+    const dataArray = new Uint8Array(128);
+    const SPEAKING_THRESHOLD = 20;
+
+    webrtcMesh.speakingCheckInterval = setInterval(() => {
+      // 1. Local voice check
+      if (webrtcMesh.localAnalyser && !webrtcMesh.isAudioMuted) {
+        webrtcMesh.localAnalyser.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+        const avg = sum / dataArray.length;
+        setParticipantSpeaking("local", avg > SPEAKING_THRESHOLD);
+      } else {
+        setParticipantSpeaking("local", false);
+      }
+
+      // 2. Remote peers voice check
+      Object.keys(webrtcMesh.peers).forEach((peerSid) => {
+        const peer = webrtcMesh.peers[peerSid];
+        if (peer && peer.analyser) {
+          peer.analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+          const avg = sum / dataArray.length;
+          setParticipantSpeaking(peerSid, avg > SPEAKING_THRESHOLD);
+        }
+      });
+    }, 100);
+  }
+
+  function setParticipantSpeaking(id, isSpeaking) {
+    const chip = document.getElementById(`audio-chip-${id}`);
+    if (chip) {
+      chip.classList.toggle("speaking", isSpeaking);
+    }
+    const tile = document.getElementById(`video-tile-${id}`);
+    if (tile) {
+      tile.classList.toggle("speaking", isSpeaking);
+    }
+  }
+
+  function startRoomCallTimer() {
+    clearInterval(webrtcMesh.callTimerInterval);
+    webrtcMesh.callDurationSec = 0;
+    webrtcMesh.callTimerInterval = setInterval(() => {
+      webrtcMesh.callDurationSec++;
+      const mins = Math.floor(webrtcMesh.callDurationSec / 60);
+      const secs = webrtcMesh.callDurationSec % 60;
+      const formatted = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      if (DOM.audioBarTimer) DOM.audioBarTimer.textContent = formatted;
+      if (DOM.webrtcCallTimer) DOM.webrtcCallTimer.textContent = formatted;
+    }, 1000);
+  }
+
+  function renderAudioBarParticipant(id, name, isLocal = false) {
+    if (!DOM.audioBarParticipants) return;
+    let chip = document.getElementById(`audio-chip-${id}`);
+    if (!chip) {
+      chip = document.createElement("div");
+      chip.id = `audio-chip-${id}`;
+      chip.className = `audio-participant-chip ${isLocal ? "local" : ""}`;
+      const initial = (name || "P").charAt(0).toUpperCase();
+      const bg = getAvatarGradient(name || "P");
+      chip.innerHTML = `
+        <div class="participant-avatar-mini" style="background: ${bg};">${initial}</div>
+        <span class="participant-name-mini">${name}${isLocal ? " (You)" : ""}</span>
+      `;
+      DOM.audioBarParticipants.appendChild(chip);
+    }
+  }
+
+  function renderVideoTile(id, name, stream, isLocal = false) {
+    if (!DOM.webrtcVideoGrid) return;
+    let tile = document.getElementById(`video-tile-${id}`);
+    if (!tile) {
+      tile = document.createElement("div");
+      tile.id = `video-tile-${id}`;
+      tile.className = `video-tile ${isLocal ? "local-tile" : ""}`;
+      const initial = (name || "P").charAt(0).toUpperCase();
+      const bg = getAvatarGradient(name || "P");
+      tile.innerHTML = `
+        <video class="tile-video" autoplay playsinline ${isLocal ? "muted" : ""}></video>
+        <div class="tile-avatar-fallback hidden" style="background: ${bg};">${initial}</div>
+        <div class="tile-label">${name}${isLocal ? " (You)" : ""}</div>
+        <div class="tile-speaking-circle"></div>
+      `;
+      DOM.webrtcVideoGrid.appendChild(tile);
+    }
+    const video = tile.querySelector("video");
+    if (video && stream) {
+      video.srcObject = stream;
+      video.play().catch(() => {});
+    }
+    updateVideoGridCount();
+  }
+
+  function updateVideoGridCount() {
+    if (!DOM.webrtcVideoGrid) return;
+    const count = DOM.webrtcVideoGrid.querySelectorAll(".video-tile").length;
+    DOM.webrtcVideoGrid.setAttribute("data-count", String(Math.min(6, Math.max(1, count))));
+  }
+
+  function removeVideoTile(id) {
+    const tile = document.getElementById(`video-tile-${id}`);
+    if (tile) {
+      tile.remove();
+      updateVideoGridCount();
+    }
+  }
+
+  function removeAudioBarParticipant(id) {
+    const chip = document.getElementById(`audio-chip-${id}`);
+    if (chip) chip.remove();
+  }
+
+  /**
+   * Starts a Full-Room Group Call (Audio-first or Video)
+   */
+  async function startRoomCall(callType = "audio") {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("WebRTC requires a secure HTTPS context or localhost.");
+      return;
+    }
+
+    if (webrtcMesh.active) {
+      if (callType === "video" && webrtcMesh.callType === "audio") {
+        toggleMeshCamera();
+      }
+      return;
+    }
+
+    // End 1-on-1 call if running
+    endWebrtcCall(false);
+
+    try {
+      logActivity(`[Room Call] Initiating ${callType} call for room '${state.roomId}'...`);
+      const isVideo = callType === "video";
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false
+      });
+
+      webrtcMesh.active = true;
+      webrtcMesh.callType = callType;
+      webrtcMesh.localStream = stream;
+      webrtcMesh.isAudioMuted = false;
+      webrtcMesh.isVideoMuted = false;
+      webrtcMesh.peers = {};
+
+      setupLocalAudioAnalyser(stream);
+
+      // Render local UI
+      if (callType === "audio") {
+        if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.remove("hidden");
+        if (DOM.webrtcCallOverlay) DOM.webrtcCallOverlay.classList.add("hidden");
+        if (DOM.audioBarParticipants) DOM.audioBarParticipants.innerHTML = "";
+        renderAudioBarParticipant("local", state.username || "You", true);
+      } else {
+        if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.add("hidden");
+        if (DOM.webrtcCallOverlay) {
+          DOM.webrtcCallOverlay.classList.remove("hidden");
+          DOM.webrtcCallOverlay.classList.remove("minimized");
+        }
+        if (DOM.webrtcVideoGrid) DOM.webrtcVideoGrid.innerHTML = "";
+        renderVideoTile("local", state.username || "You", stream, true);
+      }
+
+      startRoomCallTimer();
+
+      // Broadcast call_started to all room participants
+      if (state.socket) {
+        state.socket.emit("call_started", {
+          room_id: state.roomId,
+          sender: state.username,
+          call_type: callType
+        });
+      }
+
+      // Connect to any online peers already in the room
+      const otherPeers = (state.onlineUsers || []).map(u => {
+        if (typeof u === "string") return { username: u, socket_id: null };
+        return { username: u?.username || "", socket_id: u?.socket_id || null };
+      }).filter(u => u.username && u.username.toLowerCase() !== (state.username || "").toLowerCase() && u.socket_id);
+
+      otherPeers.forEach(peer => {
+        createMeshPeerConnection(peer.socket_id, peer.username, true);
+      });
+
+      appendSystemMessage(`📞 Started room ${callType} call.`);
+    } catch (err) {
+      logActivity(`[Room Call Error] Could not start call: ${err.message}`);
+      appendSystemMessage(`⚠️ Call error: ${err.message}`);
+      leaveRoomCall();
+    }
+  }
+
+  /**
+   * Joins an ongoing room call announced by peer
+   */
+  async function joinRoomCall(callType = "audio") {
+    if (DOM.webrtcCallAnnouncement) {
+      DOM.webrtcCallAnnouncement.classList.add("hidden");
+    }
+
+    if (webrtcMesh.active) return;
+    endWebrtcCall(false);
+
+    try {
+      logActivity(`[Room Call] Joining ${callType} call...`);
+      const isVideo = callType === "video";
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false
+      });
+
+      webrtcMesh.active = true;
+      webrtcMesh.callType = callType;
+      webrtcMesh.localStream = stream;
+      webrtcMesh.isAudioMuted = false;
+      webrtcMesh.isVideoMuted = false;
+      webrtcMesh.peers = {};
+
+      setupLocalAudioAnalyser(stream);
+
+      // Render local UI
+      if (callType === "audio") {
+        if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.remove("hidden");
+        if (DOM.webrtcCallOverlay) DOM.webrtcCallOverlay.classList.add("hidden");
+        if (DOM.audioBarParticipants) DOM.audioBarParticipants.innerHTML = "";
+        renderAudioBarParticipant("local", state.username || "You", true);
+      } else {
+        if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.add("hidden");
+        if (DOM.webrtcCallOverlay) {
+          DOM.webrtcCallOverlay.classList.remove("hidden");
+          DOM.webrtcCallOverlay.classList.remove("minimized");
+        }
+        if (DOM.webrtcVideoGrid) DOM.webrtcVideoGrid.innerHTML = "";
+        renderVideoTile("local", state.username || "You", stream, true);
+      }
+
+      startRoomCallTimer();
+
+      // Broadcast call_user_joined to trigger offers from existing members
+      if (state.socket) {
+        state.socket.emit("call_user_joined", {
+          room_id: state.roomId,
+          sender: state.username,
+          call_type: callType
+        });
+      }
+
+      appendSystemMessage(`📞 Joined room call.`);
+    } catch (err) {
+      logActivity(`[Room Call Error] Could not join call: ${err.message}`);
+      appendSystemMessage(`⚠️ Call error: ${err.message}`);
+      leaveRoomCall();
+    }
+  }
+
+  function handleCallStarted(data) {
+    if (webrtcMesh.active) return;
+    if (data.sender_sid === state.socket?.id) return;
+    if (DOM.announcementCaller) DOM.announcementCaller.textContent = data.sender || "Peer";
+    if (DOM.webrtcCallAnnouncement) {
+      DOM.webrtcCallAnnouncement.dataset.callType = data.call_type || "audio";
+      DOM.webrtcCallAnnouncement.classList.remove("hidden");
+    }
+  }
+
+  function handleCallUserJoined(data) {
+    if (!webrtcMesh.active) return;
+    if (data.sender_sid === state.socket?.id) return;
+    const peerSid = data.sender_sid;
+    const peerName = data.sender || "Peer";
+    logActivity(`[Mesh] Member '${peerName}' joined call. Initiating peer connection...`);
+    createMeshPeerConnection(peerSid, peerName, true);
+  }
+
+  function handleCallUserLeft(data) {
+    const peerSid = data.sender_sid;
+    const peerName = data.sender || "Peer";
+    logActivity(`[Mesh] Member '${peerName}' left call.`);
+    removeMeshPeer(peerSid);
+  }
+
+  function createMeshPeerConnection(peerSid, peerName, isInitiator) {
+    if (!peerSid) return null;
+    if (webrtcMesh.peers[peerSid]) return webrtcMesh.peers[peerSid];
+
+    const pc = new RTCPeerConnection(RTC_CONFIG);
+    const peerObj = {
+      pc: pc,
+      dc: null,
+      username: peerName,
+      audioEl: null,
+      stream: null,
+      analyser: null,
+      source: null,
+      pendingCandidates: []
+    };
+    webrtcMesh.peers[peerSid] = peerObj;
+
+    // Add local tracks
+    if (webrtcMesh.localStream) {
+      webrtcMesh.localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, webrtcMesh.localStream);
+      });
+    }
+
+    // RTCDataChannel for P2P direct transfer
+    if (isInitiator) {
+      try {
+        const dc = pc.createDataChannel("p2p_data_transfer", { ordered: true });
+        setupP2PDataChannel(dc, peerSid, peerName);
+        peerObj.dc = dc;
+      } catch (_) {}
+    } else {
+      pc.ondatachannel = (e) => {
+        setupP2PDataChannel(e.channel, peerSid, peerName);
+        peerObj.dc = e.channel;
+      };
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && state.socket) {
+        state.socket.emit("webrtc_ice_candidate", {
+          target_sid: peerSid,
+          room_id: state.roomId,
+          candidate: event.candidate,
+          metadata: { isMesh: true }
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      handleMeshRemoteTrack(peerSid, peerName, event);
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+        removeMeshPeer(peerSid);
+      }
+    };
+
+    if (isInitiator) {
+      createMeshOffer(peerSid, peerObj);
+    }
+
+    return peerObj;
+  }
+
+  async function createMeshOffer(peerSid, peerObj) {
+    try {
+      const offer = await peerObj.pc.createOffer();
+      await peerObj.pc.setLocalDescription(offer);
+      state.socket.emit("webrtc_offer", {
+        target_sid: peerSid,
+        room_id: state.roomId,
+        sender: state.username,
+        offer: offer,
+        type: "mesh",
+        metadata: { isMesh: true, callType: webrtcMesh.callType }
+      });
+    } catch (e) {
+      logActivity(`[Mesh Offer Error] ${e.message}`);
+    }
+  }
+
+  async function handleMeshWebrtcOffer(data) {
+    const peerSid = data.sender_sid;
+    const peerName = data.sender || "Peer";
+
+    if (!webrtcMesh.active) {
+      // If user is not yet in the call, show announcement banner
+      handleCallStarted({ sender_sid: peerSid, sender: peerName, call_type: data.type || "audio" });
+      return;
+    }
+
+    let peerObj = webrtcMesh.peers[peerSid];
+    if (!peerObj) {
+      peerObj = createMeshPeerConnection(peerSid, peerName, false);
+    }
+
+    try {
+      await peerObj.pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+      while (peerObj.pendingCandidates && peerObj.pendingCandidates.length > 0) {
+        const c = peerObj.pendingCandidates.shift();
+        try { await peerObj.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+      }
+      const answer = await peerObj.pc.createAnswer();
+      await peerObj.pc.setLocalDescription(answer);
+
+      state.socket.emit("webrtc_answer", {
+        target_sid: peerSid,
+        room_id: state.roomId,
+        sender: state.username,
+        answer: answer,
+        type: "mesh",
+        metadata: { isMesh: true }
+      });
+    } catch (err) {
+      logActivity(`[Mesh Answer Error] ${err.message}`);
+    }
+  }
+
+  async function handleMeshWebrtcAnswer(data) {
+    const peerSid = data.sender_sid;
+    const peerObj = webrtcMesh.peers[peerSid];
+    if (!peerObj) return;
+
+    try {
+      await peerObj.pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+      while (peerObj.pendingCandidates && peerObj.pendingCandidates.length > 0) {
+        const c = peerObj.pendingCandidates.shift();
+        try { await peerObj.pc.addIceCandidate(new RTCIceCandidate(c)); } catch (_) {}
+      }
+    } catch (err) {
+      logActivity(`[Mesh RemoteDesc Error] ${err.message}`);
+    }
+  }
+
+  async function handleMeshIceCandidate(data) {
+    const peerSid = data.sender_sid;
+    const peerObj = webrtcMesh.peers[peerSid];
+    if (!peerObj) return;
+
+    if (peerObj.pc && peerObj.pc.remoteDescription && peerObj.pc.remoteDescription.type) {
+      try {
+        await peerObj.pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (_) {}
+    } else {
+      peerObj.pendingCandidates = peerObj.pendingCandidates || [];
+      peerObj.pendingCandidates.push(data.candidate);
+    }
+  }
+
+  function handleMeshRemoteTrack(peerSid, peerName, event) {
+    const stream = event.streams[0] || new MediaStream([event.track]);
+    const peerObj = webrtcMesh.peers[peerSid];
+    if (peerObj) peerObj.stream = stream;
+
+    // Audio Track: Mount dynamic <audio autoPlay playsinline />
+    if (event.track.kind === "audio") {
+      let audioEl = document.getElementById(`remote-audio-${peerSid}`);
+      if (!audioEl) {
+        audioEl = document.createElement("audio");
+        audioEl.id = `remote-audio-${peerSid}`;
+        audioEl.autoplay = true;
+        audioEl.playsInline = true;
+        if (DOM.remoteAudioContainer) {
+          DOM.remoteAudioContainer.appendChild(audioEl);
+        }
+      }
+      audioEl.srcObject = stream;
+      audioEl.play().catch(() => {});
+      if (peerObj) peerObj.audioEl = audioEl;
+
+      setupRemoteAudioAnalyser(peerSid, stream);
+      renderAudioBarParticipant(peerSid, peerName);
+    }
+
+    // Video Track: Render in responsive video grid
+    if (event.track.kind === "video" || webrtcMesh.callType === "video") {
+      renderVideoTile(peerSid, peerName, stream, false);
+    }
+  }
+
+  function removeMeshPeer(peerSid) {
+    const peerObj = webrtcMesh.peers[peerSid];
+    if (peerObj) {
+      try { peerObj.pc.close(); } catch (_) {}
+      if (peerObj.audioEl) {
+        try { peerObj.audioEl.remove(); } catch (_) {}
+      }
+      delete webrtcMesh.peers[peerSid];
+    }
+    removeAudioBarParticipant(peerSid);
+    removeVideoTile(peerSid);
+  }
+
+  function toggleMeshMic() {
+    if (!webrtcMesh.localStream) return;
+    webrtcMesh.isAudioMuted = !webrtcMesh.isAudioMuted;
+    webrtcMesh.localStream.getAudioTracks().forEach((t) => {
+      t.enabled = !webrtcMesh.isAudioMuted;
+    });
+
+    if (DOM.btnAudioBarMic) {
+      DOM.btnAudioBarMic.classList.toggle("active-off", webrtcMesh.isAudioMuted);
+    }
+    if (DOM.audioBarMicIcon) {
+      DOM.audioBarMicIcon.innerHTML = webrtcMesh.isAudioMuted
+        ? `<use href="#icon-mic-off"></use>`
+        : `<use href="#icon-mic"></use>`;
+    }
+    if (DOM.btnWebrtcMic) {
+      DOM.btnWebrtcMic.classList.toggle("active-off", webrtcMesh.isAudioMuted);
+    }
+    if (DOM.webrtcIconMic) {
+      DOM.webrtcIconMic.innerHTML = webrtcMesh.isAudioMuted
+        ? `<use href="#icon-mic-off"></use>`
+        : `<use href="#icon-mic"></use>`;
+    }
+  }
+
+  async function toggleMeshCamera() {
+    if (!webrtcMesh.active) {
+      startRoomCall("video");
+      return;
+    }
+
+    if (webrtcMesh.callType === "audio") {
+      // Upgrade audio call to video
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }
+        });
+        const videoTrack = camStream.getVideoTracks()[0];
+        webrtcMesh.localStream.addTrack(videoTrack);
+        webrtcMesh.callType = "video";
+
+        // Add track on all peer connections and renegotiate
+        Object.keys(webrtcMesh.peers).forEach((sid) => {
+          const peer = webrtcMesh.peers[sid];
+          if (peer && peer.pc) {
+            peer.pc.addTrack(videoTrack, webrtcMesh.localStream);
+            createMeshOffer(sid, peer);
+          }
+        });
+
+        // Switch to video UI
+        if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.add("hidden");
+        if (DOM.webrtcCallOverlay) {
+          DOM.webrtcCallOverlay.classList.remove("hidden");
+          DOM.webrtcCallOverlay.classList.remove("minimized");
+        }
+        if (DOM.webrtcVideoGrid) DOM.webrtcVideoGrid.innerHTML = "";
+        renderVideoTile("local", state.username || "You", webrtcMesh.localStream, true);
+        Object.keys(webrtcMesh.peers).forEach((sid) => {
+          const p = webrtcMesh.peers[sid];
+          if (p && p.stream) {
+            renderVideoTile(sid, p.username, p.stream, false);
+          }
+        });
+      } catch (err) {
+        logActivity(`[Camera Upgrade Error] ${err.message}`);
+        appendSystemMessage(`⚠️ Camera access failed: ${err.message}`);
+      }
+    } else {
+      // Toggle video mute state
+      webrtcMesh.isVideoMuted = !webrtcMesh.isVideoMuted;
+      webrtcMesh.localStream.getVideoTracks().forEach((t) => {
+        t.enabled = !webrtcMesh.isVideoMuted;
+      });
+      if (DOM.btnWebrtcCam) {
+        DOM.btnWebrtcCam.classList.toggle("active-off", webrtcMesh.isVideoMuted);
+      }
+      if (DOM.webrtcIconCam) {
+        DOM.webrtcIconCam.innerHTML = webrtcMesh.isVideoMuted
+          ? `<use href="#icon-video-off"></use>`
+          : `<use href="#icon-video"></use>`;
+      }
+    }
+  }
+
+  function leaveRoomCall() {
+    if (webrtcMesh.active && state.socket) {
+      state.socket.emit("call_user_left", {
+        room_id: state.roomId,
+        sender: state.username
+      });
+    }
+
+    if (webrtcMesh.localStream) {
+      webrtcMesh.localStream.getTracks().forEach((t) => {
+        try { t.stop(); } catch (_) {}
+      });
+      webrtcMesh.localStream = null;
+    }
+
+    Object.keys(webrtcMesh.peers).forEach((sid) => {
+      removeMeshPeer(sid);
+    });
+    webrtcMesh.peers = {};
+
+    clearInterval(webrtcMesh.speakingCheckInterval);
+    clearInterval(webrtcMesh.callTimerInterval);
+    webrtcMesh.speakingCheckInterval = null;
+    webrtcMesh.callTimerInterval = null;
+
+    if (webrtcMesh.audioContext) {
+      try { webrtcMesh.audioContext.close(); } catch (_) {}
+      webrtcMesh.audioContext = null;
+    }
+
+    webrtcMesh.active = false;
+    webrtcMesh.isAudioMuted = false;
+    webrtcMesh.isVideoMuted = false;
+
+    if (DOM.webrtcAudioBar) DOM.webrtcAudioBar.classList.add("hidden");
+    if (DOM.webrtcCallOverlay) DOM.webrtcCallOverlay.classList.add("hidden");
+    if (DOM.webrtcCallAnnouncement) DOM.webrtcCallAnnouncement.classList.add("hidden");
+    if (DOM.audioBarParticipants) DOM.audioBarParticipants.innerHTML = "";
+    if (DOM.webrtcVideoGrid) DOM.webrtcVideoGrid.innerHTML = "";
+    if (DOM.remoteAudioContainer) DOM.remoteAudioContainer.innerHTML = "";
+
+    logActivity("[Room Call] Left call and released media hardware.");
+  }
+
+  /**
+   * Handles incoming WebRTC SDP Offer from peer
+   */
+  async function handleIncomingWebrtcOffer(data) {
+    if (!data || !data.offer) return;
+    const senderSid = data.sender_sid;
+    const senderName = data.sender || "Peer";
+    const callType = data.type || "video";
+
+    if (webrtcMesh.active || callType === "mesh" || (data.metadata && data.metadata.isMesh)) {
+      handleMeshWebrtcOffer(data);
+      return;
+    }
+
+    logActivity(`[WebRTC] Incoming '${callType}' offer received from '${senderName}'.`);
+
+    // If this is a data-only P2P transfer connection, auto-accept without camera/audio prompts
+    if (callType === "file_data") {
+      try {
+        const pc = new RTCPeerConnection(RTC_CONFIG);
+        webrtcState.peerConnection = pc;
+        webrtcState.activeTargetSid = senderSid;
+        webrtcState.activeTargetName = senderName;
+
+        pc.ondatachannel = (e) => {
+          setupP2PDataChannel(e.channel, senderSid, senderName);
+        };
+
+        pc.onicecandidate = (event) => {
+          if (event.candidate && state.socket) {
+            state.socket.emit("webrtc_ice_candidate", {
+              target_sid: senderSid,
+              room_id: state.roomId,
+              candidate: event.candidate
+            });
+          }
+        };
+
+        await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+        // Drain any pre-queued ICE candidates
+        drainPendingIceCandidates(pc);
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        state.socket.emit("webrtc_answer", {
+          target_sid: senderSid,
+          room_id: state.roomId,
+          sender: state.username,
+          answer: answer,
+          type: "file_data"
+        });
+        logActivity(`[WebRTC] Auto-answered P2P data connection with ${senderName}.`);
+      } catch (err) {
+        logActivity(`[WebRTC] Error auto-answering file data channel: ${err.message}`);
+      }
+      return;
+    }
+
+    // If already in an active audio/video call, notify caller of busy state
+    if (webrtcState.callStatus === "connected" || webrtcState.callStatus === "calling") {
+      state.socket.emit("webrtc_call_end", {
+        target_sid: senderSid,
+        room_id: state.roomId,
+        reason: "busy"
+      });
+      return;
+    }
+
+    webrtcState.pendingIncomingOffer = data;
+    webrtcState.callType = callType;
+
+    // Show clean incoming call prompt
+    if (DOM.webrtcCallerName) DOM.webrtcCallerName.textContent = senderName;
+    if (DOM.webrtcIncomingModal) {
+      DOM.webrtcIncomingModal.classList.remove("hidden");
+    }
+  }
+
+  /**
+   * Accepts the incoming WebRTC call
+   */
+  async function acceptIncomingWebrtcCall() {
+    if (!webrtcState.pendingIncomingOffer) return;
+    const data = webrtcState.pendingIncomingOffer;
+    webrtcState.pendingIncomingOffer = null;
+
+    if (DOM.webrtcIncomingModal) {
+      DOM.webrtcIncomingModal.classList.add("hidden");
+    }
+
+    const senderSid = data.sender_sid;
+    const senderName = data.sender || "Peer";
+    const callType = data.type || "video";
+
+    webrtcState.activeTargetSid = senderSid;
+    webrtcState.activeTargetName = senderName;
+    webrtcState.callStatus = "connected";
+
+    if (DOM.webrtcPeerName) DOM.webrtcPeerName.textContent = senderName;
+    if (DOM.webrtcCallTimer) DOM.webrtcCallTimer.textContent = "00:00";
+    if (DOM.webrtcCallOverlay) {
+      DOM.webrtcCallOverlay.classList.remove("hidden");
+      DOM.webrtcCallOverlay.classList.remove("minimized");
+    }
+    if (DOM.webrtcConnectingBadge) {
+      DOM.webrtcConnectingBadge.classList.add("hidden");
+    }
+
+    try {
+      // 1. Get user media
+      const constraints = {
+        video: callType === "video" ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false,
+        audio: true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      webrtcState.localStream = stream;
+      if (DOM.webrtcLocalVideo) {
+        DOM.webrtcLocalVideo.srcObject = stream;
+      }
+
+      // 2. Instantiate RTCPeerConnection
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      webrtcState.peerConnection = pc;
+
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
+
+      pc.ondatachannel = (e) => {
+        setupP2PDataChannel(e.channel, senderSid, senderName);
+      };
+
+      pc.ontrack = (event) => {
+        if (event.streams && event.streams[0]) {
+          webrtcState.remoteStream = event.streams[0];
+          if (DOM.webrtcRemoteVideo) {
+            DOM.webrtcRemoteVideo.srcObject = event.streams[0];
+          }
+        }
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && state.socket) {
+          state.socket.emit("webrtc_ice_candidate", {
+            target_sid: senderSid,
+            room_id: state.roomId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          onWebrtcCallConnected();
+        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          endWebrtcCall(false);
+        }
+      };
+
+      // 3. Set remote description from offer
+      await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+      // 4. Drain any pending ICE candidates
+      drainPendingIceCandidates(pc);
+
+      // 5. Create answer & set local description
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      // 6. Send Answer back via Flask-SocketIO
+      state.socket.emit("webrtc_answer", {
+        target_sid: senderSid,
+        room_id: state.roomId,
+        sender: state.username,
+        answer: answer,
+        type: callType
+      });
+
+      startWebrtcCallTimer();
+      logActivity(`[WebRTC] Call accepted with ${senderName}.`);
+
+    } catch (err) {
+      logActivity(`[WebRTC Error] Error accepting call: ${err.message}`);
+      appendSystemMessage(`⚠️ Media access failed: ${err.message}`);
+      endWebrtcCall(true, "media_error");
+    }
+  }
+
+  /**
+   * Declines an incoming WebRTC call
+   */
+  function declineIncomingWebrtcCall() {
+    if (DOM.webrtcIncomingModal) {
+      DOM.webrtcIncomingModal.classList.add("hidden");
+    }
+    if (webrtcState.pendingIncomingOffer && state.socket) {
+      state.socket.emit("webrtc_call_end", {
+        target_sid: webrtcState.pendingIncomingOffer.sender_sid,
+        room_id: state.roomId,
+        reason: "declined"
+      });
+    }
+    webrtcState.pendingIncomingOffer = null;
+  }
+
+  /**
+   * Handles incoming SDP Answer from peer
+   */
+  async function handleIncomingWebrtcAnswer(data) {
+    if (!data || !data.answer) return;
+    if (webrtcMesh.peers[data.sender_sid]) {
+      handleMeshWebrtcAnswer(data);
+      return;
+    }
+
+    logActivity(`[WebRTC] Received SDP Answer from '${data.sender || "Peer"}'.`);
+
+    const pc = webrtcState.peerConnection;
+    if (pc) {
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        drainPendingIceCandidates(pc);
+        if (data.type !== "file_data") {
+          onWebrtcCallConnected();
+        }
+      } catch (err) {
+        logActivity(`[WebRTC Error] Error setting remote description: ${err.message}`);
+      }
+    }
+  }
+
+  /**
+   * Handles incoming ICE candidate
+   */
+  async function handleIncomingIceCandidate(data) {
+    if (!data || !data.candidate) return;
+    if (webrtcMesh.peers[data.sender_sid]) {
+      handleMeshIceCandidate(data);
+      return;
+    }
+
+    const pc = webrtcState.peerConnection;
+    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+      } catch (e) {
+        // Safe candidate catch
+      }
+    } else {
+      webrtcState.pendingIceCandidates.push(data.candidate);
+    }
+  }
+
+  /**
+   * Drains any buffered ICE candidates once remote description is set
+   */
+  async function drainPendingIceCandidates(pc) {
+    while (webrtcState.pendingIceCandidates.length > 0) {
+      const candidate = webrtcState.pendingIceCandidates.shift();
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {}
+    }
+  }
+
+  /**
+   * Called when P2P Call is confirmed connected
+   */
+  function onWebrtcCallConnected() {
+    webrtcState.callStatus = "connected";
+    if (DOM.webrtcConnectingBadge) {
+      DOM.webrtcConnectingBadge.classList.add("hidden");
+    }
+    startWebrtcCallTimer();
+    logActivity(`[WebRTC] Direct P2P Media Stream Connected!`);
+  }
+
+  /**
+   * Starts call duration timer
+   */
+  function startWebrtcCallTimer() {
+    clearInterval(webrtcState.callTimerInterval);
+    webrtcState.callDurationSec = 0;
+    webrtcState.callTimerInterval = setInterval(() => {
+      webrtcState.callDurationSec++;
+      const mins = Math.floor(webrtcState.callDurationSec / 60);
+      const secs = webrtcState.callDurationSec % 60;
+      const formatted = `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+      if (DOM.webrtcCallTimer) {
+        DOM.webrtcCallTimer.textContent = formatted;
+      }
+    }, 1000);
+  }
+
+  /**
+   * Ends an active or pending WebRTC call and frees all media hardware
+   */
+  function endWebrtcCall(notifyPeer = true, reason = "ended") {
+    clearInterval(webrtcState.callTimerInterval);
+    webrtcState.callTimerInterval = null;
+
+    if (notifyPeer && webrtcState.activeTargetSid && state.socket) {
+      state.socket.emit("webrtc_call_end", {
+        target_sid: webrtcState.activeTargetSid,
+        room_id: state.roomId,
+        reason: reason
+      });
+    }
+
+    // Stop and release all microphone and camera tracks
+    if (webrtcState.localStream) {
+      webrtcState.localStream.getTracks().forEach((track) => {
+        try { track.stop(); } catch (_) {}
+      });
+      webrtcState.localStream = null;
+    }
+
+    if (DOM.webrtcLocalVideo) {
+      DOM.webrtcLocalVideo.srcObject = null;
+    }
+    if (DOM.webrtcRemoteVideo) {
+      DOM.webrtcRemoteVideo.srcObject = null;
+    }
+
+    // Close peer connection
+    if (webrtcState.peerConnection) {
+      try {
+        webrtcState.peerConnection.close();
+      } catch (_) {}
+      webrtcState.peerConnection = null;
+    }
+
+    webrtcState.dataChannel = null;
+    webrtcState.callStatus = "idle";
+    webrtcState.activeTargetSid = null;
+    webrtcState.activeTargetName = null;
+    webrtcState.isAudioMuted = false;
+    webrtcState.isVideoMuted = false;
+    webrtcState.pendingIceCandidates = [];
+
+    // Reset UI
+    if (DOM.webrtcCallOverlay) {
+      DOM.webrtcCallOverlay.classList.add("hidden");
+      DOM.webrtcCallOverlay.classList.remove("minimized");
+    }
+    if (DOM.webrtcIncomingModal) {
+      DOM.webrtcIncomingModal.classList.add("hidden");
+    }
+    if (DOM.btnWebrtcMic) {
+      DOM.btnWebrtcMic.classList.remove("active-off");
+    }
+    if (DOM.btnWebrtcCam) {
+      DOM.btnWebrtcCam.classList.remove("active-off");
+    }
+    if (DOM.webrtcIconMic) {
+      DOM.webrtcIconMic.innerHTML = `<use href="#icon-mic"></use>`;
+    }
+    if (DOM.webrtcIconCam) {
+      DOM.webrtcIconCam.innerHTML = `<use href="#icon-video"></use>`;
+    }
+
+    logActivity("[WebRTC] Call terminated and media hardware released.");
+  }
+
+  function handleIncomingCallEnd(data) {
+    if (webrtcMesh.active && data && data.sender_sid) {
+      removeMeshPeer(data.sender_sid);
+      return;
+    }
+    const peerName = webrtcState.activeTargetName || "Peer";
+    const reason = data && data.reason ? data.reason : "ended";
+    endWebrtcCall(false);
+    if (reason === "declined") {
+      appendSystemMessage(`📞 ${peerName} declined the call.`);
+    } else if (reason === "busy") {
+      appendSystemMessage(`📞 ${peerName} is currently in another call.`);
+    } else {
+      appendSystemMessage(`📞 Call with ${peerName} ended.`);
+    }
+  }
+
+  function toggleWebrtcMic() {
+    if (!webrtcState.localStream) return;
+    webrtcState.isAudioMuted = !webrtcState.isAudioMuted;
+    webrtcState.localStream.getAudioTracks().forEach((track) => {
+      track.enabled = !webrtcState.isAudioMuted;
+    });
+
+    if (DOM.btnWebrtcMic) {
+      DOM.btnWebrtcMic.classList.toggle("active-off", webrtcState.isAudioMuted);
+    }
+    if (DOM.webrtcIconMic) {
+      DOM.webrtcIconMic.innerHTML = webrtcState.isAudioMuted
+        ? `<use href="#icon-mic-off"></use>`
+        : `<use href="#icon-mic"></use>`;
+    }
+  }
+
+  function toggleWebrtcCam() {
+    if (!webrtcState.localStream) return;
+    webrtcState.isVideoMuted = !webrtcState.isVideoMuted;
+    webrtcState.localStream.getVideoTracks().forEach((track) => {
+      track.enabled = !webrtcState.isVideoMuted;
+    });
+
+    if (DOM.btnWebrtcCam) {
+      DOM.btnWebrtcCam.classList.toggle("active-off", webrtcState.isVideoMuted);
+    }
+    if (DOM.webrtcIconCam) {
+      DOM.webrtcIconCam.innerHTML = webrtcState.isVideoMuted
+        ? `<use href="#icon-video-off"></use>`
+        : `<use href="#icon-video"></use>`;
+    }
+  }
+
+  function toggleWebrtcMinimize() {
+    if (DOM.webrtcCallOverlay) {
+      DOM.webrtcCallOverlay.classList.toggle("minimized");
+    }
+  }
+
+  // =========================================================================
+  // RTCDATACHANNEL P2P ZERO-RETENTION LARGE FILE TRANSFERS
+  // =========================================================================
+
+  /**
+   * Initializes RTCDataChannel listener and sets up packet processing
+   */
+  function setupP2PDataChannel(channel, peerSid, peerName) {
+    webrtcState.dataChannel = channel;
+    channel.binaryType = "arraybuffer";
+
+    channel.onopen = () => {
+      logActivity(`[P2P Channel Open] Direct channel connected to '${peerName || "peer"}'.`);
+      if (webrtcState.queuedP2PFile) {
+        const item = webrtcState.queuedP2PFile;
+        webrtcState.queuedP2PFile = null;
+        executeP2PFileSend(item.file, channel, item.peerName);
+      }
+    };
+
+    channel.onclose = () => {
+      logActivity(`[P2P Channel Closed] Channel closed with '${peerName || "peer"}'.`);
+    };
+
+    channel.onerror = (err) => {
+      logActivity(`[P2P Channel Error] ${err.message || err}`);
+    };
+
+    channel.onmessage = (event) => {
+      handleIncomingP2PDataMessage(event.data, peerName);
+    };
+  }
+
+  /**
+   * Creates a dedicated data-only PeerConnection when calling isn't active
+   */
+  async function initP2PDataConnection(targetSid, targetName) {
+    logActivity(`[P2P] Negotiating direct data channel with ${targetName}...`);
+    try {
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      webrtcState.peerConnection = pc;
+      webrtcState.activeTargetSid = targetSid;
+      webrtcState.activeTargetName = targetName;
+      webrtcState.pendingIceCandidates = [];
+
+      const dc = pc.createDataChannel("p2p_data_transfer", { ordered: true });
+      setupP2PDataChannel(dc, targetSid, targetName);
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate && state.socket) {
+          state.socket.emit("webrtc_ice_candidate", {
+            target_sid: targetSid,
+            room_id: state.roomId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      state.socket.emit("webrtc_offer", {
+        target_sid: targetSid,
+        room_id: state.roomId,
+        sender: state.username,
+        offer: offer,
+        type: "file_data"
+      });
+    } catch (err) {
+      logActivity(`[P2P Error] Failed to establish data connection: ${err.message}`);
+      appendSystemMessage(`⚠️ P2P Connection failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Selects and queues a file for P2P transfer
+   */
+  function triggerP2PFileSelect(targetSid, targetName) {
+    const resolved = resolveWebRtcTarget(targetSid, targetName);
+    if (!resolved.username) {
+      appendSystemMessage("⚠️ Please choose an online peer to send a file to.");
+      return;
+    }
+    webrtcState.p2pSelectedTarget = resolved;
+    if (DOM.p2pFileInput) {
+      DOM.p2pFileInput.value = "";
+      DOM.p2pFileInput.click();
+    }
+  }
+
+  function handleP2PFileInputChange(e) {
+    if (!e.target || !e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const target = webrtcState.p2pSelectedTarget || resolveWebRtcTarget();
+
+    if (!target || !target.username) {
+      appendSystemMessage("⚠️ No target peer selected for direct P2P transfer.");
+      return;
+    }
+
+    sendP2PFile(file, target.sid, target.username);
+    e.target.value = "";
+  }
+
+  /**
+   * Sends a file directly to peer via RTCDataChannel (0 bytes on server)
+   */
+  function sendP2PFile(file, targetSid, targetName) {
+    const resolved = resolveWebRtcTarget(targetSid, targetName);
+    targetSid = resolved.sid;
+    targetName = resolved.username;
+
+    if (!targetName) {
+      appendSystemMessage("⚠️ Cannot send file: no online peer selected.");
+      return;
+    }
+
+    logActivity(`[P2P Transfer] Preparing '${file.name}' (${formatBytes(file.size)}) for ${targetName}...`);
+
+    const meshPeer = targetSid ? webrtcMesh.peers[targetSid] : null;
+    if (meshPeer && meshPeer.dc && meshPeer.dc.readyState === "open") {
+      executeP2PFileSend(file, meshPeer.dc, targetName);
+      return;
+    }
+
+    if (webrtcState.dataChannel && webrtcState.dataChannel.readyState === "open") {
+      executeP2PFileSend(file, webrtcState.dataChannel, targetName);
+    } else {
+      webrtcState.queuedP2PFile = { file, targetSid, targetName };
+      initP2PDataConnection(targetSid, targetName);
+    }
+  }
+
+  /**
+   * Slices file into 16 KB chunks and streams over RTCDataChannel with backpressure flow control
+   */
+  function executeP2PFileSend(file, channel, peerName) {
+    const transferId = "p2p-tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6);
+    const CHUNK_SIZE = 16384; // 16 KB
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+    // Render outgoing transfer progress card in message stream
+    renderP2PTransferCard(transferId, file.name, file.size, true, peerName);
+
+    // Send metadata header packet
+    channel.send(JSON.stringify({
+      type: "p2p_file_start",
+      id: transferId,
+      name: file.name,
+      size: file.size,
+      mime: file.type || "application/octet-stream",
+      totalChunks: totalChunks
+    }));
+
+    let offset = 0;
+    channel.bufferedAmountLowThreshold = 65536; // 64 KB threshold for backpressure
+
+    function sendNextSlice() {
+      if (offset >= file.size) {
+        // Transfer completed!
+        channel.send(JSON.stringify({
+          type: "p2p_file_complete",
+          id: transferId
+        }));
+        updateP2PTransferComplete(transferId, null, file.name);
+        logActivity(`[P2P Transfer Done] Direct transfer of '${file.name}' to ${peerName} finished!`);
+        return;
+      }
+
+      // Respect backpressure
+      if (channel.bufferedAmount > 128 * 1024) {
+        channel.onbufferedamountlow = () => {
+          channel.onbufferedamountlow = null;
+          sendNextSlice();
+        };
+        return;
+      }
+
+      const slice = file.slice(offset, offset + CHUNK_SIZE);
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          channel.send(evt.target.result);
+          offset += slice.size;
+          const pct = Math.min(100, Math.round((offset / file.size) * 100));
+          updateP2PTransferProgress(transferId, pct, `${formatBytes(offset)} / ${formatBytes(file.size)}`);
+          // Continue slicing next chunk
+          sendNextSlice();
+        } catch (err) {
+          logActivity(`[P2P Send Error] Failed sending chunk: ${err.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(slice);
+    }
+
+    sendNextSlice();
+  }
+
+  /**
+   * Processes incoming data packets over RTCDataChannel
+   */
+  function handleIncomingP2PDataMessage(data, peerName) {
+    // 1. JSON Control Messages
+    if (typeof data === "string") {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === "p2p_file_start") {
+          webrtcState.rxTransfer = {
+            id: msg.id,
+            name: msg.name,
+            size: msg.size,
+            mime: msg.mime,
+            totalChunks: msg.totalChunks,
+            receivedBytes: 0,
+            chunks: [],
+            sender: peerName || "Peer"
+          };
+          renderP2PTransferCard(msg.id, msg.name, msg.size, false, peerName);
+          logActivity(`[P2P Rx] Started receiving '${msg.name}' (${formatBytes(msg.size)}) directly from ${peerName}.`);
+        } else if (msg.type === "p2p_file_complete") {
+          const rx = webrtcState.rxTransfer;
+          if (rx && rx.id === msg.id) {
+            const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
+            const blobUrl = URL.createObjectURL(blob);
+            updateP2PTransferComplete(rx.id, blobUrl, rx.name);
+            webrtcState.rxTransfer = null;
+            logActivity(`[P2P Rx Done] '${rx.name}' assembled successfully. Zero server storage used!`);
+          }
+        }
+      } catch (err) {
+        logActivity(`[P2P JSON Parse Error] ${err.message}`);
+      }
+      return;
+    }
+
+    // 2. Binary ArrayBuffer chunks
+    if (data instanceof ArrayBuffer) {
+      const rx = webrtcState.rxTransfer;
+      if (rx) {
+        rx.chunks.push(data);
+        rx.receivedBytes += data.byteLength;
+        const pct = Math.min(100, Math.round((rx.receivedBytes / rx.size) * 100));
+        updateP2PTransferProgress(rx.id, pct, `${formatBytes(rx.receivedBytes)} / ${formatBytes(rx.size)}`);
+      }
+    }
+  }
+
+  /**
+   * Appends an interactive P2P transfer progress card to the chat log
+   */
+  function renderP2PTransferCard(transferId, filename, filesize, isSender, peerName) {
+    if (!DOM.messagesContainer) return;
+
+    if (DOM.emptyState) {
+      DOM.emptyState.classList.add("hidden");
+    }
+
+    const row = document.createElement("div");
+    row.className = `message-row message-p2p-transfer ${isSender ? "outgoing" : "incoming"}`;
+    row.id = `card-${transferId}`;
+
+    const title = isSender ? `Sending Direct to ${peerName}` : `Receiving Directly from ${peerName}`;
+
+    row.innerHTML = `
+      <div class="p2p-transfer-card">
+        <div class="p2p-card-top">
+          <div class="p2p-card-icon">
+            <svg class="svg-icon sm" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          </div>
+          <div class="p2p-card-info">
+            <div class="p2p-card-filename" title="${filename}">${filename}</div>
+            <div class="p2p-card-meta">${title} • ${formatBytes(filesize)}</div>
+          </div>
+        </div>
+        <div class="p2p-progress-track">
+          <div class="p2p-progress-bar" id="bar-${transferId}" style="width: 0%;"></div>
+        </div>
+        <div class="p2p-card-bottom">
+          <span class="p2p-status-text" id="status-${transferId}">${isSender ? "Sending 0%" : "Receiving 0%"}</span>
+          <span class="p2p-badge-zero">Direct P2P • 0 Server Storage</span>
+        </div>
+        <div id="actions-${transferId}" class="p2p-card-actions hidden"></div>
+      </div>
+    `;
+
+    DOM.messagesContainer.appendChild(row);
+    scrollToBottom();
+  }
+
+  /**
+   * Updates progress bar and metrics for a P2P transfer
+   */
+  function updateP2PTransferProgress(transferId, percent, bytesText) {
+    const bar = document.getElementById(`bar-${transferId}`);
+    const status = document.getElementById(`status-${transferId}`);
+    if (bar) {
+      bar.style.width = `${percent}%`;
+    }
+    if (status) {
+      status.textContent = `${percent}% (${bytesText})`;
+    }
+  }
+
+  /**
+   * Marks P2P transfer as 100% complete and displays Download button if receiving
+   */
+  function updateP2PTransferComplete(transferId, blobUrl, filename) {
+    const bar = document.getElementById(`bar-${transferId}`);
+    const status = document.getElementById(`status-${transferId}`);
+    const actions = document.getElementById(`actions-${transferId}`);
+
+    if (bar) {
+      bar.style.width = "100%";
+      bar.style.background = "#10B981";
+    }
+    if (status) {
+      status.textContent = blobUrl ? "Transfer Complete ✓" : "Sent Directly to Peer ✓";
+      status.style.color = "#10B981";
+    }
+
+    if (blobUrl && actions) {
+      actions.classList.remove("hidden");
+      actions.innerHTML = `
+        <a href="${blobUrl}" download="${filename}" class="p2p-download-btn">
+          <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-download"></use></svg>
+          <span>Download ${filename}</span>
+        </a>
+      `;
+    }
+  }
+
+  // =========================================================================
   // EVENT LISTENERS SETUP
   // =========================================================================
   function setupEventListeners() {
@@ -3420,8 +5126,13 @@
       if (DOM.appContainer) DOM.appContainer.classList.add("hidden");
       if (DOM.loginOverlay) DOM.loginOverlay.classList.remove("hidden");
 
+      leaveRoomCall();
+      endWebrtcCall(false);
+
       // Hide room-specific header buttons
       if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.add("hidden");
+      if (DOM.btnHeaderAudioCall) DOM.btnHeaderAudioCall.classList.add("hidden");
+      if (DOM.btnHeaderCall) DOM.btnHeaderCall.classList.add("hidden");
       if (DOM.btnDisconnect) DOM.btnDisconnect.classList.add("hidden");
 
       // Reset chat header
@@ -3458,11 +5169,104 @@
     if (DOM.btnSidebarDisconnect) DOM.btnSidebarDisconnect.addEventListener("click", disconnectHandler);
     if (DOM.btnDrawerDisconnect) DOM.btnDrawerDisconnect.addEventListener("click", disconnectHandler);
 
-    if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", () => openFileModal());
-    if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", () => openFileModal());
+    const handleAttachClick = () => {
+      const target = resolveWebRtcTarget();
+      if (state.activeChatTarget || (target.username && (state.onlineUsers || []).length === 2)) {
+        triggerP2PFileSelect(target.sid, target.username);
+      } else {
+        openFileModal();
+      }
+    };
+    if (DOM.btnOpenFilePanel) DOM.btnOpenFilePanel.addEventListener("click", handleAttachClick);
+    if (DOM.btnComposerAttach) DOM.btnComposerAttach.addEventListener("click", handleAttachClick);
     if (DOM.closeFileModal) DOM.closeFileModal.addEventListener("click", closeFileModal);
     if (DOM.cancelFileBtn) DOM.cancelFileBtn.addEventListener("click", closeFileModal);
     if (DOM.fileRecipientSelect) DOM.fileRecipientSelect.addEventListener("change", updateBroadcastBadge);
+
+    // WebRTC Audio/Video & RTCDataChannel P2P Listeners
+    if (DOM.btnHeaderAudioCall) {
+      DOM.btnHeaderAudioCall.addEventListener("click", () => {
+        startRoomCall("audio");
+      });
+    }
+
+    if (DOM.btnHeaderCall) {
+      DOM.btnHeaderCall.addEventListener("click", () => {
+        if (state.activeChatTarget) {
+          const target = resolveWebRtcTarget();
+          if (target.username) {
+            startWebrtcCall(target.sid, target.username, "video");
+          } else {
+            appendSystemMessage("⚠️ Target peer is not online.");
+          }
+        } else {
+          startRoomCall("video");
+        }
+      });
+    }
+
+    // Floating Audio Bar Controls
+    if (DOM.btnAudioBarMic) {
+      DOM.btnAudioBarMic.addEventListener("click", toggleMeshMic);
+    }
+    if (DOM.btnAudioBarCam) {
+      DOM.btnAudioBarCam.addEventListener("click", toggleMeshCamera);
+    }
+    if (DOM.btnAudioBarLeave) {
+      DOM.btnAudioBarLeave.addEventListener("click", leaveRoomCall);
+    }
+
+    // Call Announcement Banner Controls
+    if (DOM.btnAnnouncementJoin) {
+      DOM.btnAnnouncementJoin.addEventListener("click", () => {
+        const type = DOM.webrtcCallAnnouncement?.dataset.callType || "audio";
+        joinRoomCall(type);
+      });
+    }
+    if (DOM.btnAnnouncementDismiss) {
+      DOM.btnAnnouncementDismiss.addEventListener("click", () => {
+        if (DOM.webrtcCallAnnouncement) {
+          DOM.webrtcCallAnnouncement.classList.add("hidden");
+        }
+      });
+    }
+
+    if (DOM.btnWebrtcMic) {
+      DOM.btnWebrtcMic.addEventListener("click", () => {
+        if (webrtcMesh.active) toggleMeshMic();
+        else toggleWebrtcMic();
+      });
+    }
+
+    if (DOM.btnWebrtcCam) {
+      DOM.btnWebrtcCam.addEventListener("click", () => {
+        if (webrtcMesh.active) toggleMeshCamera();
+        else toggleWebrtcCam();
+      });
+    }
+
+    if (DOM.btnWebrtcEnd) {
+      DOM.btnWebrtcEnd.addEventListener("click", () => {
+        if (webrtcMesh.active) leaveRoomCall();
+        else endWebrtcCall(true);
+      });
+    }
+
+    if (DOM.btnWebrtcMinimize) {
+      DOM.btnWebrtcMinimize.addEventListener("click", toggleWebrtcMinimize);
+    }
+
+    if (DOM.btnWebrtcAccept) {
+      DOM.btnWebrtcAccept.addEventListener("click", acceptIncomingWebrtcCall);
+    }
+
+    if (DOM.btnWebrtcDecline) {
+      DOM.btnWebrtcDecline.addEventListener("click", declineIncomingWebrtcCall);
+    }
+
+    if (DOM.p2pFileInput) {
+      DOM.p2pFileInput.addEventListener("change", handleP2PFileInputChange);
+    }
 
     // Curated Emoji Quick-bar Events & Caret Tracking
     if (DOM.messageInput) {

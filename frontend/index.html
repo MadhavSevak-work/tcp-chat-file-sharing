@@ -40,7 +40,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -240,6 +240,41 @@
         <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
         <rect x="7" y="7" width="10" height="10" rx="1.5"/>
         <line x1="10" y1="12" x2="14" y2="12"/>
+      </symbol>
+      <!-- WebRTC Video Camera: Video -->
+      <symbol id="icon-video" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11"/>
+        <rect x="2" y="6" width="14" height="12" rx="2"/>
+      </symbol>
+      <!-- WebRTC Video Off: VideoOff -->
+      <symbol id="icon-video-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.66 6H14a2 2 0 0 1 2 2v2.5l5.248-3.062A.5.5 0 0 1 22 7.87v8.196"/>
+        <path d="M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/>
+        <line x1="2" x2="22" y1="2" y2="22"/>
+      </symbol>
+      <!-- WebRTC Microphone: Mic -->
+      <symbol id="icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" x2="12" y1="19" y2="22"/>
+      </symbol>
+      <!-- WebRTC Microphone Off: MicOff -->
+      <symbol id="icon-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="2" x2="22" y1="2" y2="22"/>
+        <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2"/>
+        <path d="M5 10v2a7 7 0 0 0 12 5"/>
+        <path d="M15 9.34V5a3 3 0 0 0-5.68-1.33"/>
+        <path d="M9 9v3a3 3 0 0 0 5.12 2.12"/>
+        <line x1="12" x2="12" y1="19" y2="22"/>
+      </symbol>
+      <!-- WebRTC Phone Call: Phone -->
+      <symbol id="icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+      </symbol>
+      <!-- WebRTC Hangup: PhoneOff -->
+      <symbol id="icon-phone-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.56 9.44"/>
+        <line x1="2" x2="22" y1="2" y2="22"/>
       </symbol>
     </defs>
   </svg>
@@ -498,6 +533,16 @@
           <!-- Desktop-Only Quick Action: Share File (Available in Drawer on Mobile) -->
           <button id="btn-open-file-panel" class="p-2 text-zinc-400 hover:text-zinc-100 rounded-xl transition-colors hidden md:inline-flex" title="Share File with Peer" aria-label="Share File with Peer">
             <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
+          </button>
+
+          <!-- Start Room Audio Call (Phone icon, icon-only) -->
+          <button id="btn-header-audio-call" class="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-950/30 rounded-xl transition-colors hidden" title="Start Room Audio Call" aria-label="Start Room Audio Call">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-phone"></use></svg>
+          </button>
+
+          <!-- WebRTC P2P Video/Audio Call (Icon-Only, Mobile & Desktop) -->
+          <button id="btn-header-call" class="p-2 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-950/30 rounded-xl transition-colors hidden" title="Start Room Video Call" aria-label="Start Room Video Call">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-video"></use></svg>
           </button>
 
           <!-- Icon-Only Share Room Button (Emerald) -->
@@ -1033,7 +1078,125 @@
     </div>
   </div>
 
-  <script src="js/app.js"></script>
+  <!-- ==================== FLOATING ROOM AUDIO CALL BAR ==================== -->
+  <div id="webrtc-audio-bar" class="webrtc-audio-bar hidden" role="region" aria-label="Active Room Audio Call">
+    <div class="audio-bar-inner">
+      <div class="audio-bar-left">
+        <span class="webrtc-pulse-dot"></span>
+        <div class="audio-bar-info">
+          <span class="audio-bar-title font-semibold text-xs sm:text-sm text-zinc-100">Room Audio Call</span>
+          <span id="audio-bar-timer" class="webrtc-call-timer font-mono text-[11px] text-zinc-400">00:00</span>
+        </div>
+      </div>
+      
+      <!-- Participant chips with dynamic voice speaking pulse rings -->
+      <div class="audio-bar-participants" id="audio-bar-participants"></div>
+
+      <div class="audio-bar-controls">
+        <button type="button" id="btn-audio-bar-mic" class="audio-bar-btn" title="Toggle Microphone" aria-label="Toggle Microphone">
+          <svg class="svg-icon xs" id="audio-bar-mic-icon"><use href="#icon-mic"></use></svg>
+        </button>
+        <button type="button" id="btn-audio-bar-cam" class="audio-bar-btn" title="Upgrade to Video (Turn on Camera)" aria-label="Turn on Camera">
+          <svg class="svg-icon xs"><use href="#icon-video"></use></svg>
+        </button>
+        <button type="button" id="btn-audio-bar-leave" class="audio-bar-btn audio-bar-btn-leave" title="Leave Call" aria-label="Leave Call">
+          <svg class="svg-icon xs"><use href="#icon-phone-off"></use></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room Call Announcement Banner (Real-time broadcast when call starts) -->
+  <div id="webrtc-call-announcement" class="call-announcement-banner hidden" role="alert">
+    <div class="announcement-content">
+      <div class="announcement-ring">
+        <svg class="svg-icon sm text-emerald-400 animate-pulse"><use href="#icon-phone"></use></svg>
+      </div>
+      <div class="announcement-text text-xs sm:text-sm">
+        <strong id="announcement-caller" class="text-zinc-100 font-semibold">Peer</strong> started a Room Call
+      </div>
+    </div>
+    <div class="announcement-actions">
+      <button type="button" id="btn-announcement-dismiss" class="btn btn-sm btn-secondary text-xs">Dismiss</button>
+      <button type="button" id="btn-announcement-join" class="btn btn-sm btn-emerald text-xs">Join Call</button>
+    </div>
+  </div>
+
+  <!-- ==================== RESPONSIVE VIDEO CALL OVERLAY (MESH & 1-ON-1) ==================== -->
+  <div id="webrtc-call-overlay" class="webrtc-call-overlay hidden" role="dialog" aria-modal="true" aria-label="WebRTC Video Call">
+    <div class="webrtc-call-card" id="webrtc-call-card">
+      <!-- Call Top Header -->
+      <div class="webrtc-call-topbar">
+        <div class="webrtc-peer-meta">
+          <span class="webrtc-pulse-dot"></span>
+          <span id="webrtc-peer-name" class="webrtc-peer-name">Room Call</span>
+          <span id="webrtc-call-timer" class="webrtc-call-timer font-mono">00:00</span>
+        </div>
+        <div class="webrtc-topbar-actions">
+          <button type="button" id="btn-webrtc-minimize" class="btn-icon webrtc-icon-btn" title="Toggle Compact / Full" aria-label="Minimize Call">
+            <svg class="svg-icon xs"><use href="#icon-chevron-down"></use></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Video Grid Stage (Responsive 1-on-1 up to 4-6 tiles) -->
+      <div class="webrtc-video-stage">
+        <div class="webrtc-video-grid" id="webrtc-video-grid">
+          <!-- Dynamic video tiles rendered here -->
+        </div>
+
+        <!-- Connecting / Calling Indicator -->
+        <div id="webrtc-connecting-badge" class="webrtc-connecting-badge hidden">
+          <svg class="svg-icon sm animate-spin"><use href="#icon-loader-circle"></use></svg>
+          <span id="webrtc-connecting-text">Connecting...</span>
+        </div>
+      </div>
+
+      <!-- Call Control Floating Bar -->
+      <div class="webrtc-controls-bar">
+        <button type="button" id="btn-webrtc-mic" class="webrtc-ctrl-btn" title="Toggle Mic" aria-label="Toggle Microphone">
+          <svg class="svg-icon" id="webrtc-icon-mic"><use href="#icon-mic"></use></svg>
+        </button>
+        <button type="button" id="btn-webrtc-cam" class="webrtc-ctrl-btn" title="Toggle Camera" aria-label="Toggle Camera">
+          <svg class="svg-icon" id="webrtc-icon-cam"><use href="#icon-video"></use></svg>
+        </button>
+        <button type="button" id="btn-webrtc-end" class="webrtc-ctrl-btn webrtc-ctrl-end" title="Leave Call" aria-label="Leave Call">
+          <svg class="svg-icon"><use href="#icon-phone-off"></use></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1-on-1 Incoming WebRTC Call Modal -->
+  <div id="webrtc-incoming-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="webrtc-incoming-title">
+    <div class="modal-card webrtc-incoming-card">
+      <div class="webrtc-incoming-body">
+        <div class="webrtc-incoming-avatar">
+          <svg class="svg-icon lg text-emerald-400"><use href="#icon-phone"></use></svg>
+        </div>
+        <h3 id="webrtc-incoming-title" class="webrtc-incoming-title">Incoming Call</h3>
+        <p id="webrtc-incoming-subtitle" class="webrtc-incoming-subtitle"><strong id="webrtc-caller-name">Peer</strong> is inviting you to call...</p>
+        <div class="webrtc-incoming-buttons">
+          <button type="button" id="btn-webrtc-decline" class="btn btn-secondary webrtc-btn-decline" title="Decline Call">
+            <svg class="svg-icon xs"><use href="#icon-phone-off"></use></svg>
+            <span>Decline</span>
+          </button>
+          <button type="button" id="btn-webrtc-accept" class="btn btn-emerald webrtc-btn-accept" title="Accept Call">
+            <svg class="svg-icon xs"><use href="#icon-phone"></use></svg>
+            <span>Accept</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden Remote Audio Streams Container -->
+  <div id="remote-audio-container" class="hidden" aria-hidden="true"></div>
+
+  <!-- Hidden P2P Direct File Input -->
+  <input type="file" id="p2p-file-input" class="hidden" multiple aria-label="Select files for P2P direct transfer">
+
+  <script src="/static/js/app.js"></script>
 
   <!-- PWA Installation Controller & Service Worker Registration -->
   <script>
