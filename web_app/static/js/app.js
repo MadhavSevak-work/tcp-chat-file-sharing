@@ -51,8 +51,13 @@
     btnJoinRoomText: document.getElementById("btn-join-room-text"),
     usernameInput: document.getElementById("username-input"),
     roomInput: document.getElementById("room-input"),
-    passkeyInput: document.getElementById("passkey-input"),
     btnGenerateRoom: document.getElementById("btn-generate-room"),
+    btnScanQr: document.getElementById("btn-scan-qr"),
+    btnScanQrSecondary: document.getElementById("btn-scan-qr-secondary"),
+    qrScannerModal: document.getElementById("qr-scanner-modal"),
+    btnCloseScannerModal: document.getElementById("btn-close-scanner-modal"),
+    btnCancelScanner: document.getElementById("btn-cancel-scanner"),
+    qrScannerError: document.getElementById("qr-scanner-error"),
     btnTogglePasskey: document.getElementById("btn-toggle-passkey"),
     iconPasskeyVisibility: document.getElementById("icon-passkey-visibility"),
     connectBtnText: document.getElementById("connect-btn-text"),
@@ -788,6 +793,28 @@
       }
     }
 
+    const btnScan = DOM.btnScanQr;
+    const btnScanSec = DOM.btnScanQrSecondary;
+    const btnGen = DOM.btnGenerateRoom;
+    if (btnScan) btnScan.style.display = (mode === "join") ? "inline-flex" : "none";
+    if (btnScanSec) btnScanSec.style.display = (mode === "join") ? "inline-flex" : "none";
+    if (btnGen) btnGen.style.display = (mode === "create") ? "inline-flex" : "none";
+
+    if (mode === "create") {
+      if (DOM.roomInput && DOM.roomInput.readOnly) {
+        DOM.roomInput.readOnly = false;
+        DOM.roomInput.classList.remove("input-locked");
+        DOM.roomInput.removeAttribute("title");
+      }
+      if (DOM.passkeyInput && DOM.passkeyInput.readOnly) {
+        DOM.passkeyInput.readOnly = false;
+        DOM.passkeyInput.classList.remove("input-locked");
+        DOM.passkeyInput.removeAttribute("title");
+      }
+      const banner = document.getElementById("invite-room-banner");
+      if (banner) banner.style.display = "none";
+    }
+
     if (DOM.connectBtnText) {
       DOM.connectBtnText.textContent = mode === "create" ? "Create & Enter Room" : "Join Encrypted Room";
     }
@@ -954,50 +981,60 @@
     if (!roomParam) return;
 
     // Auto-fill the Room ID input and switch to "Join Room" view
-    if (DOM.roomInput) DOM.roomInput.value = roomParam;
     setRoomMode("join");
 
-    if (pinParam) {
-      if (DOM.passkeyInput) DOM.passkeyInput.value = pinParam;
+    if (DOM.roomInput) {
+      DOM.roomInput.value = roomParam;
+      DOM.roomInput.readOnly = true;
+      DOM.roomInput.classList.add("input-locked");
+      DOM.roomInput.title = "Room ID auto-filled from invite URL";
+    }
 
-      // Visually hide Room ID and PIN so user only sees Nickname
-      const roomGroup = DOM.roomInput ? DOM.roomInput.closest(".form-group") : null;
-      const passkeyGroup = DOM.passkeyInput ? DOM.passkeyInput.closest(".form-group") : null;
-      if (roomGroup) roomGroup.style.display = "none";
-      if (passkeyGroup) passkeyGroup.style.display = "none";
+    if (pinParam && DOM.passkeyInput) {
+      DOM.passkeyInput.value = pinParam;
+      DOM.passkeyInput.readOnly = true;
+      DOM.passkeyInput.classList.add("input-locked");
+      DOM.passkeyInput.title = "Passkey auto-filled from invite URL";
+    }
 
-      const modeTabs = document.querySelector(".room-mode-tabs");
-      if (modeTabs) modeTabs.style.display = "none";
-
-      let inviteBanner = document.getElementById("invite-room-banner");
-      if (!inviteBanner) {
-        inviteBanner = document.createElement("div");
-        inviteBanner.id = "invite-room-banner";
-        inviteBanner.className = "alert-banner alert-info";
-        const usernameGroup = DOM.usernameInput ? DOM.usernameInput.closest(".form-group") : null;
-        if (usernameGroup && usernameGroup.parentNode) {
-          usernameGroup.parentNode.insertBefore(inviteBanner, usernameGroup);
-        }
+    let inviteBanner = document.getElementById("invite-room-banner");
+    if (!inviteBanner) {
+      inviteBanner = document.createElement("div");
+      inviteBanner.id = "invite-room-banner";
+      inviteBanner.className = "alert-banner alert-info";
+      const usernameGroup = DOM.usernameInput ? DOM.usernameInput.closest(".form-group") : null;
+      if (usernameGroup && usernameGroup.parentNode) {
+        usernameGroup.parentNode.insertBefore(inviteBanner, usernameGroup);
       }
-      inviteBanner.innerHTML = `<strong>Room Invite:</strong> Joining room <code>${escapeHtml(roomParam)}</code> (Encryption PIN loaded)`;
-      inviteBanner.style.display = "block";
+    }
+    const pinText = pinParam ? " (Passkey Loaded)" : "";
+    inviteBanner.innerHTML = `<strong>Room Invite:</strong> Ready to join <code>${escapeHtml(roomParam)}</code>${pinText}`;
+    inviteBanner.style.display = "block";
 
-      if (DOM.btnJoinRoomText) DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
-      if (DOM.connectBtnText) DOM.connectBtnText.textContent = `Join ${roomParam}`;
+    if (DOM.btnJoinRoomText) DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
+    if (DOM.connectBtnText) DOM.connectBtnText.textContent = `Join ${roomParam}`;
+
+    // Leave only the Username field blank and automatically set focus to it
+    if (DOM.usernameInput) {
+      DOM.usernameInput.value = "";
+      setTimeout(() => {
+        DOM.usernameInput.focus();
+      }, 50);
     }
 
-    if (DOM.usernameInput && !DOM.usernameInput.value) {
-      DOM.usernameInput.focus();
-    } else if (DOM.passkeyInput && !pinParam) {
-      DOM.passkeyInput.focus();
-    }
-
-    logActivity(`Auto-filled Room ID '${roomParam}' from invite URL.`);
+    logActivity(`Auto-filled Room ID '${roomParam}'${pinParam ? " and passkey" : ""} from invite URL.`);
   }
 
-  function generateShareUrl(roomId) {
+  function generateShareUrl(roomId, pin) {
     const id = roomId || state.roomId || "";
-    return `${window.location.origin}/?room=${encodeURIComponent(id)}`;
+    const passkey = (pin !== undefined && pin !== null)
+      ? String(pin).trim()
+      : (state.roomPasskey ? String(state.roomPasskey).trim() : "");
+    let url = `${window.location.origin}/?room=${encodeURIComponent(id)}`;
+    if (passkey) {
+      url += `&pin=${encodeURIComponent(passkey)}`;
+    }
+    return url;
   }
 
   let qrCodeInstance = null;
@@ -1057,7 +1094,7 @@
   function openShareRoomModal() {
     if (!state.roomId) return;
     const roomId = state.roomId;
-    const shareUrl = generateShareUrl(roomId);
+    const shareUrl = generateShareUrl(roomId, state.roomPasskey);
 
     if (DOM.shareRoomIdVal) {
       DOM.shareRoomIdVal.textContent = roomId;
@@ -1082,7 +1119,7 @@
   async function handleCopyShareUrl() {
     const url = (DOM.shareRoomUrlInput && DOM.shareRoomUrlInput.value)
       ? DOM.shareRoomUrlInput.value
-      : generateShareUrl(state.roomId);
+      : generateShareUrl(state.roomId, state.roomPasskey);
     if (!url) return;
 
     let copied = false;
@@ -1119,6 +1156,155 @@
 
   async function copyInviteLink() {
     openShareRoomModal();
+  }
+
+  // =========================================================================
+  // IN-APP QR CODE CAMERA SCANNER (Html5Qrcode)
+  // =========================================================================
+  let html5QrScannerInstance = null;
+  let isQrScannerScanning = false;
+
+  async function startQrScanner() {
+    clearLoginError();
+
+    if (typeof Html5Qrcode === "undefined") {
+      showLoginError("QR Scanner library is loading. Please check your network and try again.");
+      return;
+    }
+
+    if (DOM.qrScannerModal) {
+      DOM.qrScannerModal.classList.remove("hidden");
+    }
+    if (DOM.qrScannerError) {
+      DOM.qrScannerError.classList.add("hidden");
+      DOM.qrScannerError.textContent = "";
+    }
+
+    try {
+      if (!html5QrScannerInstance) {
+        html5QrScannerInstance = new Html5Qrcode("qr-reader");
+      }
+
+      const qrConfig = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        aspectRatio: 1.0
+      };
+
+      isQrScannerScanning = true;
+
+      await html5QrScannerInstance.start(
+        { facingMode: "environment" },
+        qrConfig,
+        (decodedText) => {
+          handleQrScanSuccess(decodedText);
+        },
+        () => {
+          // ignore frame parse errors
+        }
+      );
+    } catch (err) {
+      console.warn("[QR Scanner] Failed to start camera:", err);
+      isQrScannerScanning = false;
+      if (DOM.qrScannerError) {
+        DOM.qrScannerError.textContent = "Camera access denied or unavailable. Please grant camera permission or enter Room ID manually.";
+        DOM.qrScannerError.classList.remove("hidden");
+      }
+    }
+  }
+
+  async function stopQrScanner() {
+    if (html5QrScannerInstance && isQrScannerScanning) {
+      try {
+        await html5QrScannerInstance.stop();
+        html5QrScannerInstance.clear();
+      } catch (err) {
+        console.warn("[QR Scanner] Error stopping camera:", err);
+      }
+    }
+    isQrScannerScanning = false;
+    if (DOM.qrScannerModal) {
+      DOM.qrScannerModal.classList.add("hidden");
+    }
+    if (DOM.qrScannerError) {
+      DOM.qrScannerError.classList.add("hidden");
+    }
+  }
+
+  async function handleQrScanSuccess(decodedText) {
+    if (!decodedText) return;
+    await stopQrScanner();
+
+    let room = "";
+    let pin = "";
+
+    try {
+      if (decodedText.startsWith("http://") || decodedText.startsWith("https://") || decodedText.includes("?")) {
+        const url = new URL(decodedText, window.location.origin);
+        room = (url.searchParams.get("room") || "").trim().toLowerCase();
+        pin = (url.searchParams.get("pin") || "").trim();
+      } else {
+        const params = new URLSearchParams(decodedText);
+        room = (params.get("room") || "").trim().toLowerCase();
+        pin = (params.get("pin") || "").trim();
+      }
+    } catch (_) {
+      const matchRoom = decodedText.match(/[?&]room=([^&]+)/i);
+      const matchPin = decodedText.match(/[?&]pin=([^&]+)/i);
+      if (matchRoom) room = decodeURIComponent(matchRoom[1]).trim().toLowerCase();
+      if (matchPin) pin = decodeURIComponent(matchPin[1]).trim();
+    }
+
+    if (room) {
+      setRoomMode("join");
+
+      if (DOM.roomInput) {
+        DOM.roomInput.value = room;
+        DOM.roomInput.readOnly = true;
+        DOM.roomInput.classList.add("input-locked");
+        DOM.roomInput.title = "Room ID auto-filled from QR code";
+      }
+
+      if (pin && DOM.passkeyInput) {
+        DOM.passkeyInput.value = pin;
+        DOM.passkeyInput.readOnly = true;
+        DOM.passkeyInput.classList.add("input-locked");
+        DOM.passkeyInput.title = "Passkey auto-filled from QR code";
+      }
+
+      clearLoginError();
+
+      let inviteBanner = document.getElementById("invite-room-banner");
+      if (!inviteBanner) {
+        inviteBanner = document.createElement("div");
+        inviteBanner.id = "invite-room-banner";
+        inviteBanner.className = "alert-banner alert-info";
+        const usernameGroup = DOM.usernameInput ? DOM.usernameInput.closest(".form-group") : null;
+        if (usernameGroup && usernameGroup.parentNode) {
+          usernameGroup.parentNode.insertBefore(inviteBanner, usernameGroup);
+        }
+      }
+      const pinText = pin ? " (Passkey Loaded)" : "";
+      inviteBanner.innerHTML = `<strong>QR Scanned:</strong> Ready to join <code>${escapeHtml(room)}</code>${pinText}`;
+      inviteBanner.style.display = "block";
+
+      if (DOM.btnJoinRoomText) DOM.btnJoinRoomText.textContent = `Join ${room}`;
+      if (DOM.connectBtnText) DOM.connectBtnText.textContent = `Join ${room}`;
+
+      if (DOM.usernameInput) {
+        DOM.usernameInput.value = "";
+        setTimeout(() => {
+          DOM.usernameInput.focus();
+        }, 50);
+      }
+
+      logActivity(`Scanned QR code: Auto-filled Room ID '${room}'${pin ? " and passkey" : ""}.`);
+      if (navigator.vibrate) {
+        try { navigator.vibrate(50); } catch (_) {}
+      }
+    } else {
+      showLoginError("Scanned QR code does not contain a valid NetChat room invite.");
+    }
   }
 
   // PWA Standalone Detection & Complete DOM Removal
@@ -3055,6 +3241,32 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && DOM.shareRoomModal && !DOM.shareRoomModal.classList.contains("hidden")) {
         closeShareRoomModal();
+      }
+    });
+
+    // In-App QR Scanner Controls
+    if (DOM.btnScanQr) {
+      DOM.btnScanQr.addEventListener("click", startQrScanner);
+    }
+    if (DOM.btnScanQrSecondary) {
+      DOM.btnScanQrSecondary.addEventListener("click", startQrScanner);
+    }
+    if (DOM.btnCloseScannerModal) {
+      DOM.btnCloseScannerModal.addEventListener("click", stopQrScanner);
+    }
+    if (DOM.btnCancelScanner) {
+      DOM.btnCancelScanner.addEventListener("click", stopQrScanner);
+    }
+    if (DOM.qrScannerModal) {
+      DOM.qrScannerModal.addEventListener("click", (e) => {
+        if (e.target === DOM.qrScannerModal || !e.target.closest(".qr-scanner-card")) {
+          stopQrScanner();
+        }
+      });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && DOM.qrScannerModal && !DOM.qrScannerModal.classList.contains("hidden")) {
+        stopQrScanner();
       }
     });
 

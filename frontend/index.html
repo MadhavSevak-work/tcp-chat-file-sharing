@@ -43,6 +43,7 @@
   <link rel="stylesheet" href="css/style.css">
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
@@ -231,6 +232,15 @@
         <polyline points="9 17 4 12 9 7"/>
         <path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
       </symbol>
+      <!-- QR Scanner Viewfinder: Scan -->
+      <symbol id="icon-qr-scan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2"/>
+        <path d="M17 3h2a2 2 0 0 1 2 2v2"/>
+        <path d="M21 17v2a2 2 0 0 1-2 2h-2"/>
+        <path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+        <rect x="7" y="7" width="10" height="10" rx="1.5"/>
+        <line x1="10" y1="12" x2="14" y2="12"/>
+      </symbol>
     </defs>
   </svg>
 
@@ -291,6 +301,9 @@
             <button type="button" class="input-action-btn" id="btn-generate-room" title="Generate random Room ID" aria-label="Generate random Room ID">
               <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-refresh-cw"></use></svg>
             </button>
+            <button type="button" class="input-action-btn" id="btn-scan-qr" title="Scan QR Code to Join" aria-label="Scan QR Code to Join" style="display: none;">
+              <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-qr-scan"></use></svg>
+            </button>
           </div>
         </div>
 
@@ -303,6 +316,12 @@
             </button>
           </div>
         </div>
+
+        <!-- Scan Room QR Code Secondary Button (Visible in Join Room mode) -->
+        <button type="button" id="btn-scan-qr-secondary" class="btn btn-secondary" style="width: 100%; margin-bottom: 12px; justify-content: center; gap: 8px; display: none;" title="Scan QR Code to Join">
+          <svg class="svg-icon xs" aria-hidden="true"><use href="#icon-qr-scan"></use></svg>
+          <span>Scan Room QR Code</span>
+        </button>
 
         <div class="login-action-buttons-group">
           <button id="btn-create-room" class="btn btn-primary btn-lg" type="button">
@@ -961,6 +980,31 @@
           <span class="share-meta-label text-zinc-400">Room ID:</span>
           <span class="share-meta-value font-mono font-semibold text-emerald-400" id="share-room-id-val"></span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-App QR Code Camera Scanner Modal -->
+  <div id="qr-scanner-modal" class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md overflow-y-auto hidden" role="dialog" aria-modal="true" aria-labelledby="qr-scanner-modal-title">
+    <div class="modal-card qr-scanner-card relative w-full max-w-sm sm:max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
+      <div class="modal-header flex items-center justify-between w-full">
+        <div class="modal-title-wrap flex items-center gap-2">
+          <svg class="svg-icon text-emerald-400 w-5 h-5" aria-hidden="true"><use href="#icon-qr-scan"></use></svg>
+          <h2 id="qr-scanner-modal-title" class="modal-title text-base sm:text-lg font-semibold text-zinc-100">Scan Room QR Code</h2>
+        </div>
+        <button type="button" class="btn-icon p-2 text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer" id="btn-close-scanner-modal" aria-label="Close scanner dialog">
+          <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
+        </button>
+      </div>
+      <div class="modal-body flex flex-col items-center gap-3 w-full">
+        <p class="text-xs sm:text-sm text-zinc-400 text-center">Point your camera at a NetChat Live room QR code to auto-fill the Room ID and Passkey.</p>
+        <div id="qr-scanner-error" class="alert-banner alert-error hidden w-full" role="alert" style="margin: 0;"></div>
+        <div class="qr-video-container w-full max-w-[320px] aspect-square rounded-xl overflow-hidden bg-zinc-950 border-2 border-emerald-500/40 shadow-lg relative flex items-center justify-center">
+          <div id="qr-reader" class="w-full h-full"></div>
+        </div>
+      </div>
+      <div class="modal-footer flex items-center justify-end w-full pt-2">
+        <button type="button" class="btn btn-secondary px-4 py-2 rounded-xl text-xs sm:text-sm" id="btn-cancel-scanner">Cancel</button>
       </div>
     </div>
   </div>
