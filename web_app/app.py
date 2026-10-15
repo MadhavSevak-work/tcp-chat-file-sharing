@@ -580,6 +580,19 @@ def handle_join_room(data):
                     emit("room_error", {"message": err["message"]})
                     return err
 
+        # Enforce room-scoped username uniqueness (case-insensitive)
+        clean_target_user = username.strip().lower()
+        active_room_members = room_members.get(room_id, {})
+        for peer_sid, peer_name in active_room_members.items():
+            if peer_sid != sid and str(peer_name).strip().lower() == clean_target_user:
+                err = {
+                    "status": "error",
+                    "message": "Username is already taken in this room. Please choose another."
+                }
+                emit("join_error", {"message": err["message"]})
+                emit("room_error", {"message": err["message"]})
+                return err
+
         # If socket was previously in a different room, clean up old room first
         old_room = socket_to_room.get(sid)
         if old_room and old_room != room_id:

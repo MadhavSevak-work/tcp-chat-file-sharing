@@ -100,9 +100,20 @@
     activeChatTitle: document.getElementById("active-chat-title"),
     activeChatDesc: document.getElementById("active-chat-desc"),
     btnCopyRoomLink: document.getElementById("btn-copy-room-link"),
+    btnHeaderShareRoom: document.getElementById("btn-header-share-room"),
     iconCopyInvite: document.getElementById("icon-copy-invite"),
     copyInviteText: document.getElementById("copy-invite-text"),
     headerChannelIcon: document.getElementById("header-channel-icon"),
+
+    // Share Room & QR Code Modal
+    shareRoomModal: document.getElementById("share-room-modal"),
+    btnCloseShareModal: document.getElementById("btn-close-share-modal"),
+    roomQrCode: document.getElementById("room-qr-code"),
+    shareRoomUrlInput: document.getElementById("share-room-url-input"),
+    btnCopyShareUrl: document.getElementById("btn-copy-share-url"),
+    textShareCopy: document.getElementById("text-share-copy"),
+    iconShareCopy: document.getElementById("icon-share-copy"),
+    shareRoomIdVal: document.getElementById("share-room-id-val"),
     headerStatusPill: document.getElementById("header-status-pill"),
     headerStatusDot: document.getElementById("header-status-dot"),
     headerStatusText: document.getElementById("header-status-text"),
@@ -772,10 +783,6 @@
         ? "Unique room identifier shared between peers."
         : "Enter the Room ID given to you by the room creator.";
     }
-
-    if (mode === "create" && DOM.roomInput && !DOM.roomInput.value.trim()) {
-      DOM.roomInput.value = generateRandomRoomId();
-    }
   }
 
   function togglePasskeyVisibility() {
@@ -903,33 +910,43 @@
   }
 
   // =========================================================================
-  // SHAREABLE ROOM LINK CONTROLLER (AUTO-PIN & DIRECT INVITE)
+  // SHAREABLE ROOM LINK & QR CODE CONTROLLER (DIRECT JOIN URL & QR MODAL)
   // =========================================================================
-  function checkUrlRoomHash() {
+  function checkUrlRoomParams() {
     if (state.isConnected && state.roomId) return;
 
-    const rawHash = window.location.hash ? window.location.hash.substring(1) : "";
-    if (!rawHash) return;
+    let roomParam = "";
+    let pinParam = "";
 
-    let params;
-    try {
-      params = new URLSearchParams(rawHash);
-    } catch (_) {
-      return;
+    // 1. Check URL query parameters (?room=XYZ&pin=ABC)
+    if (window.location.search) {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        roomParam = (searchParams.get("room") || "").trim().toLowerCase();
+        pinParam = (searchParams.get("pin") || "").trim();
+      } catch (_) {}
     }
 
-    const roomParam = (params.get("room") || "").trim().toLowerCase();
-    const pinParam = (params.get("pin") || "").trim();
+    // 2. Fallback to hash parameters (#room=XYZ&pin=ABC)
+    if (!roomParam && window.location.hash) {
+      try {
+        const rawHash = window.location.hash.substring(1);
+        const hashParams = new URLSearchParams(rawHash);
+        roomParam = (hashParams.get("room") || "").trim().toLowerCase();
+        if (!pinParam) pinParam = (hashParams.get("pin") || "").trim();
+      } catch (_) {}
+    }
 
-    if (roomParam && pinParam) {
-      // 1. Auto-fill the "Room ID" and "Room PIN" input fields in the Join Modal
-      if (DOM.roomInput) DOM.roomInput.value = roomParam;
+    if (!roomParam) return;
+
+    // Auto-fill the Room ID input and switch to "Join Room" view
+    if (DOM.roomInput) DOM.roomInput.value = roomParam;
+    setRoomMode("join");
+
+    if (pinParam) {
       if (DOM.passkeyInput) DOM.passkeyInput.value = pinParam;
 
-      // Ensure mode is set to join
-      setRoomMode("join");
-
-      // 2. Visually hide the "Room ID" and "Room PIN" fields so user only sees Nickname
+      // Visually hide Room ID and PIN so user only sees Nickname
       const roomGroup = DOM.roomInput ? DOM.roomInput.closest(".form-group") : null;
       const passkeyGroup = DOM.passkeyInput ? DOM.passkeyInput.closest(".form-group") : null;
       if (roomGroup) roomGroup.style.display = "none";
@@ -938,7 +955,6 @@
       const modeTabs = document.querySelector(".room-mode-tabs");
       if (modeTabs) modeTabs.style.display = "none";
 
-      // Display an invite confirmation banner
       let inviteBanner = document.getElementById("invite-room-banner");
       if (!inviteBanner) {
         inviteBanner = document.createElement("div");
@@ -952,83 +968,113 @@
       inviteBanner.innerHTML = `<strong>Room Invite:</strong> Joining room <code>${escapeHtml(roomParam)}</code> (Encryption PIN loaded)`;
       inviteBanner.style.display = "block";
 
-      if (DOM.btnJoinRoomText) {
-        DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
-      }
-      if (DOM.connectBtnText) {
-        DOM.connectBtnText.textContent = `Join ${roomParam}`;
-      }
+      if (DOM.btnJoinRoomText) DOM.btnJoinRoomText.textContent = `Join ${roomParam}`;
+      if (DOM.connectBtnText) DOM.connectBtnText.textContent = `Join ${roomParam}`;
+    }
 
-      // 3. Prompt user ONLY for their Username
-      if (DOM.usernameInput) {
-        DOM.usernameInput.focus();
-      }
+    if (DOM.usernameInput && !DOM.usernameInput.value) {
+      DOM.usernameInput.focus();
+    } else if (DOM.passkeyInput && !pinParam) {
+      DOM.passkeyInput.focus();
+    }
 
-      logActivity(`Parsed direct invite link for room '${roomParam}' with locked-in PIN.`);
-    } else if (roomParam) {
-      if (DOM.roomInput) DOM.roomInput.value = roomParam;
-      setRoomMode("join");
-      if (DOM.usernameInput && !DOM.usernameInput.value) {
-        DOM.usernameInput.focus();
-      } else if (DOM.passkeyInput) {
-        DOM.passkeyInput.focus();
+    logActivity(`Auto-filled Room ID '${roomParam}' from invite URL.`);
+  }
+
+  function generateShareUrl(roomId) {
+    const id = roomId || state.roomId || "";
+    return `${window.location.origin}/?room=${encodeURIComponent(id)}`;
+  }
+
+  let qrCodeInstance = null;
+
+  function renderRoomQrCode(url) {
+    if (!DOM.roomQrCode) return;
+    DOM.roomQrCode.innerHTML = "";
+    try {
+      if (typeof QRCode !== "undefined") {
+        qrCodeInstance = new QRCode(DOM.roomQrCode, {
+          text: url,
+          width: 180,
+          height: 180,
+          colorDark: "#09090b",
+          colorLight: "#ffffff",
+          correctLevel: (typeof QRCode.CorrectLevel !== "undefined") ? QRCode.CorrectLevel.M : 0
+        });
+      } else {
+        DOM.roomQrCode.innerHTML = `<span style="color:#a1a1aa;font-size:0.85rem;">QR Generator Loading...</span>`;
       }
-      logActivity(`Auto-filled Room ID '${roomParam}' from invite URL.`);
+    } catch (err) {
+      console.warn("Failed to generate QR code:", err);
+      DOM.roomQrCode.innerHTML = `<span style="color:#ef4444;font-size:0.85rem;">Failed to render QR Code</span>`;
     }
   }
 
-  async function copyInviteLink() {
+  function openShareRoomModal() {
     if (!state.roomId) return;
     const roomId = state.roomId;
-    const roomPin = state.roomPasskey || "";
-    const inviteUrl = window.location.origin + window.location.pathname + '#room=' + encodeURIComponent(roomId) + '&pin=' + encodeURIComponent(roomPin);
+    const shareUrl = generateShareUrl(roomId);
+
+    if (DOM.shareRoomIdVal) {
+      DOM.shareRoomIdVal.textContent = roomId;
+    }
+    if (DOM.shareRoomUrlInput) {
+      DOM.shareRoomUrlInput.value = shareUrl;
+    }
+
+    renderRoomQrCode(shareUrl);
+
+    if (DOM.shareRoomModal) {
+      DOM.shareRoomModal.classList.remove("hidden");
+    }
+  }
+
+  function closeShareRoomModal() {
+    if (DOM.shareRoomModal) {
+      DOM.shareRoomModal.classList.add("hidden");
+    }
+  }
+
+  async function handleCopyShareUrl() {
+    const url = (DOM.shareRoomUrlInput && DOM.shareRoomUrlInput.value)
+      ? DOM.shareRoomUrlInput.value
+      : generateShareUrl(state.roomId);
+    if (!url) return;
 
     let copied = false;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       try {
-        await navigator.clipboard.writeText(inviteUrl);
+        await navigator.clipboard.writeText(url);
         copied = true;
       } catch (_) {}
     }
     if (!copied) {
-      const tempInput = document.createElement("input");
-      tempInput.value = inviteUrl;
-      document.body.appendChild(tempInput);
-      tempInput.select();
       try {
+        if (DOM.shareRoomUrlInput) {
+          DOM.shareRoomUrlInput.select();
+          DOM.shareRoomUrlInput.setSelectionRange(0, 99999);
+        }
         copied = document.execCommand("copy");
       } catch (_) {}
-      document.body.removeChild(tempInput);
     }
 
-    if (DOM.btnCopyRoomLink) {
-      DOM.btnCopyRoomLink.classList.add("copied");
-      if (DOM.copyInviteText) DOM.copyInviteText.textContent = "Copied!";
-      if (DOM.iconCopyInvite) DOM.iconCopyInvite.innerHTML = `<use href="#icon-check"></use>`;
+    const btn = DOM.btnCopyShareUrl;
+    const text = DOM.textShareCopy;
+    const icon = DOM.iconShareCopy;
 
-      setTimeout(() => {
-        if (DOM.btnCopyRoomLink) {
-          DOM.btnCopyRoomLink.classList.remove("copied");
-          if (DOM.copyInviteText) DOM.copyInviteText.textContent = "Share Link";
-          if (DOM.iconCopyInvite) DOM.iconCopyInvite.innerHTML = `<use href="#icon-link"></use>`;
-        }
-      }, 2000);
-    }
+    if (btn) btn.classList.add("copied");
+    if (text) text.textContent = "Copied!";
+    if (icon) icon.innerHTML = `<use href="#icon-check"></use>`;
 
-    if (DOM.btnDrawerCopyLink) {
-      DOM.btnDrawerCopyLink.classList.add("active");
-      if (DOM.drawerCopyLinkTitle) DOM.drawerCopyLinkTitle.textContent = "Link Copied!";
-      if (DOM.iconDrawerCopyLink) DOM.iconDrawerCopyLink.innerHTML = `<use href="#icon-check"></use>`;
+    setTimeout(() => {
+      if (btn) btn.classList.remove("copied");
+      if (text) text.textContent = "Copy Link";
+      if (icon) icon.innerHTML = `<use href="#icon-link"></use>`;
+    }, 2000);
+  }
 
-      setTimeout(() => {
-        if (DOM.btnDrawerCopyLink) {
-          DOM.btnDrawerCopyLink.classList.remove("active");
-          if (DOM.drawerCopyLinkTitle) DOM.drawerCopyLinkTitle.textContent = "Share Room Link";
-          if (DOM.iconDrawerCopyLink) DOM.iconDrawerCopyLink.innerHTML = `<use href="#icon-link"></use>`;
-        }
-      }, 2000);
-    }
-    logActivity(`Invite link copied to clipboard: ${inviteUrl}`);
+  async function copyInviteLink() {
+    openShareRoomModal();
   }
 
   function init() {
@@ -1052,7 +1098,7 @@
 
     setupEventListeners();
     setRoomMode("create");
-    checkUrlRoomHash();
+    checkUrlRoomParams();
     connectSocket();
   }
 
@@ -1117,7 +1163,21 @@
     });
 
     state.socket.on("join_error", (data) => {
-      showLoginError(data.message || "Failed to join network.");
+      const errMsg = (data && data.message)
+        ? data.message
+        : "Username is already taken in this room. Please choose another.";
+      showLoginError(errMsg, true);
+      // Keep user on join modal with username input focused and highlighted
+      if (DOM.loginOverlay) {
+        DOM.loginOverlay.classList.remove("hidden");
+      }
+      if (DOM.appContainer) {
+        DOM.appContainer.classList.add("hidden");
+      }
+      if (DOM.usernameInput) {
+        DOM.usernameInput.classList.add("input-error");
+        DOM.usernameInput.focus();
+      }
     });
 
     // Zero-Knowledge E2EE Room Socket Listeners
@@ -1128,6 +1188,9 @@
       }
       if (DOM.btnCopyRoomLink) {
         DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (DOM.btnHeaderShareRoom) {
+        DOM.btnHeaderShareRoom.classList.remove("hidden");
       }
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
@@ -1345,7 +1408,7 @@
     }
   }
 
-  function showLoginError(msg) {
+  function showLoginError(msg, highlightUsername = false) {
     setConnectionStatus("disconnected", "Disconnected");
     setButtonsLoading(false);
     let errorSpan = DOM.loginErrorText || (DOM.loginError ? DOM.loginError.querySelector("#login-error-text") : null);
@@ -1360,6 +1423,10 @@
     if (DOM.loginError) {
       DOM.loginError.classList.remove("hidden");
     }
+    if (highlightUsername && DOM.usernameInput) {
+      DOM.usernameInput.classList.add("input-error");
+      DOM.usernameInput.focus();
+    }
   }
 
   function clearLoginError() {
@@ -1369,6 +1436,9 @@
     }
     if (DOM.loginError) {
       DOM.loginError.classList.add("hidden");
+    }
+    if (DOM.usernameInput) {
+      DOM.usernameInput.classList.remove("input-error");
     }
   }
 
@@ -1503,7 +1573,12 @@
         });
       } else {
         const errorMsg = (response && response.message) ? response.message : "Invalid PIN or Room not found";
-        showLoginError(errorMsg);
+        const isUserErr = errorMsg.toLowerCase().includes("username");
+        showLoginError(errorMsg, isUserErr);
+        if (isUserErr && DOM.usernameInput) {
+          DOM.usernameInput.classList.add("input-error");
+          DOM.usernameInput.focus();
+        }
       }
     });
   }
@@ -1551,6 +1626,9 @@
       DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
       if (DOM.btnCopyRoomLink) {
         DOM.btnCopyRoomLink.classList.remove("hidden");
+      }
+      if (DOM.btnHeaderShareRoom) {
+        DOM.btnHeaderShareRoom.classList.remove("hidden");
       }
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
@@ -2020,16 +2098,19 @@
     DOM.btnPublicRoom.classList.add("active");
     document.querySelectorAll(".peer-list .nav-menu-item").forEach(el => el.classList.remove("active"));
 
-    DOM.activeChatTitle.textContent = "Public Room";
-    DOM.activeChatDesc.textContent = "Unified stream broadcast to all active network peers";
-    if (DOM.headerChannelIcon) {
-      DOM.headerChannelIcon.innerHTML = `<use href="#icon-globe"></use>`;
-    }
-    if (DOM.btnCopyRoomLink) {
-      DOM.btnCopyRoomLink.classList.add("hidden");
-    }
-    if (DOM.btnDrawerCopyLink) {
-      DOM.btnDrawerCopyLink.classList.add("hidden");
+    if (state.roomId) {
+      DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
+      DOM.activeChatDesc.textContent = "";
+      DOM.activeChatDesc.classList.add("hidden");
+      if (DOM.btnCopyRoomLink) DOM.btnCopyRoomLink.classList.remove("hidden");
+      if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.remove("hidden");
+      if (DOM.btnDrawerCopyLink) DOM.btnDrawerCopyLink.classList.remove("hidden");
+    } else {
+      DOM.activeChatTitle.textContent = "Public Room";
+      DOM.activeChatDesc.textContent = "Unified stream broadcast to all active network peers";
+      if (DOM.btnCopyRoomLink) DOM.btnCopyRoomLink.classList.add("hidden");
+      if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.add("hidden");
+      if (DOM.btnDrawerCopyLink) DOM.btnDrawerCopyLink.classList.add("hidden");
     }
     DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
     closeSidebar();
@@ -2041,6 +2122,9 @@
     DOM.btnPublicRoom.classList.remove("active");
     if (DOM.btnCopyRoomLink) {
       DOM.btnCopyRoomLink.classList.add("hidden");
+    }
+    if (DOM.btnHeaderShareRoom) {
+      DOM.btnHeaderShareRoom.classList.add("hidden");
     }
     if (DOM.btnDrawerCopyLink) {
       DOM.btnDrawerCopyLink.classList.add("hidden");
@@ -2882,13 +2966,40 @@
       DOM.btnCancelReply.addEventListener("click", cancelReply);
     }
 
+    // Share Room Modal & Direct QR Code Controls
+    if (DOM.btnHeaderShareRoom) {
+      DOM.btnHeaderShareRoom.addEventListener("click", openShareRoomModal);
+    }
+    if (DOM.btnCloseShareModal) {
+      DOM.btnCloseShareModal.addEventListener("click", closeShareRoomModal);
+    }
+    if (DOM.btnCopyShareUrl) {
+      DOM.btnCopyShareUrl.addEventListener("click", handleCopyShareUrl);
+    }
+    if (DOM.shareRoomModal) {
+      DOM.shareRoomModal.addEventListener("click", (e) => {
+        if (e.target === DOM.shareRoomModal) {
+          closeShareRoomModal();
+        }
+      });
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && DOM.shareRoomModal && !DOM.shareRoomModal.classList.contains("hidden")) {
+        closeShareRoomModal();
+      }
+    });
+
     // Copy Invite Link Button
     if (DOM.btnCopyRoomLink) {
       DOM.btnCopyRoomLink.addEventListener("click", copyInviteLink);
     }
+    if (DOM.btnDrawerCopyLink) {
+      DOM.btnDrawerCopyLink.addEventListener("click", openShareRoomModal);
+    }
 
-    // Hashchange listener for direct room invites
-    window.addEventListener("hashchange", checkUrlRoomHash);
+    // URL change listeners for direct room invites
+    window.addEventListener("hashchange", checkUrlRoomParams);
+    window.addEventListener("popstate", checkUrlRoomParams);
 
     if (DOM.btnPublicRoom) {
       DOM.btnPublicRoom.addEventListener("click", switchToPublicChat);

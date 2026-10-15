@@ -3300,3 +3300,127 @@ body.drawer-open {
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* ==========================================================================
+   Share Room & QR Code Modal (Zinc-900 / Emerald Frosted Glass)
+   ========================================================================== */
+.share-room-card {
+  max-width: 420px;
+  background: rgba(24, 24, 27, 0.88) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(39, 39, 42, 0.9) !important;
+  border-radius: 1rem !important; /* rounded-2xl */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+}
+
+.share-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 20px 24px;
+}
+
+.share-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary, #a1a1aa);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.qr-code-wrapper {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 14px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+
+.qr-code-container img,
+.qr-code-container canvas {
+  display: block !important;
+  width: 180px !important;
+  height: 180px !important;
+}
+
+.share-link-group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+.share-input-wrapper {
+  flex: 1;
+}
+
+.share-url-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(9, 9, 11, 0.8);
+  border: 1px solid rgba(39, 39, 42, 0.9);
+  border-radius: 8px;
+  color: var(--text-primary, #f4f4f5);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.btn-emerald {
+  background-color: #059669 !important;
+  color: #ffffff !important;
+  border: 1px solid #10b981 !important;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+.btn-emerald:hover {
+  background-color: #10b981 !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+.btn-emerald.copied {
+  background-color: #047857 !important;
+  border-color: #34d399 !important;
+}
+
+.share-meta-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 14px;
+  background: rgba(9, 9, 11, 0.6);
+  border: 1px solid rgba(39, 39, 42, 0.6);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.share-meta-label {
+  color: var(--text-secondary, #a1a1aa);
+}
+
+.share-meta-value {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.input-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+  animation: shakeInput 0.3s ease-in-out;
+}
+
+@keyframes shakeInput {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+

@@ -488,6 +488,67 @@ class TestWebApp(unittest.TestCase):
         c1.disconnect()
         self.assertNotIn("peer_room", room_users)
 
+    def test_room_scoped_username_uniqueness(self):
+        """Test that usernames must be unique per room (case-insensitive) and emit join_error on conflict."""
+        from web_app.app import socketio
+        c1 = socketio.test_client(self.app)
+        c2 = socketio.test_client(self.app)
+        c3 = socketio.test_client(self.app)
+        c1.get_received()
+        c2.get_received()
+        c3.get_received()
+
+        # Alice creates room "unique_vault"
+        res1 = c1.emit("create_room", {
+            "room_id": "unique_vault",
+            "pin": "pass123",
+            "username": "Alice"
+        }, callback=True)
+        self.assertEqual(res1.get("status"), "success")
+
+        # c2 tries to join "unique_vault" as "alice" (case-insensitive duplicate)
+        res2 = c2.emit("join_room", {
+            "room_id": "unique_vault",
+            "pin": "pass123",
+            "username": "alice"
+        }, callback=True)
+        self.assertEqual(res2.get("status"), "error")
+        self.assertIn("Username is already taken in this room", res2.get("message", ""))
+
+        # Verify join_error event was received by c2
+        rec_c2 = c2.get_received()
+        join_errs = [m for m in rec_c2 if m["name"] == "join_error"]
+        self.assertTrue(len(join_errs) >= 1)
+        self.assertIn("Username is already taken in this room", join_errs[0]["args"][0]["message"])
+
+        # c2 tries to join as "  ALICE  " (whitespace + case-insensitive)
+        res2_ws = c2.emit("join_room", {
+            "room_id": "unique_vault",
+            "pin": "pass123",
+            "username": "  ALICE  "
+        }, callback=True)
+        self.assertEqual(res2_ws.get("status"), "error")
+
+        # c2 joins as "Bob" -> succeeds
+        res2_bob = c2.emit("join_room", {
+            "room_id": "unique_vault",
+            "pin": "pass123",
+            "username": "Bob"
+        }, callback=True)
+        self.assertEqual(res2_bob.get("status"), "success")
+
+        # c3 creates/joins a different room "other_vault" as "Alice" -> succeeds (room-scoped)
+        res3 = c3.emit("create_room", {
+            "room_id": "other_vault",
+            "pin": "pass456",
+            "username": "Alice"
+        }, callback=True)
+        self.assertEqual(res3.get("status"), "success")
+
+        c1.disconnect()
+        c2.disconnect()
+        c3.disconnect()
+
 
 if __name__ == "__main__":
     unittest.main()
