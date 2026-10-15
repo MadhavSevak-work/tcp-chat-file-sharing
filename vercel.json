@@ -1,11 +1,8 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "cleanUrls": true,
   "rewrites": [
-    { "source": "/static/css/:match*", "destination": "/frontend/css/:match*" },
-    { "source": "/static/js/:match*", "destination": "/frontend/js/:match*" },
-    { "source": "/css/:match*", "destination": "/frontend/css/:match*" },
-    { "source": "/js/:match*", "destination": "/frontend/js/:match*" },
-    { "source": "/(.*)", "destination": "/frontend/$1" }
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
   ]
 }
