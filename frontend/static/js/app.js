@@ -989,24 +989,54 @@
   let qrCodeInstance = null;
 
   function renderRoomQrCode(url) {
-    if (!DOM.roomQrCode) return;
-    DOM.roomQrCode.innerHTML = "";
+    const qrContainer = DOM.roomQrCode;
+    if (!qrContainer) return;
+
+    // 1. Clear the QR container before generating a new QR code
+    qrContainer.innerHTML = "";
+
     try {
       if (typeof QRCode !== "undefined") {
-        qrCodeInstance = new QRCode(DOM.roomQrCode, {
-          text: url,
-          width: 180,
-          height: 180,
-          colorDark: "#09090b",
-          colorLight: "#ffffff",
-          correctLevel: (typeof QRCode.CorrectLevel !== "undefined") ? QRCode.CorrectLevel.M : 0
-        });
+        if (typeof QRCode.toCanvas === "function") {
+          const canvas = document.createElement("canvas");
+          canvas.className = "max-w-full h-auto object-contain";
+          qrContainer.appendChild(canvas);
+          QRCode.toCanvas(canvas, url, {
+            width: 200,
+            margin: 1,
+            color: { dark: "#09090b", light: "#ffffff" }
+          }, function (err) {
+            if (err) console.warn("QRCode.toCanvas error:", err);
+          });
+        } else {
+          qrCodeInstance = new QRCode(qrContainer, {
+            text: url,
+            width: 200,
+            height: 200,
+            colorDark: "#09090b",
+            colorLight: "#ffffff",
+            correctLevel: (typeof QRCode.CorrectLevel !== "undefined") ? QRCode.CorrectLevel.M : 0
+          });
+
+          // Prevent duplicate elements from qrcodejs (which outputs both canvas and img)
+          const canvas = qrContainer.querySelector("canvas");
+          const img = qrContainer.querySelector("img");
+          if (canvas && img) {
+            img.style.display = "none";
+            img.setAttribute("aria-hidden", "true");
+          }
+          if (canvas) {
+            canvas.classList.add("max-w-full", "h-auto", "object-contain");
+          } else if (img) {
+            img.classList.add("max-w-full", "h-auto", "object-contain");
+          }
+        }
       } else {
-        DOM.roomQrCode.innerHTML = `<span style="color:#a1a1aa;font-size:0.85rem;">QR Generator Loading...</span>`;
+        qrContainer.innerHTML = `<span style="color:#a1a1aa;font-size:0.85rem;">QR Generator Loading...</span>`;
       }
     } catch (err) {
       console.warn("Failed to generate QR code:", err);
-      DOM.roomQrCode.innerHTML = `<span style="color:#ef4444;font-size:0.85rem;">Failed to render QR Code</span>`;
+      qrContainer.innerHTML = `<span style="color:#ef4444;font-size:0.85rem;">Failed to render QR Code</span>`;
     }
   }
 
@@ -2978,7 +3008,7 @@
     }
     if (DOM.shareRoomModal) {
       DOM.shareRoomModal.addEventListener("click", (e) => {
-        if (e.target === DOM.shareRoomModal) {
+        if (e.target === DOM.shareRoomModal || !e.target.closest(".share-room-card")) {
           closeShareRoomModal();
         }
       });

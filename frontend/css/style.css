@@ -3303,111 +3303,265 @@ body.drawer-open {
 /* ==========================================================================
    Share Room & QR Code Modal (Zinc-900 / Emerald Frosted Glass)
    ========================================================================== */
+/* ==========================================================================
+   Share Room & QR Code Modal (Mobile-First Responsive Zinc/Emerald)
+   ========================================================================== */
+#share-room-modal.modal-backdrop,
+#share-room-modal.fixed {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 50 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1rem !important; /* p-4 */
+  background: rgba(0, 0, 0, 0.72) !important; /* bg-black/70 */
+  backdrop-filter: blur(8px) !important; /* backdrop-blur-sm */
+  -webkit-backdrop-filter: blur(8px) !important;
+  overflow-y: auto !important;
+}
+
+#share-room-modal.hidden {
+  display: none !important;
+}
+
 .share-room-card {
-  max-width: 420px;
-  background: rgba(24, 24, 27, 0.88) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  border: 1px solid rgba(39, 39, 42, 0.9) !important;
+  position: relative !important;
+  width: 100% !important;
+  max-width: 24rem !important; /* max-w-sm: 384px */
+  background: #18181b !important; /* bg-zinc-900 */
+  border: 1px solid #27272a !important; /* border-zinc-800 */
   border-radius: 1rem !important; /* rounded-2xl */
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+  padding: 1.25rem !important; /* p-5 */
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75) !important; /* shadow-2xl */
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1rem !important; /* gap-4 */
+  max-height: 90dvh !important;
+  overflow-y: auto !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 640px) {
+  .share-room-card {
+    max-width: 28rem !important; /* sm:max-w-md: 448px */
+    padding: 1.5rem !important; /* sm:p-6 */
+  }
 }
 
 .share-modal-body {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px 20px 24px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 1rem !important;
+  padding: 0 !important;
+  width: 100% !important;
 }
 
 .share-subtitle {
-  font-size: 0.85rem;
-  color: var(--text-secondary, #a1a1aa);
-  text-align: center;
-  margin-bottom: 16px;
+  font-size: 0.8125rem !important; /* text-xs */
+  color: #a1a1aa !important; /* text-zinc-400 */
+  text-align: center !important;
+  margin: 0 !important;
+  line-height: 1.4 !important;
 }
 
+@media (min-width: 640px) {
+  .share-subtitle {
+    font-size: 0.875rem !important; /* sm:text-sm */
+  }
+}
+
+/* Strict 1:1 Aspect-Square QR Wrapper */
 .qr-code-wrapper {
-  background: #ffffff;
-  padding: 12px;
-  border-radius: 14px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 18px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.75rem !important; /* p-3 */
+  background: #ffffff !important; /* bg-white */
+  border-radius: 0.75rem !important; /* rounded-xl */
+  aspect-ratio: 1 / 1 !important;
+  width: 12rem !important; /* w-48: 192px */
+  height: 12rem !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25) !important; /* shadow-md */
+  overflow: hidden !important;
+  box-sizing: border-box !important;
 }
 
-.qr-code-container img,
-.qr-code-container canvas {
+@media (min-width: 640px) {
+  .qr-code-wrapper {
+    width: 14rem !important; /* sm:w-56: 224px */
+    height: 14rem !important;
+  }
+}
+
+.qr-code-container {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: 1 / 1 !important;
+  overflow: hidden !important;
+}
+
+/* Ensure canvas/image has max-w-full h-auto object-contain and stays strictly 1:1 square */
+.qr-code-container canvas,
+.qr-code-container img {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  aspect-ratio: 1 / 1 !important;
+  object-fit: contain !important;
   display: block !important;
-  width: 180px !important;
-  height: 180px !important;
+  margin: 0 auto !important;
 }
 
+/* CRITICAL FIX: qrcodejs generates both a canvas and an img element.
+   Hide the duplicate img when canvas is present so they NEVER stack into two halves! */
+.qr-code-container canvas + img {
+  display: none !important;
+}
+
+/* Responsive Link & Copy group */
 .share-link-group {
-  display: flex;
-  gap: 8px;
-  width: 100%;
-  margin-bottom: 14px;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 0.5rem !important; /* gap-2 */
+  width: 100% !important;
 }
 
-.share-input-wrapper {
-  flex: 1;
+@media (min-width: 640px) {
+  .share-link-group {
+    flex-direction: row !important;
+  }
 }
 
 .share-url-input {
-  width: 100%;
-  padding: 10px 12px;
-  background: rgba(9, 9, 11, 0.8);
-  border: 1px solid rgba(39, 39, 42, 0.9);
-  border-radius: 8px;
-  color: var(--text-primary, #f4f4f5);
+  width: 100% !important;
+  background: #09090b !important; /* bg-zinc-950 */
+  border: 1px solid #27272a !important; /* border-zinc-800 */
+  color: #d4d4d8 !important; /* text-zinc-300 */
+  font-size: 0.75rem !important; /* text-xs */
+  border-radius: 0.75rem !important; /* rounded-xl */
+  padding: 0.625rem 0.75rem !important; /* px-3 py-2.5 */
   font-family: var(--font-mono);
-  font-size: 0.8rem;
-  outline: none;
+  outline: none !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  user-select: all !important;
+  -webkit-user-select: all !important;
+  min-height: 44px !important;
+  box-sizing: border-box !important;
 }
 
+@media (min-width: 640px) {
+  .share-url-input {
+    font-size: 0.875rem !important; /* sm:text-sm */
+  }
+}
+
+.share-url-input:focus {
+  border-color: #10b981 !important;
+}
+
+/* Copy Button with 44px min touch target */
+.btn-copy-link,
 .btn-emerald {
-  background-color: #059669 !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.375rem !important; /* gap-1.5 */
+  background-color: #059669 !important; /* bg-emerald-600 */
   color: #ffffff !important;
-  border: 1px solid #10b981 !important;
-  font-weight: 600;
-  border-radius: 8px;
-  padding: 0 16px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-  transition: all 0.15s ease-in-out;
-  cursor: pointer;
-}
-.btn-emerald:hover {
-  background-color: #10b981 !important;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
-}
-.btn-emerald.copied {
-  background-color: #047857 !important;
-  border-color: #34d399 !important;
+  font-weight: 500 !important;
+  font-size: 0.75rem !important; /* text-xs */
+  padding: 0.625rem 1rem !important; /* px-4 py-2.5 */
+  border-radius: 0.75rem !important; /* rounded-xl */
+  border: none !important;
+  cursor: pointer !important;
+  min-height: 44px !important;
+  min-width: 44px !important;
+  white-space: nowrap !important;
+  transition: background-color 0.15s ease, transform 0.1s ease !important;
+  box-sizing: border-box !important;
 }
 
+@media (min-width: 640px) {
+  .btn-copy-link,
+  .btn-emerald {
+    font-size: 0.875rem !important; /* sm:text-sm */
+  }
+}
+
+.btn-copy-link:hover,
+.btn-emerald:hover {
+  background-color: #10b981 !important; /* hover:bg-emerald-500 */
+}
+
+.btn-copy-link:active,
+.btn-emerald:active {
+  transform: scale(0.95) !important;
+}
+
+.btn-copy-link.copied {
+  background-color: #047857 !important;
+}
+
+/* Close Button with 44px min touch target */
+#btn-close-share-modal {
+  min-width: 44px !important;
+  min-height: 44px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.5rem !important; /* p-2 */
+  color: #a1a1aa !important; /* text-zinc-400 */
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0.5rem !important;
+  cursor: pointer !important;
+  transition: color 0.15s ease, background-color 0.15s ease !important;
+}
+
+#btn-close-share-modal:hover {
+  color: #ffffff !important; /* hover:text-white */
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Room ID Badge row */
 .share-meta-row {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  padding: 8px 14px;
-  background: rgba(9, 9, 11, 0.6);
-  border: 1px solid rgba(39, 39, 42, 0.6);
-  border-radius: 8px;
-  font-size: 0.8rem;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 0.625rem 0.875rem !important; /* px-3.5 py-2.5 */
+  background: rgba(9, 9, 11, 0.6) !important; /* bg-zinc-950/60 */
+  border: 1px solid rgba(39, 39, 42, 0.8) !important; /* border-zinc-800/80 */
+  border-radius: 0.75rem !important; /* rounded-xl */
+  font-size: 0.75rem !important; /* text-xs */
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 640px) {
+  .share-meta-row {
+    font-size: 0.875rem !important; /* sm:text-sm */
+  }
 }
 
 .share-meta-label {
-  color: var(--text-secondary, #a1a1aa);
+  color: #a1a1aa !important; /* text-zinc-400 */
 }
 
 .share-meta-value {
-  color: #10b981;
+  color: #34d399 !important; /* text-emerald-400 */
+  font-family: var(--font-mono);
   font-weight: 600;
 }
 

@@ -922,40 +922,39 @@
   </div>
 
   <!-- Share Room & QR Code Modal (Zinc-900 / Emerald Frosted Glass) -->
-  <div id="share-room-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="share-room-modal-title">
-    <div class="modal-card share-room-card backdrop-blur-xl bg-zinc-900/80 border border-zinc-800 rounded-2xl">
-      <div class="modal-header">
-        <div class="modal-title-wrap">
+  <div id="share-room-modal" class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto hidden" role="dialog" aria-modal="true" aria-labelledby="share-room-modal-title">
+    <div class="modal-card share-room-card relative w-full max-w-sm sm:max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
+      <div class="modal-header flex items-center justify-between w-full">
+        <div class="modal-title-wrap flex items-center gap-2">
           <svg class="svg-icon text-accent" aria-hidden="true"><use href="#icon-link"></use></svg>
-          <h2 id="share-room-modal-title" class="modal-title">Share Room Invite</h2>
+          <h2 id="share-room-modal-title" class="modal-title text-base sm:text-lg font-semibold text-zinc-100">Share Room Invite</h2>
         </div>
-        <button type="button" class="btn-icon" id="btn-close-share-modal" aria-label="Close dialog">
+        <button type="button" class="btn-icon p-2 text-zinc-400 hover:text-white rounded-lg transition-colors cursor-pointer" id="btn-close-share-modal" aria-label="Close dialog">
           <svg class="svg-icon" aria-hidden="true"><use href="#icon-x"></use></svg>
         </button>
       </div>
 
-      <div class="modal-body share-modal-body">
-        <p class="share-subtitle">Scan QR code or copy the direct link to join this room.</p>
+      <div class="modal-body share-modal-body flex flex-col items-center gap-4 p-0">
+        <p class="share-subtitle text-xs sm:text-sm text-zinc-400 text-center m-0">Scan QR code or copy the direct link to join this room.</p>
 
-        <!-- QR Code Canvas Container -->
-        <div class="qr-code-wrapper">
-          <div id="room-qr-code" class="qr-code-container" aria-label="Room Invite QR Code"></div>
+        <!-- QR Code Canvas Container with 1:1 square ratio -->
+        <div class="qr-code-wrapper flex items-center justify-center p-3 bg-white rounded-xl aspect-square w-48 sm:w-56 mx-auto shadow-md">
+          <div id="room-qr-code" class="qr-code-container flex items-center justify-center w-full h-full" aria-label="Room Invite QR Code"></div>
         </div>
 
         <!-- Room Link Input and Copy Button -->
-        <div class="share-link-group">
-          <div class="share-input-wrapper">
-            <input type="text" id="share-room-url-input" class="share-url-input" readonly spellcheck="false" placeholder="Room invite URL">
-          </div>
-          <button type="button" id="btn-copy-share-url" class="btn btn-emerald btn-copy-link" title="Copy Invite Link">
+        <div class="share-link-group flex flex-col sm:flex-row items-stretch gap-2 w-full">
+          <input type="text" id="share-room-url-input" class="share-url-input w-full bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs sm:text-sm rounded-xl px-3 py-2.5 truncate focus:outline-none select-all" readonly spellcheck="false" placeholder="Room invite URL">
+          <button type="button" id="btn-copy-share-url" class="btn btn-emerald btn-copy-link shrink-0 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs sm:text-sm px-4 py-2.5 rounded-xl transition-colors cursor-pointer active:scale-95" title="Copy Invite Link">
             <svg class="svg-icon sm" id="icon-share-copy" aria-hidden="true"><use href="#icon-link"></use></svg>
             <span id="text-share-copy">Copy Link</span>
           </button>
         </div>
 
-        <div class="share-meta-row">
-          <span class="share-meta-label">Room ID:</span>
-          <span class="share-meta-value text-mono" id="share-room-id-val"></span>
+        <!-- Room ID Display Badge -->
+        <div class="share-meta-row flex items-center justify-between px-3.5 py-2.5 bg-zinc-950/60 border border-zinc-800/80 rounded-xl text-xs sm:text-sm w-full">
+          <span class="share-meta-label text-zinc-400">Room ID:</span>
+          <span class="share-meta-value font-mono font-semibold text-emerald-400" id="share-room-id-val"></span>
         </div>
       </div>
     </div>
