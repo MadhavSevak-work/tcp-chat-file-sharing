@@ -481,7 +481,7 @@
           </div>
         </div>
 
-        <div class="header-right flex items-center gap-2 flex-shrink-0">
+        <div class="header-right flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <!-- Desktop-Only: Live Telemetry Pill / Connection Status (Moved to Drawer on Mobile) -->
           <div class="status-pill-badge hidden md:flex" id="header-status-pill" title="Connection Status" aria-live="polite">
             <span class="status-dot disconnected" id="header-status-dot"></span>
@@ -489,33 +489,31 @@
             <span id="header-latency-text" class="status-latency hidden"></span>
           </div>
 
-          <!-- Share Room / Invite Button (Emerald) -->
-          <button id="btn-header-share-room" class="btn btn-emerald header-btn hidden min-h-[44px] px-3 py-2" title="Share Room & QR Code" aria-label="Share Room & QR Code">
-            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-link"></use></svg>
-            <span class="btn-text hidden sm:inline">Share Room</span>
-          </button>
-
           <!-- PWA Install Action: Icon-Only on Mobile, Text on Desktop, Hidden if Standalone -->
-          <button type="button" id="btn-pwa-install" class="btn btn-secondary header-btn pwa-install-btn pwa-hide-standalone hidden min-w-[44px] min-h-[44px] p-2" title="Install NetChat Live App" aria-label="Install NetChat Live App">
+          <button type="button" id="btn-pwa-install" class="p-2 text-zinc-400 hover:text-zinc-100 rounded-xl transition-colors pwa-install-btn pwa-hide-standalone hidden" title="Install NetChat Live App" aria-label="Install NetChat Live App">
             <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-download"></use></svg>
-            <span class="hidden sm:inline btn-text">Install App</span>
+            <span class="hidden sm:inline btn-text text-xs ml-1 font-medium">Install App</span>
           </button>
 
           <!-- Desktop-Only Quick Action: Share File (Available in Drawer on Mobile) -->
-          <button id="btn-open-file-panel" class="btn btn-secondary header-btn hidden md:inline-flex" title="Share File with Peer" aria-label="Share File with Peer">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
-            <span class="btn-text">Share File</span>
+          <button id="btn-open-file-panel" class="p-2 text-zinc-400 hover:text-zinc-100 rounded-xl transition-colors hidden md:inline-flex" title="Share File with Peer" aria-label="Share File with Peer">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-paperclip"></use></svg>
           </button>
 
-          <!-- Desktop-Only Theme Toggle (Available in Drawer on Mobile) -->
-          <button type="button" id="btn-theme-toggle" class="btn btn-secondary btn-icon-only theme-toggle-btn header-btn hidden md:inline-flex" title="Switch to light mode" aria-label="Switch to light mode">
-            <svg class="svg-icon theme-icon-sun" aria-hidden="true"><use href="#icon-sun"></use></svg>
-            <svg class="svg-icon theme-icon-moon" aria-hidden="true"><use href="#icon-moon"></use></svg>
+          <!-- Icon-Only Share Room Button (Emerald) -->
+          <button id="btn-header-share-room" class="p-2 text-emerald-400 hover:bg-emerald-900/30 rounded-xl transition-colors hidden" title="Share Room" aria-label="Share Room">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-link"></use></svg>
           </button>
 
-          <!-- Desktop-Only Connection Control (Available in Drawer on Mobile) -->
-          <button id="btn-disconnect" class="btn btn-secondary btn-icon-only header-btn hidden md:inline-flex" title="Disconnect Session" aria-label="Disconnect Session">
-            <svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>
+          <!-- Restored Disconnect Plug Button (Mobile & Desktop) -->
+          <button id="btn-disconnect" class="p-2 text-zinc-400 hover:text-red-500 rounded-xl transition-colors hidden" title="Disconnect" aria-label="Disconnect">
+            <svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-unplug"></use></svg>
+          </button>
+
+          <!-- Theme Toggle (Mobile & Desktop) -->
+          <button type="button" id="btn-theme-toggle" class="p-2 text-zinc-400 hover:text-zinc-100 rounded-xl transition-colors theme-toggle-btn" title="Switch to light mode" aria-label="Switch to light mode">
+            <svg class="svg-icon theme-icon-sun w-5 h-5" aria-hidden="true"><use href="#icon-sun"></use></svg>
+            <svg class="svg-icon theme-icon-moon w-5 h-5" aria-hidden="true"><use href="#icon-moon"></use></svg>
           </button>
         </div>
       </header>

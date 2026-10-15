@@ -367,11 +367,11 @@
     // Header connection control (Unplug for disconnect, RefreshCw for reconnect)
     if (DOM.btnDisconnect) {
       if (isConnected) {
-        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon" aria-hidden="true"><use href="#icon-unplug"></use></svg>`;
-        DOM.btnDisconnect.setAttribute("title", "Disconnect Session");
-        DOM.btnDisconnect.setAttribute("aria-label", "Disconnect Session");
+        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-unplug"></use></svg>`;
+        DOM.btnDisconnect.setAttribute("title", "Disconnect");
+        DOM.btnDisconnect.setAttribute("aria-label", "Disconnect");
       } else {
-        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon" aria-hidden="true"><use href="#icon-refresh-cw"></use></svg>`;
+        DOM.btnDisconnect.innerHTML = `<svg class="svg-icon w-5 h-5" aria-hidden="true"><use href="#icon-refresh-cw"></use></svg>`;
         DOM.btnDisconnect.setAttribute("title", "Reconnect to Network");
         DOM.btnDisconnect.setAttribute("aria-label", "Reconnect to network");
       }
@@ -1442,11 +1442,11 @@
       if (DOM.activeChatTitle) {
         DOM.activeChatTitle.textContent = `🔒 Room: ${data.room_id}`;
       }
-      if (DOM.btnCopyRoomLink) {
-        DOM.btnCopyRoomLink.classList.remove("hidden");
-      }
       if (DOM.btnHeaderShareRoom) {
         DOM.btnHeaderShareRoom.classList.remove("hidden");
+      }
+      if (DOM.btnDisconnect) {
+        DOM.btnDisconnect.classList.remove("hidden");
       }
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
@@ -1897,11 +1897,11 @@
 
     if (DOM.activeChatTitle && state.roomId) {
       DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
-      if (DOM.btnCopyRoomLink) {
-        DOM.btnCopyRoomLink.classList.remove("hidden");
-      }
       if (DOM.btnHeaderShareRoom) {
         DOM.btnHeaderShareRoom.classList.remove("hidden");
+      }
+      if (DOM.btnDisconnect) {
+        DOM.btnDisconnect.classList.remove("hidden");
       }
       if (DOM.btnDrawerCopyLink) {
         DOM.btnDrawerCopyLink.classList.remove("hidden");
@@ -2378,14 +2378,14 @@
       DOM.activeChatTitle.textContent = `🔒 Room: ${state.roomId}`;
       DOM.activeChatDesc.textContent = "";
       DOM.activeChatDesc.classList.add("hidden");
-      if (DOM.btnCopyRoomLink) DOM.btnCopyRoomLink.classList.remove("hidden");
       if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.remove("hidden");
+      if (DOM.btnDisconnect) DOM.btnDisconnect.classList.remove("hidden");
       if (DOM.btnDrawerCopyLink) DOM.btnDrawerCopyLink.classList.remove("hidden");
     } else {
       DOM.activeChatTitle.textContent = "Public Room";
       DOM.activeChatDesc.textContent = "Unified stream broadcast to all active network peers";
-      if (DOM.btnCopyRoomLink) DOM.btnCopyRoomLink.classList.add("hidden");
       if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.add("hidden");
+      if (DOM.btnDisconnect) DOM.btnDisconnect.classList.add("hidden");
       if (DOM.btnDrawerCopyLink) DOM.btnDrawerCopyLink.classList.add("hidden");
     }
     DOM.messageInput.placeholder = "Type a message to everyone... (Press Enter to send)";
@@ -2396,11 +2396,11 @@
   function switchToPrivateChat(peerUsername) {
     state.activeChatTarget = peerUsername;
     DOM.btnPublicRoom.classList.remove("active");
-    if (DOM.btnCopyRoomLink) {
-      DOM.btnCopyRoomLink.classList.add("hidden");
-    }
     if (DOM.btnHeaderShareRoom) {
       DOM.btnHeaderShareRoom.classList.add("hidden");
+    }
+    if (DOM.btnDisconnect) {
+      DOM.btnDisconnect.classList.remove("hidden");
     }
     if (DOM.btnDrawerCopyLink) {
       DOM.btnDrawerCopyLink.classList.add("hidden");
@@ -3335,14 +3335,58 @@
       });
     }
 
-    // Disconnect / Reconnect Action
-    const disconnectHandler = () => {
-      if (state.isConnected) {
-        if (confirm("Are you sure you want to disconnect from the network?")) {
-          location.reload();
+    // Disconnect / Leave Room Action
+    const disconnectHandler = (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      try {
+        if (state.socket) {
+          if (state.roomId) {
+            state.socket.emit("leave_room", { room_id: state.roomId, username: state.username });
+          }
+          state.socket.disconnect();
         }
-      } else {
-        location.reload();
+      } catch (_) {}
+
+      // Reset room state
+      state.roomId = "";
+      state.peerList = [];
+
+      // Route back to the join screen
+      if (DOM.appContainer) DOM.appContainer.classList.add("hidden");
+      if (DOM.loginOverlay) DOM.loginOverlay.classList.remove("hidden");
+
+      // Hide room-specific header buttons
+      if (DOM.btnHeaderShareRoom) DOM.btnHeaderShareRoom.classList.add("hidden");
+      if (DOM.btnDisconnect) DOM.btnDisconnect.classList.add("hidden");
+
+      // Reset chat header
+      if (DOM.activeChatTitle) DOM.activeChatTitle.textContent = "Public Room";
+      if (DOM.activeChatDesc) {
+        DOM.activeChatDesc.textContent = "";
+        DOM.activeChatDesc.classList.add("hidden");
+      }
+
+      // Clear messages view
+      if (DOM.messagesContainer) {
+        DOM.messagesContainer.innerHTML = "";
+        if (DOM.emptyState) {
+          DOM.messagesContainer.appendChild(DOM.emptyState);
+          DOM.emptyState.classList.remove("hidden");
+        }
+      }
+
+      // Clean URL parameters / hash
+      try {
+        history.replaceState(null, document.title, window.location.pathname);
+      } catch (_) {}
+
+      // Reconnect socket so client is ready for next room join
+      setTimeout(() => {
+        connectSocket();
+      }, 150);
+
+      if (DOM.usernameInput) {
+        DOM.usernameInput.focus();
       }
     };
     if (DOM.btnDisconnect) DOM.btnDisconnect.addEventListener("click", disconnectHandler);

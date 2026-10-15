@@ -2885,10 +2885,8 @@ body.drawer-open {
     flex-shrink: 0;
   }
 
-  /* Declutter Mobile Header: Hide secondary status indicators and toggles from mobile view */
+  /* Declutter Mobile Header: Hide secondary status indicators and file panel from mobile view */
   #header-status-pill,
-  #btn-disconnect,
-  #btn-theme-toggle,
   #btn-open-file-panel,
   #btn-open-diagnostics {
     display: none !important;
@@ -3619,8 +3617,6 @@ body.drawer-open {
 
   /* Secondary controls hidden on mobile (accessible in drawer) */
   #header-status-pill,
-  #btn-disconnect,
-  #btn-theme-toggle,
   #btn-open-file-panel,
   #btn-open-diagnostics {
     display: none !important;
@@ -3720,6 +3716,59 @@ body.drawer-open {
   cursor: pointer !important;
 }
 
+/* ==========================================================================
+   Minimalist Responsive Header Actions (Icon-Only, Restored Disconnect)
+   ========================================================================== */
+.btn-copy-invite,
+#btn-copy-room-link {
+  display: none !important;
+}
 
+#btn-header-share-room,
+#btn-disconnect,
+#btn-theme-toggle,
+#btn-pwa-install,
+#btn-open-file-panel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
 
+#btn-header-share-room.hidden,
+#btn-disconnect.hidden,
+#btn-pwa-install.hidden {
+  display: none !important;
+}
 
+.text-zinc-400 {
+  color: #a1a1aa !important;
+}
+
+.hover\:text-red-500:hover {
+  color: #ef4444 !important;
+}
+
+.text-emerald-400 {
+  color: #34d399 !important;
+}
+
+.hover\:bg-emerald-900\/30:hover {
+  background-color: rgba(6, 78, 59, 0.3) !important;
+}
+
+.hover\:text-zinc-100:hover {
+  color: #f4f4f5 !important;
+}
+
+.rounded-xl {
+  border-radius: 0.75rem !important;
+}
+
+.transition-colors {
+  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease !important;
+}
