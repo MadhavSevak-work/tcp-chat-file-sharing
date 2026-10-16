@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
   <meta name="title" content="NetChat Live - Server Based Chatting Platform">
   <meta name="description" content="NetChat Live - Server Based Chatting Platform. Minimalist ephemeral zero-retention server-based chatting platform.">
   <title>NetChat Live - Server Based Chatting Platform</title>
@@ -71,6 +71,11 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; }
     ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+    @media screen and (max-width: 768px) {
+      input, textarea, select {
+        font-size: 16px !important;
+      }
+    }
   </style>
 </head>
 <body>

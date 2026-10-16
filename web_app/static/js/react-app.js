@@ -78,6 +78,12 @@
         return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
           h("path", { d: "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" })
         );
+      case "share":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" }),
+          h("polyline", { points: "16 6 12 2 8 6" }),
+          h("line", { x1: "12", x2: "12", y1: "2", y2: "15" })
+        );
       case "sparkle":
         return h("svg", { className, viewBox: "0 0 24 24", fill: "currentColor" },
           h("path", { d: "M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" })
@@ -192,8 +198,8 @@
   // 1. EXACT 1:1 PIXEL-PERFECT LANDING SCREEN (Create / Join Room)
   // ===========================================================================
   function LandingScreen({ isConnected, onJoinSuccess }) {
-    // isJoinMode: boolean state (default true matching reference screenshot)
-    const [isJoinMode, setIsJoinMode] = useState(true);
+    // isJoinMode: boolean state (default false to make Create Room active by default)
+    const [isJoinMode, setIsJoinMode] = useState(false);
     const [nickname, setNickname] = useState("");
     const [roomId, setRoomId] = useState("");
     const [passkey, setPasskey] = useState("");
@@ -364,8 +370,8 @@
                 onChange: (e) => setNickname(e.target.value),
                 placeholder: "@enter_username",
                 autoFocus: true,
-                style: { backgroundColor: "#18181b", color: "#e4e4e7" },
-                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+                style: { backgroundColor: "#18181b", color: "#e4e4e7", fontSize: "16px" },
+                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-[16px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
               })
             ),
 
@@ -377,8 +383,8 @@
                 value: roomId,
                 onChange: (e) => setRoomId(e.target.value.toLowerCase()),
                 placeholder: "e.g., dev-squad",
-                style: { backgroundColor: "#18181b", color: "#e4e4e7" },
-                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
+                style: { backgroundColor: "#18181b", color: "#e4e4e7", fontSize: "16px" },
+                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-[16px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
               })
             ),
 
@@ -391,8 +397,8 @@
                   value: passkey,
                   onChange: (e) => setPasskey(e.target.value),
                   placeholder: "••••••••",
-                  style: { backgroundColor: "#18181b", color: "#e4e4e7" },
-                  className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 pr-10 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
+                  style: { backgroundColor: "#18181b", color: "#e4e4e7", fontSize: "16px" },
+                  className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 pr-10 text-[16px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
                 }),
                 h("button", {
                   type: "button",
@@ -478,8 +484,13 @@
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 
+    // Direct/Broadcast File Sharing Popover state
+    const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const pendingFileTargetRef = useRef(null);
+    const p2pFileInputRef = useRef(null);
 
     // Toast helper
     const showToast = (msg) => {
@@ -491,6 +502,70 @@
     const mentionMatches = roomUsers
       .filter((u) => !u.isLocal)
       .filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase()));
+
+    // Other online peers in room (excluding local user)
+    const otherPeers = roomUsers.filter((u) => !u.isLocal);
+
+    // File selection trigger
+    const handleSelectFileTarget = (target) => {
+      setIsFileMenuOpen(false);
+      pendingFileTargetRef.current = target;
+      if (p2pFileInputRef.current) {
+        p2pFileInputRef.current.value = "";
+        p2pFileInputRef.current.click();
+      }
+    };
+
+    // Native file change handler
+    const handleFileSelected = (e) => {
+      if (!e.target || !e.target.files || e.target.files.length === 0) return;
+      const file = e.target.files[0];
+      const target = pendingFileTargetRef.current;
+      pendingFileTargetRef.current = null;
+
+      if (target === "ALL" || target?.type === "ALL" || target?.socketId === "ALL") {
+        if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendP2PFile === "function") {
+          window.__NETCHAT_BRIDGE__.sendP2PFile(file, "ALL", "All Peers");
+        }
+        showToast(`Broadcasting '${file.name}' to all peers...`);
+      } else if (target) {
+        const targetSid = target.socketId || target.id;
+        const targetName = target.name || target.username;
+        if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendP2PFile === "function") {
+          window.__NETCHAT_BRIDGE__.sendP2PFile(file, targetSid, targetName);
+        }
+        showToast(`Sending '${file.name}' to ${targetName}...`);
+      }
+      try {
+        e.target.value = "";
+      } catch (_) {}
+    };
+
+    // Toggle paperclip popover or direct file select
+    const handlePaperclipClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (otherPeers.length > 0) {
+        setIsFileMenuOpen((prev) => !prev);
+      } else {
+        handleSelectFileTarget("ALL");
+      }
+    };
+
+    // Close file sharing popover on outside click
+    useEffect(() => {
+      const handleClickOutside = (e) => {
+        if (isFileMenuOpen) {
+          const popover = document.getElementById("file-share-popover");
+          const btn = document.getElementById("btn-paperclip-toggle");
+          if (popover && !popover.contains(e.target) && btn && !btn.contains(e.target)) {
+            setIsFileMenuOpen(false);
+          }
+        }
+      };
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
+    }, [isFileMenuOpen]);
 
     // Synchronize state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
@@ -517,9 +592,11 @@
             const roster = s.onlineUsers.map((u) => {
               const name = typeof u === "string" ? u : (u.username || "Peer");
               const isLocal = name.toLowerCase() === (s.username || "").toLowerCase();
+              const socketId = typeof u === "object" ? (u.socket_id || u.id) : null;
               return {
-                id: name.toLowerCase(),
+                id: socketId || name.toLowerCase(),
                 name: name,
+                socketId: socketId,
                 isOnline: true,
                 isLocal: isLocal,
                 avatar: null
@@ -1025,18 +1102,61 @@
             h("div", {
               className: "relative flex items-center bg-zinc-900 border border-zinc-800 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/30 rounded-xl px-3 py-1.5 transition-all shadow-inner"
             },
-              // Left: Paperclip icon button
-              h("button", {
-                type: "button",
-                title: "Attach File",
-                onClick: () => {
-                  const input = document.getElementById("file-upload");
-                  if (input) input.click();
+              // Direct / Broadcast File Share Selector Popover (Positioned just above paperclip)
+              isFileMenuOpen && otherPeers.length > 0 && h("div", {
+                id: "file-share-popover",
+                className: "absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl p-1 z-50 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150"
+              },
+                // Top Item: "Send to All" (Broadcast file to all connected peers)
+                h("button", {
+                  type: "button",
+                  onClick: () => handleSelectFileTarget("ALL"),
+                  className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg cursor-pointer transition-colors text-left"
                 },
-                className: "text-zinc-400 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                  h(Icon, { name: "share", className: "w-4 h-4 text-emerald-400 shrink-0" }),
+                  h("span", { className: "font-medium" }, "Send to All")
+                ),
+
+                // Subtle divider below it
+                h("div", { className: "border-b border-zinc-800 my-1" }),
+
+                // Individual Items: Map over active roomUsers (excluding local user)
+                otherPeers.map((peer) =>
+                  h("button", {
+                    key: peer.id,
+                    type: "button",
+                    onClick: () => handleSelectFileTarget(peer),
+                    className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 rounded-lg cursor-pointer transition-colors text-left"
+                  },
+                    h(Avatar, { name: peer.name, src: peer.avatar, size: "sm" }),
+                    h("span", { className: "truncate" }, `Send to @${peer.name}`)
+                  )
+                )
+              ),
+
+              // Hidden native file input for scoped WebRTC file selection
+              h("input", {
+                ref: p2pFileInputRef,
+                type: "file",
+                onChange: handleFileSelected,
+                className: "hidden",
+                "aria-hidden": "true"
+              }),
+
+              // Left: Paperclip icon button (toggles popover)
+              h("button", {
+                id: "btn-paperclip-toggle",
+                type: "button",
+                title: "Share File",
+                onClick: handlePaperclipClick,
+                className: `p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isFileMenuOpen
+                    ? "text-emerald-400 bg-zinc-800"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+                }`
               }, h(Icon, { name: "paperclip", className: "w-4 h-4" })),
 
-              // Center: Text input field (forced transparent to prevent CSS bleeding)
+              // Center: Text input field (forced transparent to prevent CSS bleeding, 16px font to prevent iOS Safari auto-zoom)
               h("input", {
                 ref: inputRef,
                 type: "text",
@@ -1044,8 +1164,8 @@
                 onChange: handleInputChange,
                 onKeyDown: handleKeyDown,
                 placeholder: "Type a message...",
-                style: { backgroundColor: "transparent", color: "#f4f4f5", border: "none", outline: "none", boxShadow: "none" },
-                className: "flex-1 !bg-transparent !border-0 !outline-none !shadow-none text-sm !text-zinc-100 placeholder-zinc-500 px-2 py-1.5 font-normal"
+                style: { backgroundColor: "transparent", color: "#f4f4f5", border: "none", outline: "none", boxShadow: "none", fontSize: "16px" },
+                className: "flex-1 !bg-transparent !border-0 !outline-none !shadow-none text-[16px] !text-zinc-100 placeholder-zinc-500 px-2 py-1.5 font-normal"
               }),
 
               // Right: Send button
@@ -1089,8 +1209,22 @@
                       h("span", { className: "text-zinc-200 font-medium truncate" }, m.name),
                       m.isLocal && h("span", { className: "text-zinc-400 text-[11px] font-normal" }, "(You)")
                     ),
-                    // Right: Active status dot
-                    h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
+                    // Right: Actions (Share button for peers + Active status dot)
+                    h("div", { className: "flex items-center shrink-0" },
+                      !m.isLocal && h("button", {
+                        type: "button",
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          handleSelectFileTarget(m);
+                        },
+                        title: `Send file to ${m.name} via WebRTC`,
+                        className: "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 p-1.5 rounded-md transition-colors mr-2 cursor-pointer"
+                      },
+                        h(Icon, { name: "paperclip", className: "w-3.5 h-3.5" })
+                      ),
+                      // Active status dot
+                      h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
+                    )
                   )
                 )
           )

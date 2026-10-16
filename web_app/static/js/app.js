@@ -4980,6 +4980,31 @@
    * Sends a file directly to peer via RTCDataChannel (0 bytes on server)
    */
   function sendP2PFile(file, targetSid, targetName) {
+    if (targetSid === "ALL" || targetName === "All Peers" || targetName === "ALL") {
+      const otherUsers = (state.onlineUsers || []).map(u => {
+        if (typeof u === "string") return { username: u, socket_id: null };
+        return { username: u?.username || "", socket_id: u?.socket_id || null };
+      }).filter(u => u.username && u.username.toLowerCase() !== (state.username || "").toLowerCase());
+
+      if (otherUsers.length === 0) {
+        appendSystemMessage("⚠️ No other peers in this room to share with.");
+        return;
+      }
+
+      appendSystemMessage(`📤 Broadcasting '${file.name}' (${formatBytes(file.size)}) to ${otherUsers.length} peer(s)...`);
+      otherUsers.forEach(peer => {
+        sendP2PFile(file, peer.socket_id, peer.username);
+      });
+
+      // Also invoke server streaming fallback offer
+      if (state.socket) {
+        handleFilesSelected([file]);
+        if (DOM.fileRecipientSelect) DOM.fileRecipientSelect.value = "__BROADCAST__";
+        handleConfirmSendFile();
+      }
+      return;
+    }
+
     const resolved = resolveWebRtcTarget(targetSid, targetName);
     targetSid = resolved.sid;
     targetName = resolved.username;
@@ -6007,12 +6032,16 @@
           const btn = document.getElementById("btn-pwa-install") || document.getElementById("btn-login-pwa-install");
           if (btn) btn.click();
         }
+      },
+      sendP2PFile: (file, targetSid, targetName) => {
+        sendP2PFile(file, targetSid, targetName);
       }
     };
 
     window.__NETCHAT_DISCONNECT__ = window.__NETCHAT_BRIDGE__.disconnect;
     window.__NETCHAT_TOGGLE_CALL__ = window.__NETCHAT_BRIDGE__.startCall;
     window.__NETCHAT_SEND__ = window.__NETCHAT_BRIDGE__.sendMessage;
+    window.__NETCHAT_SEND_FILE__ = window.__NETCHAT_BRIDGE__.sendP2PFile;
   }
 
   // Run on DOM Ready
