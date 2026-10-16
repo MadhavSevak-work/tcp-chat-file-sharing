@@ -44,8 +44,33 @@
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            zinc: {
+              750: '#202024',
+              850: '#1b1b1f',
+              900: '#18181b',
+              950: '#09090b',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <!-- React 18 & ReactDOM 18 -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 </head>
 <body>
+
+  <!-- ==================== REACT 18 ROOT CONTAINER ==================== -->
+  <div id="react-root" class="fixed inset-0 w-full h-full z-[9999] bg-zinc-950"></div>
 
   <!-- ==================== LUCIDE & BRAND SVG SYMBOL DEFINITIONS ==================== -->
   <svg style="display: none;" aria-hidden="true">
@@ -287,7 +312,7 @@
   </svg>
 
   <!-- ==================== LOGIN / CONNECT OVERLAY ==================== -->
-  <div id="login-overlay" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  <div id="login-overlay" class="modal-backdrop hidden" style="display: none !important;" role="dialog" aria-modal="true" aria-labelledby="login-title">
     <div class="login-card">
       
       <!-- Top Action Bar for Login (Theme Toggle & Minimal Connection Status Badge) -->
@@ -1221,6 +1246,7 @@
   <input type="file" id="p2p-file-input" class="hidden" multiple aria-label="Select files for P2P direct transfer">
 
   <script src="/static/js/app.js"></script>
+  <script src="/static/js/react-app.js"></script>
 
   <!-- PWA Installation Controller & Service Worker Registration -->
   <script>

@@ -33,6 +33,7 @@
     roomMode: "create", // "create" | "join"
     isE2EE: true
   };
+  window.__NETCHAT_STATE__ = state;
 
   // WebRTC Audio/Video & RTCDataChannel P2P State
   const webrtcState = {
@@ -5805,6 +5806,16 @@
         }
       }
     });
+
+    window.__NETCHAT_STATE__ = state;
+    window.__NETCHAT_DISCONNECT__ = () => disconnectSession(true);
+    window.__NETCHAT_TOGGLE_CALL__ = (type) => startRoomCall(type);
+    window.__NETCHAT_SEND__ = (text) => {
+      if (DOM.messageInput) {
+        DOM.messageInput.value = text;
+        handleSendMessage(new Event("submit"));
+      }
+    };
   }
 
   // Run on DOM Ready

@@ -1,0 +1,656 @@
+/**
+ * NetChat Live — React 18 & Tailwind CSS UI Component
+ * Exact 1:1 implementation matching the approved reference desktop and mobile designs.
+ */
+
+(function () {
+  "use strict";
+
+  const { useState, useEffect, useRef, createElement: h } = React;
+
+  // Icon SVG Definitions matching Lucide / Reference designs
+  function Icon({ name, className = "w-4 h-4" }) {
+    switch (name) {
+      case "lock":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("rect", { x: "3", y: "11", width: "18", height: "11", rx: "2", ry: "2" }),
+          h("path", { d: "M7 11V7a5 5 0 0 1 10 0v4" })
+        );
+      case "link":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" }),
+          h("path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" })
+        );
+      case "phone":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" })
+        );
+      case "video":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.934a.5.5 0 0 0-.777-.416L16 11" }),
+          h("rect", { x: "2", y: "6", width: "14", height: "12", rx: "2" })
+        );
+      case "users":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }),
+          h("circle", { cx: "9", cy: "7", r: "4" }),
+          h("path", { d: "M22 21v-2a4 4 0 0 0-3-3.87" }),
+          h("path", { d: "M16 3.13a4 4 0 0 1 0 7.75" })
+        );
+      case "power":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M12 2v10" }),
+          h("path", { d: "M18.4 6.6a9 9 0 1 1-12.77.04" })
+        );
+      case "speaker":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("polygon", { points: "11 5 6 9 2 9 2 15 6 15 11 19 11 5" }),
+          h("path", { d: "M15.54 8.46a5 5 0 0 1 0 7.07" })
+        );
+      case "mic":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" }),
+          h("path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }),
+          h("line", { x1: "12", x2: "12", y1: "19", y2: "22" })
+        );
+      case "mic-off":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("line", { x1: "2", x2: "22", y1: "2", y2: "22" }),
+          h("path", { d: "M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" }),
+          h("path", { d: "M5 10v2a7 7 0 0 0 12 5" }),
+          h("path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33" }),
+          h("path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12" }),
+          h("line", { x1: "12", x2: "12", y1: "19", y2: "22" })
+        );
+      case "camera-off":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("line", { x1: "2", x2: "22", y1: "2", y2: "22" }),
+          h("path", { d: "M10.66 6H14a2 2 0 0 1 2 2v2.5l5.248-3.062A.5.5 0 0 1 22 7.87v8.196" }),
+          h("path", { d: "M16 16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2" })
+        );
+      case "phone-off":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.56 9.44" }),
+          h("line", { x1: "2", x2: "22", y1: "2", y2: "22" })
+        );
+      case "paperclip":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48" })
+        );
+      case "sparkle":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "currentColor" },
+          h("path", { d: "M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" })
+        );
+      default:
+        return null;
+    }
+  }
+
+  // User Avatar Component with Image or Gradient Fallback
+  function Avatar({ name, src, size = "md", isSpeaking = false, isMuted = false, isLocal = false }) {
+    const sizeClasses = {
+      sm: "w-5 h-5 text-[10px]",
+      md: "w-7 h-7 text-xs",
+      lg: "w-8 h-8 text-sm"
+    }[size] || "w-7 h-7 text-xs";
+
+    const initial = (name || "U").charAt(0).toUpperCase();
+
+    return h("div", { className: `relative shrink-0 rounded-full ${sizeClasses}` },
+      src
+        ? h("img", {
+            src,
+            alt: name,
+            className: "w-full h-full object-cover rounded-full"
+          })
+        : h("div", {
+            className: `w-full h-full rounded-full flex items-center justify-center font-semibold text-white ${
+              isLocal ? "bg-zinc-800 border border-zinc-700" : "bg-gradient-to-br from-emerald-600 to-teal-800"
+            }`
+          }, isLocal ? "" : initial),
+      isSpeaking && h("div", {
+        className: "absolute -bottom-0.5 -right-0.5 bg-emerald-950 border border-emerald-500 rounded-full p-0.5 flex items-center justify-center"
+      }, h(Icon, { name: "speaker", className: "w-2.5 h-2.5 text-emerald-400" })),
+      isMuted && h("div", {
+        className: "absolute -bottom-0.5 -right-0.5 bg-zinc-950 border border-zinc-800 rounded-full p-0.5 flex items-center justify-center"
+      }, h(Icon, { name: "mic-off", className: "w-2.5 h-2.5 text-red-400" }))
+    );
+  }
+
+  // Parse text to render @mentions as exact green pill badges
+  function renderMessageText(text) {
+    if (!text) return "";
+    const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = mentionRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      parts.push(
+        h("span", {
+          key: match.index,
+          className: "bg-emerald-950/70 text-emerald-400 border border-emerald-500/40 text-xs font-medium px-2 py-0.5 rounded-md inline-block mr-1"
+        }, `@${match[1]}`)
+      );
+      lastIndex = match.index + match[0].length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts;
+  }
+
+  // Main NetChat Application Component
+  function NetChatApp() {
+    // State management
+    const [roomId, setRoomId] = useState("dev-squad");
+    const [username, setUsername] = useState("You");
+    const [isConnected, setIsConnected] = useState(true);
+    const [isMembersOpen, setIsMembersOpen] = useState(true);
+    const [isVoiceCallActive, setIsVoiceCallActive] = useState(true);
+    const [isVoiceMuted, setIsVoiceMuted] = useState(false);
+    const [isCameraOff, setIsCameraOff] = useState(true);
+    const [toastMessage, setToastMessage] = useState(null);
+
+    // Initial mock/reference members matching screenshots exactly
+    const [members, setMembers] = useState([
+      { id: "alex", name: "Alex", isOnline: true, isSpeaking: true, isMuted: false, avatar: "/icons/avatar-alex.jpg" },
+      { id: "sam", name: "Sam", isOnline: true, isSpeaking: false, isMuted: true, avatar: "/icons/avatar-sam.jpg" },
+      { id: "you", name: "You", isOnline: true, isSpeaking: false, isMuted: false, isLocal: true, avatar: null }
+    ]);
+
+    // Initial messages matching reference screenshots exactly
+    const [messages, setMessages] = useState([
+      { id: 1, sender: "Alex", text: "@Alex Yogat, can you sopy the nlibit with them?", isMe: false, avatar: "/icons/avatar-alex.jpg" },
+      { id: 2, sender: "You", text: "Hirv, I'm updated. Just pulled the patch.", isMe: true },
+      { id: 3, sender: "Alex", text: "@Alex I hope worning and break an out he workt!", isMe: false, avatar: "/icons/avatar-alex.jpg" },
+      { id: 4, sender: "You", text: "Just pulled the patch. @Sam flinwpatch.", isMe: true },
+      { id: 5, sender: "You", text: "I havet every the patch it aquals.", isMe: true }
+    ]);
+
+    // Chat input & autocomplete state
+    const [inputValue, setInputValue] = useState("Just pulled the patch. @");
+    const [isMentionOpen, setIsMentionOpen] = useState(true);
+    const [mentionQuery, setMentionQuery] = useState("");
+    const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+
+    const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
+
+    // Filter participants for mention popover
+    const mentionMatches = members
+      .filter((m) => !m.isLocal)
+      .filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase()));
+
+    // Keep active participants synced from legacy window.NetChatGlobalState if connected
+    useEffect(() => {
+      const interval = setInterval(() => {
+        if (window.__NETCHAT_STATE__) {
+          const s = window.__NETCHAT_STATE__;
+          if (s.roomId) setRoomId(s.roomId);
+          if (s.username) setUsername(s.username);
+          if (Array.isArray(s.onlineUsers) && s.onlineUsers.length > 0) {
+            const roster = s.onlineUsers.map((u) => {
+              const name = typeof u === "string" ? u : (u.username || "Peer");
+              const isLocal = name.toLowerCase() === (s.username || "you").toLowerCase();
+              return {
+                id: name.toLowerCase(),
+                name: name,
+                isOnline: true,
+                isSpeaking: false,
+                isMuted: false,
+                isLocal: isLocal,
+                avatar: name.toLowerCase() === "alex" ? "/icons/avatar-alex.jpg" : (name.toLowerCase() === "sam" ? "/icons/avatar-sam.jpg" : null)
+              };
+            });
+            setMembers(roster);
+          }
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }, []);
+
+    // Handle input typing & detect '@'
+    const handleInputChange = (e) => {
+      const val = e.target.value;
+      setInputValue(val);
+
+      const cursorPos = e.target.selectionStart;
+      const textBefore = val.slice(0, cursorPos);
+      const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
+
+      if (match) {
+        setMentionQuery(match[1]);
+        setMentionSelectedIndex(0);
+        setIsMentionOpen(true);
+      } else {
+        setIsMentionOpen(false);
+      }
+    };
+
+    // Insert chosen mention
+    const insertMention = (name) => {
+      const input = inputRef.current;
+      if (!input) return;
+
+      const cursorPos = input.selectionStart;
+      const textBefore = inputValue.slice(0, cursorPos);
+      const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
+      if (!match) return;
+
+      const atOffset = match[0].startsWith("@") ? 0 : 1;
+      const atIndex = match.index + atOffset;
+      const before = inputValue.substring(0, atIndex);
+      const after = inputValue.substring(cursorPos);
+      const nextVal = `${before}@${name} ${after}`;
+
+      setInputValue(nextVal);
+      setIsMentionOpen(false);
+
+      setTimeout(() => {
+        const nextPos = before.length + name.length + 2;
+        input.focus();
+        input.setSelectionRange(nextPos, nextPos);
+      }, 0);
+    };
+
+    // Handle Keydown (Arrow navigation, Tab/Enter selection)
+    const handleKeyDown = (e) => {
+      if (isMentionOpen && mentionMatches.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionSelectedIndex((prev) => (prev + 1) % mentionMatches.length);
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionSelectedIndex((prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length);
+          return;
+        }
+        if (e.key === "Tab" || e.key === "Enter") {
+          e.preventDefault();
+          const target = mentionMatches[mentionSelectedIndex];
+          if (target) {
+            insertMention(target.name);
+          }
+          return;
+        }
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setIsMentionOpen(false);
+          return;
+        }
+      }
+
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    };
+
+    // Send chat message
+    const sendMessage = () => {
+      const trimmed = inputValue.trim();
+      if (!trimmed) return;
+
+      const newMsg = {
+        id: Date.now(),
+        sender: username || "You",
+        text: trimmed,
+        isMe: true
+      };
+
+      setMessages((prev) => [...prev, newMsg]);
+      setInputValue("");
+      setIsMentionOpen(false);
+
+      // Trigger legacy socket emit if active
+      if (window.__NETCHAT_SOCKET__ && typeof window.__NETCHAT_SEND__ === "function") {
+        window.__NETCHAT_SEND__(trimmed);
+      }
+
+      setTimeout(() => {
+        if (messagesEndRef.current) {
+          messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 50);
+    };
+
+    // Share link handler
+    const handleShare = () => {
+      const url = window.location.href;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          showToast("Room invite link copied!");
+        }).catch(() => {});
+      } else {
+        showToast(`Room: ${roomId}`);
+      }
+    };
+
+    const showToast = (msg) => {
+      setToastMessage(msg);
+      setTimeout(() => setToastMessage(null), 3000);
+    };
+
+    // Header actions
+    const handleToggleVoice = () => {
+      setIsVoiceCallActive((prev) => !prev);
+      if (window.__NETCHAT_TOGGLE_CALL__) {
+        window.__NETCHAT_TOGGLE_CALL__("audio");
+      }
+    };
+
+    const handleToggleVideo = () => {
+      setIsVoiceCallActive(true);
+      if (window.__NETCHAT_TOGGLE_CALL__) {
+        window.__NETCHAT_TOGGLE_CALL__("video");
+      }
+    };
+
+    const handleDisconnect = () => {
+      if (confirm("Disconnect and leave this room?")) {
+        if (window.__NETCHAT_DISCONNECT__) {
+          window.__NETCHAT_DISCONNECT__();
+        } else {
+          window.location.reload();
+        }
+      }
+    };
+
+    return h("div", { className: "h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none" },
+
+      // =======================================================================
+      // 1. TOP HEADER (h-14 / 56px, bg-zinc-950, border-b border-zinc-800/80 px-4)
+      // =======================================================================
+      h("header", { className: "h-14 bg-zinc-950 border-b border-zinc-800/80 px-4 flex items-center justify-between shrink-0 z-30" },
+        // Left Brand
+        h("div", { className: "flex items-center gap-1.5" },
+          h("span", { className: "font-semibold text-zinc-100 text-lg tracking-tight" }, "NetChat Live"),
+          h("span", { className: "w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block ml-1.5 ring-2 ring-emerald-500/20 animate-pulse", title: "Connected" })
+        ),
+
+        // Center Room Pill
+        h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm" },
+          h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400" }),
+          h("span", { className: "font-mono font-medium" }, `room: ${roomId}`)
+        ),
+
+        // Right Actions Group (Exact 5-icon order)
+        h("div", { className: "flex items-center gap-1.5 sm:gap-2" },
+          // Button 1 - Share/Link
+          h("button", {
+            type: "button",
+            onClick: handleShare,
+            title: "Share Room Link",
+            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+          }, h(Icon, { name: "link", className: "w-4 h-4" })),
+
+          // Button 2 - Voice Call
+          h("button", {
+            type: "button",
+            onClick: handleToggleVoice,
+            title: "Start Voice Call",
+            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+          }, h(Icon, { name: "phone", className: "w-4 h-4" })),
+
+          // Button 3 - Video Call
+          h("button", {
+            type: "button",
+            onClick: handleToggleVideo,
+            title: "Start Video Call",
+            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+          }, h(Icon, { name: "video", className: "w-4 h-4" })),
+
+          // Button 4 - Members Sidebar Toggle (with top-right notification badge)
+          h("button", {
+            type: "button",
+            onClick: () => setIsMembersOpen((prev) => !prev),
+            title: "Toggle Room Members Sidebar",
+            className: "relative hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+          },
+            h(Icon, { name: "users", className: "w-4 h-4" }),
+            h("span", {
+              className: "absolute -top-1 -right-1 bg-zinc-700 text-zinc-200 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-zinc-950 shadow-sm"
+            }, members.length)
+          ),
+
+          // Button 5 - Disconnect
+          h("button", {
+            type: "button",
+            onClick: handleDisconnect,
+            title: "Disconnect Session",
+            className: "hover:bg-red-500/10 text-red-400/90 hover:text-red-400 p-2 rounded-lg transition-colors border border-transparent hover:border-red-900/40"
+          }, h(Icon, { name: "power", className: "w-4 h-4" }))
+        )
+      ),
+
+      // =======================================================================
+      // 2. ACTIVE VOICE CALL RIBBON (Directly below header, above chat feed)
+      // =======================================================================
+      isVoiceCallActive && h("div", { className: "w-full bg-zinc-950/80 border-b border-zinc-800/80 px-4 py-2.5 flex items-center justify-between gap-4 overflow-x-auto shrink-0 backdrop-blur-md z-20" },
+        // Left (Status & Active Participants)
+        h("div", { className: "flex items-center gap-3 min-w-0 overflow-x-auto py-0.5" },
+          h("span", { className: "text-xs font-medium text-zinc-400 whitespace-nowrap hidden sm:inline" }, "Active Voice Call"),
+          // Active Speaker (Alex)
+          h("div", { className: "flex items-center gap-2 bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs px-2.5 py-1 rounded-full shrink-0 shadow-sm" },
+            h(Avatar, { name: "Alex", src: "/icons/avatar-alex.jpg", size: "sm", isSpeaking: true }),
+            h("span", { className: "font-medium" }, "Alex")
+          ),
+          // Muted Participant (Sam)
+          h("div", { className: "flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 py-1 rounded-full shrink-0" },
+            h(Avatar, { name: "Sam", src: "/icons/avatar-sam.jpg", size: "sm", isMuted: true }),
+            h("span", { className: "font-medium" }, "Sam")
+          ),
+          // Self / Others
+          h("div", { className: "text-xs text-zinc-400 px-2 py-1 shrink-0" }, "You")
+        ),
+
+        // Right (Call Control Buttons)
+        h("div", { className: "flex items-center gap-2 shrink-0" },
+          // Mute Toggle
+          h("button", {
+            type: "button",
+            onClick: () => setIsVoiceMuted((prev) => !prev),
+            className: `bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors ${
+              isVoiceMuted ? "border-red-900/60 text-red-400" : ""
+            }`
+          },
+            h(Icon, { name: isVoiceMuted ? "mic-off" : "mic", className: "w-3.5 h-3.5" }),
+            h("span", null, isVoiceMuted ? "Unmute" : "Mute")
+          ),
+
+          // Camera Off Toggle
+          h("button", {
+            type: "button",
+            onClick: () => setIsCameraOff((prev) => !prev),
+            className: "bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors"
+          },
+            h(Icon, { name: isCameraOff ? "camera-off" : "video", className: "w-3.5 h-3.5" }),
+            h("span", null, isCameraOff ? "Camera Off" : "Camera On")
+          ),
+
+          // End Call
+          h("button", {
+            type: "button",
+            onClick: () => setIsVoiceCallActive(false),
+            className: "bg-zinc-900 hover:bg-red-950/50 text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900/40 flex items-center gap-1.5 transition-colors"
+          },
+            h(Icon, { name: "phone-off", className: "w-3.5 h-3.5" }),
+            h("span", null, "End")
+          )
+        )
+      ),
+
+      // =======================================================================
+      // MAIN CONTENT AREA (Chat Feed + Members Sidebar)
+      // =======================================================================
+      h("div", { className: "flex-1 flex overflow-hidden relative" },
+
+        // =====================================================================
+        // 4. CHAT FEED & MESSAGE BUBBLES
+        // =====================================================================
+        h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative" },
+          // Scrollable messages container
+          h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full" },
+            messages.map((msg) => {
+              if (msg.isMe) {
+                // Outgoing Message (You)
+                return h("div", { key: msg.id, className: "flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[70%]" },
+                  h("span", { className: "text-[11px] text-zinc-400 mb-1" }, "You"),
+                  h("div", { className: "bg-zinc-800 border border-zinc-700/60 text-zinc-100 text-sm p-3 rounded-2xl rounded-tr-sm shadow-sm leading-relaxed" },
+                    renderMessageText(msg.text)
+                  )
+                );
+              } else {
+                // Incoming Message (Alex / Peer)
+                return h("div", { key: msg.id, className: "flex items-start gap-2.5 max-w-[85%] sm:max-w-[70%]" },
+                  h(Avatar, { name: msg.sender, src: msg.avatar, size: "md" }),
+                  h("div", { className: "flex-1 min-w-0" },
+                    h("span", { className: "text-[11px] text-zinc-400 mb-1 block" }, msg.sender),
+                    h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 rounded-2xl rounded-tl-sm shadow-sm leading-relaxed" },
+                      renderMessageText(msg.text)
+                    )
+                  )
+                );
+              }
+            }),
+            h("div", { ref: messagesEndRef })
+          ),
+
+          // Decorative bottom right star watermark
+          h("div", { className: "absolute bottom-16 right-6 pointer-events-none opacity-20 hidden md:block" },
+            h(Icon, { name: "sparkle", className: "w-8 h-8 text-zinc-400" })
+          ),
+
+          // ===================================================================
+          // 5. DOCKED BOTTOM INPUT BAR & @MENTION AUTOCOMPLETE
+          // ===================================================================
+          h("footer", { className: "sticky bottom-0 bg-zinc-950 border-t border-zinc-800/80 p-3 sm:p-4 pb-safe relative z-20" },
+
+            // @Mention Autocomplete Popover (Triggers when typing '@')
+            isMentionOpen && mentionMatches.length > 0 && h("div", {
+              className: "absolute bottom-full mb-2 left-4 w-60 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 z-40 max-h-44 overflow-y-auto backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150"
+            },
+              mentionMatches.map((m, idx) => {
+                const isSelected = idx === mentionSelectedIndex;
+                return h("div", {
+                  key: m.id,
+                  onClick: () => insertMention(m.name),
+                  className: `flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-colors ${
+                    isSelected ? "bg-zinc-800" : "hover:bg-zinc-800"
+                  }`
+                },
+                  h(Avatar, { name: m.name, src: m.avatar, size: "sm" }),
+                  h("span", { className: "text-zinc-200 font-medium" }, `@${m.name}`),
+                  h("span", { className: "text-zinc-500 text-[11px] ml-auto" }, "(online)")
+                );
+              })
+            ),
+
+            // Input Container with emerald focus ring matching reference design
+            h("div", {
+              className: "relative flex items-center bg-zinc-900 border border-emerald-500/80 focus-within:border-emerald-500 rounded-xl px-3 py-1.5 transition-all shadow-inner"
+            },
+              // Left: Paperclip icon button
+              h("button", {
+                type: "button",
+                title: "Attach File",
+                onClick: () => {
+                  const input = document.getElementById("file-upload");
+                  if (input) input.click();
+                },
+                className: "text-zinc-400 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800/50 transition-colors"
+              }, h(Icon, { name: "paperclip", className: "w-4 h-4" })),
+
+              // Center: Text input field (forced transparent to prevent CSS bleeding)
+              h("input", {
+                ref: inputRef,
+                type: "text",
+                value: inputValue,
+                onChange: handleInputChange,
+                onKeyDown: handleKeyDown,
+                placeholder: "Type a message...",
+                style: { backgroundColor: "transparent", color: "#f4f4f5", border: "none", outline: "none", boxShadow: "none" },
+                className: "flex-1 !bg-transparent !border-0 !outline-none !shadow-none text-sm !text-zinc-100 placeholder-zinc-500 px-2 py-1.5 font-normal"
+              }),
+
+              // Right: Send button
+              h("button", {
+                type: "button",
+                onClick: sendMessage,
+                className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95"
+              }, "Send")
+            )
+          )
+        ),
+
+        // =====================================================================
+        // 3. ROOM MEMBERS SIDEBAR (Exact side panel)
+        // =====================================================================
+        // Mobile Backdrop Overlay (subtle to match reference screenshot)
+        isMembersOpen && h("div", {
+          onClick: () => setIsMembersOpen(false),
+          className: "lg:hidden fixed inset-0 top-14 bg-black/30 z-30 transition-opacity"
+        }),
+
+        // Sidebar Container (Docked on desktop >= 1024px, Slide-over on mobile < 1024px)
+        isMembersOpen && h("aside", {
+          className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-y-auto"
+        },
+          // Header: "Room Members (3)"
+          h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide" }, `Room Members (${members.length})`),
+
+          // Member List
+          h("div", { className: "space-y-1" },
+            members.map((m) =>
+              h("div", {
+                key: m.id,
+                className: "flex items-center justify-between py-2 px-1 text-xs rounded-lg hover:bg-zinc-900/50 transition-colors"
+              },
+                // Left: Avatar + Name
+                h("div", { className: "flex items-center gap-2 min-w-0" },
+                  h(Avatar, { name: m.name, src: m.avatar, size: "sm", isLocal: m.isLocal }),
+                  h("span", { className: "text-zinc-200 font-medium truncate" }, m.name),
+                  m.isLocal && h("span", { className: "text-zinc-400 text-[11px] font-normal" }, "(You)")
+                ),
+                // Right: Active status dot
+                h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
+              )
+            )
+          )
+        )
+      ),
+
+      // Toast Notification
+      toastMessage && h("div", {
+        className: "fixed bottom-20 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs px-4 py-2 rounded-full shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-3"
+      }, toastMessage)
+    );
+  }
+
+  // Mount React Component to DOM
+  function mountReactApp() {
+    const rootEl = document.getElementById("react-root");
+    if (!rootEl) return;
+
+    if (window.ReactDOM && typeof ReactDOM.createRoot === "function") {
+      const root = ReactDOM.createRoot(rootEl);
+      root.render(h(NetChatApp));
+      console.log("[React] NetChat Live React app mounted successfully.");
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", mountReactApp);
+  } else {
+    mountReactApp();
+  }
+
+  window.mountNetChatReact = mountReactApp;
+})();
