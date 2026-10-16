@@ -513,7 +513,7 @@
     const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 
     // Direct/Broadcast File Sharing Popover state
-    const [isFileMenuOpen, setIsFileMenuOpen] = useState(false);
+    const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
@@ -536,7 +536,7 @@
 
     // File selection trigger
     const handleSelectFileTarget = (target) => {
-      setIsFileMenuOpen(false);
+      setIsShareMenuOpen(false);
       pendingFileTargetRef.current = target;
       if (p2pFileInputRef.current) {
         p2pFileInputRef.current.value = "";
@@ -574,23 +574,23 @@
     const handlePaperclipClick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      setIsFileMenuOpen((prev) => !prev);
+      setIsShareMenuOpen((prev) => !prev);
     };
 
     // Close file sharing popover on outside click
     useEffect(() => {
       const handleClickOutside = (e) => {
-        if (isFileMenuOpen) {
+        if (isShareMenuOpen) {
           const popover = document.getElementById("file-share-popover");
           const btn = document.getElementById("btn-paperclip-toggle");
           if (popover && !popover.contains(e.target) && btn && !btn.contains(e.target)) {
-            setIsFileMenuOpen(false);
+            setIsShareMenuOpen(false);
           }
         }
       };
       document.addEventListener("click", handleClickOutside);
       return () => document.removeEventListener("click", handleClickOutside);
-    }, [isFileMenuOpen]);
+    }, [isShareMenuOpen]);
 
     // Synchronize state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
@@ -1129,40 +1129,6 @@
             h("div", {
               className: "relative flex items-center bg-zinc-900 border border-zinc-800 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/30 rounded-xl px-3 py-1.5 transition-all shadow-inner"
             },
-              // Direct / Broadcast File Share Selector Popover (Positioned just above paperclip)
-              isFileMenuOpen && h("div", {
-                id: "file-share-popover",
-                className: "absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-50 overflow-hidden"
-              },
-                // Top Menu Item: "Send to All" (Broadcast file to all connected peers)
-                h("button", {
-                  type: "button",
-                  onClick: () => handleSelectFileTarget("ALL"),
-                  className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 cursor-pointer transition-colors text-left"
-                },
-                  h(Icon, { name: "share", className: "w-4 h-4 text-emerald-400 shrink-0" }),
-                  h("span", { className: "font-medium" }, "Send to All")
-                ),
-
-                // Subtle divider below it
-                h("div", { className: "border-b border-zinc-800" }),
-
-                // Individual Items: Map over active roomUsers (excluding local user)
-                otherPeers.length > 0
-                  ? otherPeers.map((peer) =>
-                      h("button", {
-                        key: peer.id || peer.socketId || peer.name,
-                        type: "button",
-                        onClick: () => handleSelectFileTarget(peer.socketId || peer.id),
-                        className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 cursor-pointer transition-colors text-left"
-                      },
-                        h(Avatar, { name: peer.name, src: peer.avatar, size: "sm" }),
-                        h("span", { className: "truncate" }, `Send to @${peer.name}`)
-                      )
-                    )
-                  : h("div", { className: "px-3 py-2 text-xs text-zinc-500 italic" }, "No peers online")
-              ),
-
               // Hidden native file input for scoped WebRTC file selection
               h("input", {
                 ref: p2pFileInputRef,
@@ -1172,18 +1138,54 @@
                 "aria-hidden": "true"
               }),
 
-              // Left: Paperclip icon button (toggles popover)
-              h("button", {
-                id: "btn-paperclip-toggle",
-                type: "button",
-                title: "Share File",
-                onClick: handlePaperclipClick,
-                className: `p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  isFileMenuOpen
-                    ? "text-emerald-400 bg-zinc-800"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
-                }`
-              }, h(Icon, { name: "paperclip", className: "w-4 h-4" })),
+              // Left: Paperclip icon button wrapped in relative container (Mobile & Desktop)
+              h("div", { className: "relative flex items-center shrink-0" },
+                h("button", {
+                  id: "btn-paperclip-toggle",
+                  type: "button",
+                  title: "Share File",
+                  onClick: handlePaperclipClick,
+                  className: `p-2 sm:p-1.5 rounded-lg transition-colors cursor-pointer min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center ${
+                    isShareMenuOpen
+                      ? "text-emerald-400 bg-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50"
+                  }`
+                }, h(Icon, { name: "paperclip", className: "w-4 h-4" })),
+
+                // Floating popover menu when open
+                isShareMenuOpen && h("div", {
+                  id: "file-share-popover",
+                  className: "absolute bottom-full left-0 mb-2 w-56 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 z-50"
+                },
+                  // Send to All button (Broadcast file to all connected peers)
+                  h("button", {
+                    type: "button",
+                    onClick: () => handleSelectFileTarget("ALL"),
+                    className: "w-full flex items-center gap-2 px-3 py-3 sm:py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 rounded-lg cursor-pointer transition-colors text-left"
+                  },
+                    h(Icon, { name: "share", className: "w-4 h-4 text-emerald-400 shrink-0" }),
+                    h("span", { className: "font-medium" }, "Send to All")
+                  ),
+
+                  // Divider
+                  h("div", { className: "border-b border-zinc-800/80 my-1 pb-1" }),
+
+                  // Individual Items: Map over active roomUsers (excluding local user)
+                  otherPeers.length > 0
+                    ? otherPeers.map((peer) =>
+                        h("button", {
+                          key: peer.id || peer.socketId || peer.name,
+                          type: "button",
+                          onClick: () => handleSelectFileTarget(peer.socketId || peer.id),
+                          className: "w-full flex items-center gap-2 px-3 py-3 sm:py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800/80 rounded-lg cursor-pointer transition-colors text-left"
+                        },
+                          h(Avatar, { name: peer.name, src: peer.avatar, size: "sm" }),
+                          h("span", { className: "truncate" }, `Send to @${peer.name}`)
+                        )
+                      )
+                    : h("div", { className: "px-3 py-2 text-xs text-zinc-500 italic" }, "No peers online")
+                )
+              ),
 
               // Center: Text input field (forced transparent to prevent CSS bleeding, 16px font to prevent iOS Safari auto-zoom)
               h("input", {
@@ -1238,8 +1240,19 @@
                       h("span", { className: "text-zinc-200 font-medium truncate" }, m.name),
                       m.isLocal && h("span", { className: "text-zinc-400 text-[11px] font-normal" }, "(You)")
                     ),
-                    // Right: Actions (Active status dot)
+                    // Right: Actions (Individual share button for remote peers + Active status dot)
                     h("div", { className: "flex items-center shrink-0" },
+                      !m.isLocal && h("button", {
+                        type: "button",
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          handleSelectFileTarget(m.socketId || m.id);
+                        },
+                        title: `Send file to ${m.name} via WebRTC`,
+                        className: "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 p-2 sm:p-1.5 rounded-md transition-colors min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 flex items-center justify-center mr-1 cursor-pointer"
+                      },
+                        h(Icon, { name: "paperclip", className: "w-4 h-4" })
+                      ),
                       // Active status dot
                       h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
                     )
