@@ -1,6 +1,7 @@
 /**
  * NetChat Live — React 18 & Tailwind CSS UI Component
- * Exact 1:1 match of approved desktop and mobile designs with live Socket.IO state & RESTORED Landing Page.
+ * Exact 1:1 pixel-perfect match of approved NetChat Live "Create/Join Room" Landing Screen
+ * and live-wired chat room with conditional WebRTC call ribbon and Socket.IO state.
  */
 
 (function () {
@@ -81,13 +82,6 @@
         return h("svg", { className, viewBox: "0 0 24 24", fill: "currentColor" },
           h("path", { d: "M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" })
         );
-      case "refresh":
-        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
-          h("path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }),
-          h("path", { d: "M21 3v5h-5" }),
-          h("path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }),
-          h("path", { d: "M8 16H3v5" })
-        );
       case "eye":
         return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
           h("path", { d: "M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" }),
@@ -100,9 +94,16 @@
           h("path", { d: "M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" }),
           h("line", { x1: "2", x2: "22", y1: "2", y2: "22" })
         );
-      case "shield":
+      case "download":
         return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
-          h("path", { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" })
+          h("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
+          h("polyline", { points: "7 10 12 15 17 10" }),
+          h("line", { x1: "12", x2: "12", y1: "15", y2: "3" })
+        );
+      case "camera":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" }),
+          h("circle", { cx: "12", cy: "13", r: "3" })
         );
       default:
         return null;
@@ -188,10 +189,11 @@
   }
 
   // ===========================================================================
-  // 1. RESTORED & RE-STYLED LANDING / ENTRY SCREEN (zinc-950 minimalist design)
+  // 1. EXACT 1:1 PIXEL-PERFECT LANDING SCREEN (Create / Join Room)
   // ===========================================================================
-  function LandingScreen({ isConnected, connectionStatus, onJoinSuccess }) {
-    const [mode, setMode] = useState("create"); // "create" | "join"
+  function LandingScreen({ isConnected, onJoinSuccess }) {
+    // isJoinMode: boolean state (default true matching reference screenshot)
+    const [isJoinMode, setIsJoinMode] = useState(true);
     const [nickname, setNickname] = useState("");
     const [roomId, setRoomId] = useState("");
     const [passkey, setPasskey] = useState("");
@@ -207,28 +209,50 @@
         const urlPin = params.get("pin");
         if (urlRoom) {
           setRoomId(urlRoom);
-          setMode("join");
+          setIsJoinMode(true);
         }
         if (urlPin) {
           setPasskey(urlPin);
         }
       } catch (_) {}
+
+      const onQrScanned = (e) => {
+        if (e.detail) {
+          if (e.detail.room) setRoomId(e.detail.room);
+          if (e.detail.pin) setPasskey(e.detail.pin);
+          setIsJoinMode(true);
+        }
+      };
+
+      window.addEventListener("netchat:qr_scanned", onQrScanned);
+      return () => window.removeEventListener("netchat:qr_scanned", onQrScanned);
     }, []);
 
-    const handleGenerateRoom = () => {
-      setErrorMsg(null);
-      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.generateRoomId === "function") {
-        setRoomId(window.__NETCHAT_BRIDGE__.generateRoomId());
-      } else {
-        const adjectives = ["swift", "quiet", "shadow", "cyber", "hyper", "neon", "delta"];
-        const nouns = ["node", "relay", "packet", "nexus", "squad", "stream", "vault"];
-        const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-        const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
-        const randomNum = Math.floor(100 + Math.random() * 900);
-        setRoomId(`${randomAdj}-${randomNoun}-${randomNum}`);
+    // Toggle tab mode: clear roomId and passkey, keep nickname
+    const handleTabSwitch = (joinMode) => {
+      if (isJoinMode !== joinMode) {
+        setIsJoinMode(joinMode);
+        setRoomId("");
+        setPasskey("");
+        setErrorMsg(null);
       }
     };
 
+    // PWA Install Action
+    const handleInstallClick = () => {
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.installApp === "function") {
+        window.__NETCHAT_BRIDGE__.installApp();
+      }
+    };
+
+    // QR Scanner Action
+    const handleScanQrClick = () => {
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.startQrScanner === "function") {
+        window.__NETCHAT_BRIDGE__.startQrScanner();
+      }
+    };
+
+    // Submit Action (Create / Join)
     const handleSubmit = (e) => {
       if (e && e.preventDefault) e.preventDefault();
       setErrorMsg(null);
@@ -242,11 +266,11 @@
         return;
       }
       if (!room) {
-        setErrorMsg("Please enter or generate a Room ID.");
+        setErrorMsg("Please enter a Room ID.");
         return;
       }
       if (!pin) {
-        setErrorMsg("Please enter a Room Passkey.");
+        setErrorMsg("Please enter a Passkey.");
         return;
       }
 
@@ -257,18 +281,17 @@
         if (res && res.status === "success") {
           onJoinSuccess({ username: nick, roomId: room, passkey: pin });
         } else {
-          setErrorMsg((res && res.message) ? res.message : "Failed to enter room. Check credentials.");
+          setErrorMsg((res && res.message) ? res.message : "Authentication failed. Check credentials.");
         }
       };
 
       if (window.__NETCHAT_BRIDGE__) {
-        if (mode === "create") {
-          window.__NETCHAT_BRIDGE__.createRoom(nick, room, pin, callback);
-        } else {
+        if (isJoinMode) {
           window.__NETCHAT_BRIDGE__.joinRoom(nick, room, pin, callback);
+        } else {
+          window.__NETCHAT_BRIDGE__.createRoom(nick, room, pin, callback);
         }
       } else {
-        // Fallback simulation if bridge is not ready
         setTimeout(() => {
           setIsLoading(false);
           onJoinSuccess({ username: nick, roomId: room, passkey: pin });
@@ -276,171 +299,149 @@
       }
     };
 
-    const statusDotClass = isConnected
-      ? "bg-emerald-500 animate-pulse"
-      : (connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500");
+    return h("div", { className: "min-h-screen bg-zinc-950 flex flex-col font-sans select-none relative overflow-hidden text-zinc-100" },
+      // Top Header (h-14, border-b border-zinc-800/80, px-4)
+      h("header", { className: "h-14 border-b border-zinc-800/80 px-4 flex items-center justify-between shrink-0 z-20" },
+        // Left Brand & Socket Status Dot
+        h("div", { className: "flex items-center" },
+          h("span", { className: "font-semibold text-zinc-100 text-lg tracking-tight" }, "NetChat Live"),
+          h("span", {
+            className: `w-2 h-2 rounded-full inline-block ml-2 ${
+              isConnected ? "bg-emerald-500 animate-pulse" : "bg-red-500"
+            }`,
+            title: isConnected ? "Socket Connected" : "Socket Offline"
+          })
+        ),
 
-    const statusText = isConnected
-      ? "Connected"
-      : (connectionStatus === "connecting" ? "Connecting..." : "Offline");
+        // Right "Install App" Button
+        h("button", {
+          type: "button",
+          onClick: handleInstallClick,
+          className: "text-sm text-zinc-300 hover:text-white flex items-center gap-2 px-3 py-1.5 rounded-lg border border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 transition-colors cursor-pointer"
+        },
+          h(Icon, { name: "download", className: "w-4 h-4 text-zinc-400" }),
+          h("span", null, "Install App")
+        )
+      ),
 
-    return h("div", { className: "min-h-screen w-screen flex flex-col items-center justify-center bg-zinc-950 p-4 text-zinc-100 select-none relative overflow-hidden font-sans" },
-      // Background subtle ambient radial glow
-      h("div", { className: "absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-zinc-950/80 to-zinc-950 pointer-events-none" }),
+      // Central Card Container
+      h("main", { className: "flex-1 flex items-center justify-center p-4 relative z-10" },
+        h("div", { className: "w-full max-w-[400px] bg-[#111113] border border-zinc-800/80 rounded-[20px] p-6 shadow-2xl" },
+          // Clean Tab Switcher (Join vs Create)
+          h("div", { className: "flex p-1 bg-zinc-900/80 border border-zinc-800 rounded-xl mb-6" },
+            // Tab 1: Join Room (Strictly "Join Room", no brackets)
+            h("button", {
+              type: "button",
+              onClick: () => handleTabSwitch(true),
+              className: isJoinMode
+                ? "flex-1 py-2 text-sm font-medium text-zinc-200 bg-zinc-700/50 rounded-lg shadow-sm text-center transition-all cursor-pointer"
+                : "flex-1 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-400 text-center cursor-pointer transition-all"
+            }, "Join Room"),
 
-      // Centered Card Container (max-w-md w-full, bg-zinc-900, border border-zinc-800, rounded-2xl)
-      h("div", { className: "relative bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl z-10 backdrop-blur-xl" },
-        // Brand Header & Connection Pill
-        h("div", { className: "flex items-center justify-between mb-2" },
-          h("div", { className: "flex items-center gap-2" },
-            h("div", { className: "p-2 bg-zinc-800 border border-zinc-700/60 rounded-xl flex items-center justify-center text-emerald-400" },
-              h(Icon, { name: "lock", className: "w-5 h-5" })
+            // Tab 2: Create Room (Strictly "Create Room", no brackets)
+            h("button", {
+              type: "button",
+              onClick: () => handleTabSwitch(false),
+              className: !isJoinMode
+                ? "flex-1 py-2 text-sm font-medium text-zinc-200 bg-zinc-700/50 rounded-lg shadow-sm text-center transition-all cursor-pointer"
+                : "flex-1 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-400 text-center cursor-pointer transition-all"
+            }, "Create Room")
+          ),
+
+          // Error banner (if any)
+          errorMsg && h("div", { className: "bg-red-950/40 border border-red-800/60 text-red-300 text-xs px-3.5 py-2.5 rounded-xl mb-4 flex items-center gap-2 animate-in fade-in duration-150" },
+            h("span", { className: "flex-1" }, errorMsg)
+          ),
+
+          // Form Inputs
+          h("form", { onSubmit: handleSubmit },
+            // Nickname Input
+            h("div", { className: "flex flex-col gap-1.5 mb-4" },
+              h("label", { className: "text-sm font-medium text-zinc-300" }, "Nickname"),
+              h("input", {
+                type: "text",
+                value: nickname,
+                onChange: (e) => setNickname(e.target.value),
+                placeholder: "@enter_username",
+                autoFocus: true,
+                style: { backgroundColor: "#18181b", color: "#e4e4e7" },
+                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
+              })
             ),
-            h("div", null,
-              h("h1", { className: "text-lg font-bold text-zinc-100 tracking-tight leading-none" }, "NetChat Live"),
-              h("span", { className: "text-[11px] text-zinc-400 font-normal" }, "Server Based Chatting Platform")
-            )
-          ),
-          // Live status badge
-          h("div", {
-            className: `px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 border ${
-              isConnected ? "bg-emerald-950/50 text-emerald-400 border-emerald-500/30" : "bg-zinc-800/80 text-zinc-400 border-zinc-700"
-            }`
-          },
-            h("span", { className: `w-2 h-2 rounded-full ${statusDotClass}` }),
-            h("span", null, statusText)
-          )
-        ),
 
-        // Subtitle
-        h("p", { className: "text-xs text-zinc-400 mb-6 leading-relaxed" },
-          "Minimalist, zero-retention ephemeral chat with end-to-end encrypted messaging and peer-to-peer audio calls."
-        ),
+            // Room ID Input
+            h("div", { className: "flex flex-col gap-1.5 mb-4" },
+              h("label", { className: "text-sm font-medium text-zinc-300" }, "Room ID"),
+              h("input", {
+                type: "text",
+                value: roomId,
+                onChange: (e) => setRoomId(e.target.value.toLowerCase()),
+                placeholder: "e.g., dev-squad",
+                style: { backgroundColor: "#18181b", color: "#e4e4e7" },
+                className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
+              })
+            ),
 
-        // Clean Form Tabs (Create Room / Join Room)
-        h("div", { className: "grid grid-cols-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl mb-6 shadow-inner" },
-          h("button", {
-            type: "button",
-            onClick: () => { setMode("create"); setErrorMsg(null); },
-            className: `py-2 text-xs font-semibold rounded-lg transition-all ${
-              mode === "create"
-                ? "bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`
-          }, "Create Room"),
-          h("button", {
-            type: "button",
-            onClick: () => { setMode("join"); setErrorMsg(null); },
-            className: `py-2 text-xs font-semibold rounded-lg transition-all ${
-              mode === "join"
-                ? "bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`
-          }, "Join Room")
-        ),
-
-        // Error message banner
-        errorMsg && h("div", { className: "bg-red-950/40 border border-red-800/60 text-red-300 text-xs px-3.5 py-2.5 rounded-xl mb-4 flex items-center gap-2 animate-in fade-in duration-150" },
-          h(Icon, { name: "power", className: "w-4 h-4 shrink-0 text-red-400" }),
-          h("span", { className: "flex-1" }, errorMsg)
-        ),
-
-        // Form Fields
-        h("form", { onSubmit: handleSubmit, className: "space-y-4" },
-          // Nickname Field
-          h("div", null,
-            h("label", { className: "text-xs font-medium text-zinc-400 mb-1.5 block" }, "Nickname"),
-            h("input", {
-              type: "text",
-              value: nickname,
-              onChange: (e) => setNickname(e.target.value),
-              placeholder: "e.g., Alex, Sam, DevMaster",
-              autoFocus: true,
-              style: { backgroundColor: "#09090b", color: "#f4f4f5" },
-              className: "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none transition-all"
-            })
-          ),
-
-          // Room ID Field
-          h("div", null,
-            h("label", { className: "text-xs font-medium text-zinc-400 mb-1.5 block" }, "Room ID"),
-            mode === "create"
-              ? h("div", { className: "flex items-center gap-2" },
-                  h("input", {
-                    type: "text",
-                    value: roomId,
-                    onChange: (e) => setRoomId(e.target.value.toLowerCase()),
-                    placeholder: "e.g., dev-squad, stealth-ops",
-                    style: { backgroundColor: "#09090b", color: "#f4f4f5" },
-                    className: "flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none font-mono transition-all"
-                  }),
-                  h("button", {
-                    type: "button",
-                    onClick: handleGenerateRoom,
-                    title: "Generate Random Room ID",
-                    className: "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white px-3 py-2.5 rounded-xl text-xs font-medium transition-colors border border-zinc-700/50 flex items-center gap-1.5 shrink-0"
-                  },
-                    h(Icon, { name: "refresh", className: "w-3.5 h-3.5" }),
-                    h("span", null, "Random")
-                  )
-                )
-              : h("input", {
-                  type: "text",
-                  value: roomId,
-                  onChange: (e) => setRoomId(e.target.value.toLowerCase()),
-                  placeholder: "Enter existing Room ID",
-                  style: { backgroundColor: "#09090b", color: "#f4f4f5" },
-                  className: "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none font-mono transition-all"
-                })
-          ),
-
-          // Room Passkey / PIN Field
-          h("div", null,
-            h("div", { className: "flex items-center justify-between mb-1.5" },
-              h("label", { className: "text-xs font-medium text-zinc-400 block" }, "Room Passkey (PIN)"),
-              h("span", { className: "text-[10px] text-zinc-500 flex items-center gap-1" },
-                h(Icon, { name: "shield", className: "w-2.5 h-2.5 text-emerald-500/70" }),
-                "Zero-knowledge E2EE"
+            // Passkey Input with Eye Toggle
+            h("div", { className: "flex flex-col gap-1.5 mb-4" },
+              h("label", { className: "text-sm font-medium text-zinc-300" }, "Passkey"),
+              h("div", { className: "relative w-full" },
+                h("input", {
+                  type: showPasskey ? "text" : "password",
+                  value: passkey,
+                  onChange: (e) => setPasskey(e.target.value),
+                  placeholder: "••••••••",
+                  style: { backgroundColor: "#18181b", color: "#e4e4e7" },
+                  className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 pr-10 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors font-mono"
+                }),
+                h("button", {
+                  type: "button",
+                  onClick: () => setShowPasskey((prev) => !prev),
+                  title: showPasskey ? "Hide Passkey" : "Show Passkey",
+                  className: "absolute text-zinc-500 hover:text-zinc-300 right-3 top-1/2 -translate-y-1/2 cursor-pointer p-1 transition-colors"
+                }, h(Icon, { name: showPasskey ? "eye-off" : "eye", className: "w-4 h-4" }))
               )
             ),
-            h("div", {
-              className: "relative flex items-center bg-zinc-950 border border-zinc-800 rounded-xl focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all"
-            },
-              h("input", {
-                type: showPasskey ? "text" : "password",
-                value: passkey,
-                onChange: (e) => setPasskey(e.target.value),
-                placeholder: "Room PIN / secret passkey",
-                style: { backgroundColor: "transparent", color: "#f4f4f5", border: "none", outline: "none" },
-                className: "flex-1 !bg-transparent px-3.5 py-2.5 text-sm !text-zinc-100 placeholder-zinc-500 outline-none font-mono"
-              }),
-              h("button", {
-                type: "button",
-                onClick: () => setShowPasskey((prev) => !prev),
-                title: showPasskey ? "Hide Passkey" : "Show Passkey",
-                className: "p-2.5 text-zinc-400 hover:text-zinc-200 transition-colors"
-              }, h(Icon, { name: showPasskey ? "eye-off" : "eye", className: "w-4 h-4" }))
-            )
-          ),
 
-          // Submit Button
-          h("button", {
-            type: "submit",
-            disabled: isLoading,
-            className: "mt-6 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          },
-            h(Icon, { name: "lock", className: "w-4 h-4" }),
-            h("span", null, isLoading
-              ? "Connecting..."
-              : (mode === "create" ? "Create & Enter Room" : "Join Encrypted Room")
-            )
+            // Action Buttons Container (2 columns in Join mode, 1 column in Create mode)
+            isJoinMode
+              ? h("div", { className: "grid grid-cols-2 gap-3 mt-6" },
+                  // Button 1: Scan Room QR Code
+                  h("button", {
+                    type: "button",
+                    onClick: handleScanQrClick,
+                    className: "bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 text-sm font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 border border-zinc-700 transition-colors cursor-pointer"
+                  },
+                    h(Icon, { name: "camera", className: "w-4 h-4 text-zinc-400" }),
+                    h("span", null, "Scan Room QR Code")
+                  ),
+
+                  // Button 2: Join Room ↗ (With shadow applied strictly via className)
+                  h("button", {
+                    type: "submit",
+                    disabled: isLoading,
+                    className: "bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition-all cursor-pointer disabled:opacity-50"
+                  },
+                    h("span", null, isLoading ? "Joining..." : "Join Room ↗")
+                  )
+                )
+              : h("div", { className: "mt-6" },
+                  // Single Full-Width Button: Create Room (With shadow applied strictly via className)
+                  h("button", {
+                    type: "submit",
+                    disabled: isLoading,
+                    className: "w-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 text-sm font-semibold py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 transition-all cursor-pointer disabled:opacity-50"
+                  },
+                    h("span", null, isLoading ? "Creating..." : "Create Room")
+                  )
+                )
           )
         )
       ),
 
-      // Footer disclaimer
-      h("div", { className: "mt-6 text-center text-xs text-zinc-500 relative z-10" },
-        "Pure peer-to-peer WebRTC & WebSocket mesh • No chats are saved to disk or server logs"
+      // Decorative bottom-right sparkle watermark matching reference design
+      h("div", { className: "absolute bottom-6 right-6 pointer-events-none opacity-20 hidden sm:block" },
+        h(Icon, { name: "sparkle", className: "w-8 h-8 text-zinc-400" })
       )
     );
   }
@@ -491,7 +492,7 @@
       .filter((u) => !u.isLocal)
       .filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase()));
 
-    // Synchronize initial state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
+    // Synchronize state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
       const syncFromBridge = () => {
         if (window.__NETCHAT_BRIDGE__) {
@@ -772,7 +773,6 @@
     if (!inRoom) {
       return h(LandingScreen, {
         isConnected: isConnected,
-        connectionStatus: connectionStatus,
         onJoinSuccess: ({ username: u, roomId: r }) => {
           setUsername(u);
           setRoomId(r);
@@ -826,7 +826,7 @@
             type: "button",
             onClick: handleShare,
             title: "Share Room Link",
-            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50 cursor-pointer"
           }, h(Icon, { name: "link", className: "w-4 h-4" })),
 
           // Button 2 - Voice Call
@@ -834,7 +834,7 @@
             type: "button",
             onClick: handleToggleVoice,
             title: isCallActive && callType === "audio" ? "Leave Voice Call" : "Start Voice Call",
-            className: `p-2 rounded-lg transition-colors border border-transparent ${
+            className: `p-2 rounded-lg transition-colors border border-transparent cursor-pointer ${
               isCallActive && callType === "audio"
                 ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
                 : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
@@ -846,7 +846,7 @@
             type: "button",
             onClick: handleToggleVideo,
             title: isCallActive && callType === "video" ? "Leave Video Call" : "Start Video Call",
-            className: `p-2 rounded-lg transition-colors border border-transparent ${
+            className: `p-2 rounded-lg transition-colors border border-transparent cursor-pointer ${
               isCallActive && callType === "video"
                 ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
                 : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
@@ -858,7 +858,7 @@
             type: "button",
             onClick: () => setIsMembersOpen((prev) => !prev),
             title: "Toggle Room Members Sidebar",
-            className: "relative hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+            className: "relative hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50 cursor-pointer"
           },
             h(Icon, { name: "users", className: "w-4 h-4" }),
             h("span", {
@@ -871,7 +871,7 @@
             type: "button",
             onClick: handleDisconnect,
             title: "Disconnect Session",
-            className: "hover:bg-red-500/10 text-red-400/90 hover:text-red-400 p-2 rounded-lg transition-colors border border-transparent hover:border-red-900/40"
+            className: "hover:bg-red-500/10 text-red-400/90 hover:text-red-400 p-2 rounded-lg transition-colors border border-transparent hover:border-red-900/40 cursor-pointer"
           }, h(Icon, { name: "power", className: "w-4 h-4" }))
         )
       ),
@@ -907,7 +907,7 @@
           h("button", {
             type: "button",
             onClick: handleToggleMute,
-            className: `bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors ${
+            className: `bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer ${
               isVoiceMuted ? "border-red-900/60 text-red-400" : ""
             }`
           },
@@ -919,7 +919,7 @@
           callType === "video" && h("button", {
             type: "button",
             onClick: handleToggleCamera,
-            className: "bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors"
+            className: "bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors cursor-pointer"
           },
             h(Icon, { name: isCameraOff ? "camera-off" : "video", className: "w-3.5 h-3.5" }),
             h("span", null, isCameraOff ? "Camera Off" : "Camera On")
@@ -929,7 +929,7 @@
           h("button", {
             type: "button",
             onClick: handleEndCall,
-            className: "bg-zinc-900 hover:bg-red-950/50 text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900/40 flex items-center gap-1.5 transition-colors"
+            className: "bg-zinc-900 hover:bg-red-950/50 text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900/40 flex items-center gap-1.5 transition-colors cursor-pointer"
           },
             h(Icon, { name: "phone-off", className: "w-3.5 h-3.5" }),
             h("span", null, "End")
@@ -947,7 +947,7 @@
         // =====================================================================
         h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative" },
           // Scrollable messages container
-          h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full" },
+          h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]" },
             messages.length === 0
               ? h("div", { className: "h-full flex flex-col items-center justify-center text-center p-8 text-zinc-500 space-y-3" },
                   h("div", { className: "w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400" },
@@ -1033,7 +1033,7 @@
                   const input = document.getElementById("file-upload");
                   if (input) input.click();
                 },
-                className: "text-zinc-400 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800/50 transition-colors"
+                className: "text-zinc-400 hover:text-zinc-200 p-1.5 rounded-lg hover:bg-zinc-800/50 transition-colors cursor-pointer"
               }, h(Icon, { name: "paperclip", className: "w-4 h-4" })),
 
               // Center: Text input field (forced transparent to prevent CSS bleeding)
@@ -1052,7 +1052,7 @@
               h("button", {
                 type: "button",
                 onClick: sendMessage,
-                className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95"
+                className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95 cursor-pointer"
               }, "Send")
             )
           )
@@ -1069,7 +1069,7 @@
 
         // Sidebar Container (Docked on desktop >= 1024px, Slide-over on mobile < 1024px)
         isMembersOpen && h("aside", {
-          className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-y-auto"
+          className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800/80 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]"
         },
           // Header: "Room Members (count)"
           h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide" }, `Room Members (${roomUsers.length})`),

@@ -1368,6 +1368,10 @@
         DOM.passkeyInput.title = "Passkey auto-filled from QR code";
       }
 
+      try {
+        window.dispatchEvent(new CustomEvent("netchat:qr_scanned", { detail: { room, pin } }));
+      } catch (_) {}
+
       clearLoginError();
 
       let inviteBanner = document.getElementById("invite-room-banner");
@@ -5984,6 +5988,25 @@
       },
       generateRoomId: () => {
         return generateRandomRoomId();
+      },
+      startQrScanner: () => {
+        startQrScanner();
+      },
+      stopQrScanner: () => {
+        stopQrScanner();
+      },
+      installApp: () => {
+        if (window.deferredPrompt) {
+          window.deferredPrompt.prompt();
+          window.deferredPrompt.userChoice.then(() => {
+            window.deferredPrompt = null;
+          }).catch(() => {});
+        } else if (typeof window.triggerTestInstall === "function") {
+          window.triggerTestInstall({ immediate: true });
+        } else {
+          const btn = document.getElementById("btn-pwa-install") || document.getElementById("btn-login-pwa-install");
+          if (btn) btn.click();
+        }
       }
     };
 
