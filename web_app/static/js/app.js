@@ -179,6 +179,8 @@
     btnComposerEmoji: document.getElementById("btn-composer-emoji"),
     emojiPopover: document.getElementById("emoji-popover"),
     emojiGrid: document.getElementById("emoji-grid"),
+    mentionsPopover: document.getElementById("mentions-popover"),
+    mentionsList: document.getElementById("mentions-list"),
     btnDisconnect: document.getElementById("btn-disconnect"),
 
     // WebRTC Audio/Video & Direct P2P File Elements
@@ -214,6 +216,10 @@
     webrtcIconMic: document.getElementById("webrtc-icon-mic"),
     btnWebrtcCam: document.getElementById("btn-webrtc-cam"),
     webrtcIconCam: document.getElementById("webrtc-icon-cam"),
+    btnWebrtcFlipCam: document.getElementById("btn-webrtc-flip-cam"),
+    webrtcIconFlipCam: document.getElementById("webrtc-icon-flip-cam"),
+    btnWebrtcMirrorCam: document.getElementById("btn-webrtc-mirror-cam"),
+    webrtcIconMirrorCam: document.getElementById("webrtc-icon-mirror-cam"),
     btnWebrtcEnd: document.getElementById("btn-webrtc-end"),
     webrtcIncomingModal: document.getElementById("webrtc-incoming-modal"),
     webrtcCallerName: document.getElementById("webrtc-caller-name"),
@@ -2121,6 +2127,7 @@
     e.preventDefault();
     stopTyping();
     toggleEmojiPopover(false);
+    closeMentionsPopover();
     const text = DOM.messageInput.value.trim();
     if (!text) return;
 
@@ -2242,6 +2249,203 @@
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
+  // =========================================================================
+  // @USERNAME MENTION / TAGGING AUTOCOMPLETE SYSTEM
+  // =========================================================================
+  const mentionsState = {
+    isOpen: false,
+    triggerIndex: -1,
+    query: "",
+    matches: [],
+    selectedIndex: 0
+  };
+
+  function getActiveParticipants() {
+    const list = [];
+    (state.onlineUsers || []).forEach((u) => {
+      let name = "";
+      if (typeof u === "string") name = u;
+      else if (u && typeof u === "object") name = u.username || "";
+      if (name && !list.some(n => n.toLowerCase() === name.toLowerCase())) {
+        list.push(name);
+      }
+    });
+    if (state.username && !list.some(n => n.toLowerCase() === state.username.toLowerCase())) {
+      list.unshift(state.username);
+    }
+    return list;
+  }
+
+  function checkMentionTrigger() {
+    const input = DOM.messageInput;
+    if (!input) return;
+
+    const cursorPos = input.selectionStart;
+    const textBefore = input.value.slice(0, cursorPos);
+
+    const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
+    if (!match) {
+      closeMentionsPopover();
+      return;
+    }
+
+    const query = match[1].toLowerCase();
+    const atOffset = match[0].startsWith("@") ? 0 : 1;
+    mentionsState.triggerIndex = match.index + atOffset;
+    mentionsState.query = query;
+
+    const participants = getActiveParticipants();
+    const filtered = participants.filter((user) =>
+      user.toLowerCase().includes(query)
+    );
+
+    if (filtered.length === 0) {
+      closeMentionsPopover();
+      return;
+    }
+
+    mentionsState.matches = filtered;
+    mentionsState.selectedIndex = 0;
+    renderMentionsPopover();
+  }
+
+  function renderMentionsPopover() {
+    if (!DOM.mentionsPopover || !DOM.mentionsList) return;
+
+    DOM.mentionsList.innerHTML = "";
+    mentionsState.matches.forEach((username, index) => {
+      const isMe = state.username && username.toLowerCase() === state.username.toLowerCase();
+      const isSelected = index === mentionsState.selectedIndex;
+      const bg = getAvatarGradient(username);
+      const initial = username.charAt(0).toUpperCase();
+
+      const item = document.createElement("div");
+      item.className = `mention-item ${isSelected ? "selected" : ""}`;
+      item.dataset.index = String(index);
+      item.dataset.username = username;
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", isSelected ? "true" : "false");
+
+      item.innerHTML = `
+        <div class="mention-item-avatar" style="background: ${bg};">${initial}</div>
+        <div class="mention-item-info">
+          <span class="mention-item-name">@${escapeHtml(username)}</span>
+          ${isMe ? '<span class="mention-item-tag">You</span>' : '<span class="mention-item-status">Active</span>'}
+        </div>
+      `;
+
+      item.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        chooseMention(username);
+      });
+
+      item.addEventListener("click", (e) => {
+        e.preventDefault();
+        chooseMention(username);
+      });
+
+      DOM.mentionsList.appendChild(item);
+    });
+
+    DOM.mentionsPopover.classList.remove("hidden");
+    mentionsState.isOpen = true;
+    scrollSelectedMentionIntoView();
+  }
+
+  function updateSelectedMentionUI() {
+    if (!DOM.mentionsList) return;
+    const items = DOM.mentionsList.querySelectorAll(".mention-item");
+    items.forEach((item, idx) => {
+      const isSelected = idx === mentionsState.selectedIndex;
+      item.classList.toggle("selected", isSelected);
+      item.setAttribute("aria-selected", isSelected ? "true" : "false");
+    });
+    scrollSelectedMentionIntoView();
+  }
+
+  function scrollSelectedMentionIntoView() {
+    if (!DOM.mentionsList) return;
+    const selectedEl = DOM.mentionsList.querySelector(".mention-item.selected");
+    if (selectedEl) {
+      selectedEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
+  function chooseMention(username) {
+    const input = DOM.messageInput;
+    if (!input) return;
+
+    const text = input.value;
+    const cursorPos = input.selectionStart;
+    const atIndex = mentionsState.triggerIndex;
+    if (atIndex < 0 || atIndex > text.length) return;
+
+    const before = text.substring(0, atIndex);
+    const after = text.substring(cursorPos);
+    const insertText = `@${username} `;
+
+    input.value = before + insertText + after;
+    const newPos = before.length + insertText.length;
+    input.focus();
+    input.setSelectionRange(newPos, newPos);
+
+    closeMentionsPopover();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function handleMentionsKeydown(e) {
+    if (!mentionsState.isOpen) return false;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (mentionsState.matches.length > 0) {
+        mentionsState.selectedIndex = (mentionsState.selectedIndex + 1) % mentionsState.matches.length;
+        updateSelectedMentionUI();
+      }
+      return true;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (mentionsState.matches.length > 0) {
+        mentionsState.selectedIndex = (mentionsState.selectedIndex - 1 + mentionsState.matches.length) % mentionsState.matches.length;
+        updateSelectedMentionUI();
+      }
+      return true;
+    }
+
+    if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (mentionsState.matches.length > 0) {
+        const selected = mentionsState.matches[mentionsState.selectedIndex];
+        if (selected) {
+          chooseMention(selected);
+        }
+      }
+      return true;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closeMentionsPopover();
+      return true;
+    }
+
+    return false;
+  }
+
+  function closeMentionsPopover() {
+    if (DOM.mentionsPopover) {
+      DOM.mentionsPopover.classList.add("hidden");
+    }
+    mentionsState.isOpen = false;
+    mentionsState.triggerIndex = -1;
+    mentionsState.query = "";
+    mentionsState.matches = [];
+    mentionsState.selectedIndex = 0;
+  }
+
   function appendChatMessage(sender, content, timestamp, isPrivate, peer, isDecryptError = false, messageId = null, replyTo = null) {
     if (DOM.emptyState) {
       DOM.emptyState.style.display = "none";
@@ -2360,7 +2564,26 @@
 
     const body = document.createElement("div");
     body.className = "msg-content" + (isDecryptError ? " msg-decrypt-error" : "");
-    body.textContent = content;
+
+    if (isDecryptError) {
+      body.textContent = content;
+    } else {
+      const safeEscaped = escapeHtml(content);
+      let isMentionedMe = false;
+      const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+      const renderedHtml = safeEscaped.replace(mentionRegex, (match, username) => {
+        const isCurrent = state.username && username.toLowerCase() === state.username.toLowerCase();
+        if (isCurrent) {
+          isMentionedMe = true;
+        }
+        return `<span class="mention-pill ${isCurrent ? 'mention-me' : ''} bg-emerald-500/20 text-emerald-400 font-medium px-1.5 py-0.5 rounded-md">@${username}</span>`;
+      });
+      body.innerHTML = renderedHtml;
+
+      if (isMentionedMe) {
+        bubble.classList.add("msg-mentioned");
+      }
+    }
     bubble.appendChild(body);
 
     DOM.messagesContainer.appendChild(bubble);
@@ -3327,6 +3550,10 @@
       if (DOM.webrtcLocalVideo) {
         DOM.webrtcLocalVideo.srcObject = stream;
       }
+      if (DOM.webrtcVideoGrid && callType === "video") {
+        DOM.webrtcVideoGrid.innerHTML = "";
+        renderVideoTile("local", state.username || "You", stream, true);
+      }
 
       // 2. Instantiate RTCPeerConnection
       const pc = new RTCPeerConnection(RTC_CONFIG);
@@ -3347,6 +3574,9 @@
           webrtcState.remoteStream = event.streams[0];
           if (DOM.webrtcRemoteVideo) {
             DOM.webrtcRemoteVideo.srcObject = event.streams[0];
+          }
+          if (DOM.webrtcVideoGrid && webrtcState.callType === "video") {
+            renderVideoTile(targetSid, targetName, event.streams[0], false);
           }
           if (DOM.webrtcConnectingBadge) {
             DOM.webrtcConnectingBadge.classList.add("hidden");
@@ -3525,17 +3755,126 @@
     }
   }
 
+  // Camera Switching & Self-View Mirroring Controls
+  let currentFacingMode = "user"; // "user" | "environment"
+  let isLocalSelfViewMirrored = false; // default false: natural unmirrored transform scaleX(1)
+
+  function updateLocalMirrorUI() {
+    const localTile = document.getElementById("video-tile-local");
+    if (localTile) {
+      localTile.classList.toggle("mirrored", isLocalSelfViewMirrored);
+    }
+    if (DOM.webrtcLocalVideo) {
+      DOM.webrtcLocalVideo.classList.toggle("mirrored", isLocalSelfViewMirrored);
+    }
+    if (DOM.btnWebrtcMirrorCam) {
+      DOM.btnWebrtcMirrorCam.classList.toggle("active-off", !isLocalSelfViewMirrored);
+    }
+  }
+
+  function toggleLocalMirror() {
+    isLocalSelfViewMirrored = !isLocalSelfViewMirrored;
+    updateLocalMirrorUI();
+    logActivity(`[WebRTC] Local self-view mirror set to: ${isLocalSelfViewMirrored ? 'Mirrored (scaleX(-1))' : 'Natural (scaleX(1))'}.`);
+  }
+
+  async function switchCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera switching requires a secure HTTPS context or localhost.");
+      return;
+    }
+
+    const nextFacingMode = currentFacingMode === "user" ? "environment" : "user";
+    try {
+      logActivity(`[WebRTC] Switching camera to ${nextFacingMode}...`);
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: nextFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+      } catch (fallbackErr) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: nextFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+      }
+
+      const newTrack = stream.getVideoTracks()[0];
+      if (!newTrack) return;
+
+      currentFacingMode = nextFacingMode;
+      if (currentFacingMode === "environment") {
+        isLocalSelfViewMirrored = false;
+      }
+
+      // Update mesh local stream and active senders
+      if (webrtcMesh.localStream) {
+        const oldTrack = webrtcMesh.localStream.getVideoTracks()[0];
+        if (oldTrack) {
+          oldTrack.stop();
+          webrtcMesh.localStream.removeTrack(oldTrack);
+        }
+        webrtcMesh.localStream.addTrack(newTrack);
+
+        Object.values(webrtcMesh.peers).forEach((peer) => {
+          if (peer.pc) {
+            const sender = peer.pc.getSenders().find((s) => s.track && s.track.kind === "video");
+            if (sender) {
+              sender.replaceTrack(newTrack).catch((e) => console.warn("replaceTrack failed:", e));
+            }
+          }
+        });
+      }
+
+      // Update 1-on-1 local stream and active senders
+      if (webrtcState.localStream) {
+        const oldTrack = webrtcState.localStream.getVideoTracks()[0];
+        if (oldTrack) {
+          oldTrack.stop();
+          webrtcState.localStream.removeTrack(oldTrack);
+        }
+        webrtcState.localStream.addTrack(newTrack);
+        if (webrtcState.peerConnection) {
+          const sender = webrtcState.peerConnection.getSenders().find((s) => s.track && s.track.kind === "video");
+          if (sender) {
+            sender.replaceTrack(newTrack).catch((e) => console.warn("replaceTrack failed:", e));
+          }
+        }
+      }
+
+      // Refresh local video display elements
+      const localTile = document.getElementById("video-tile-local");
+      if (localTile) {
+        const video = localTile.querySelector("video");
+        if (video) {
+          video.srcObject = webrtcMesh.localStream || webrtcState.localStream;
+          video.play().catch(() => {});
+        }
+      }
+      if (DOM.webrtcLocalVideo) {
+        DOM.webrtcLocalVideo.srcObject = webrtcMesh.localStream || webrtcState.localStream;
+      }
+
+      updateLocalMirrorUI();
+      logActivity(`[WebRTC] Successfully switched to ${currentFacingMode === "user" ? "Front (Selfie)" : "Rear (Environment)"} camera.`);
+    } catch (err) {
+      logActivity(`[WebRTC Switch Camera Error] ${err.message}`);
+      appendSystemMessage(`⚠️ Camera switch failed: ${err.message}`);
+    }
+  }
+
   function renderVideoTile(id, name, stream, isLocal = false) {
     if (!DOM.webrtcVideoGrid) return;
     let tile = document.getElementById(`video-tile-${id}`);
     if (!tile) {
       tile = document.createElement("div");
       tile.id = `video-tile-${id}`;
-      tile.className = `video-tile ${isLocal ? "local-tile" : ""}`;
+      tile.className = `video-tile ${isLocal ? "local-tile" : ""} ${isLocal && isLocalSelfViewMirrored ? "mirrored" : ""}`;
       const initial = (name || "P").charAt(0).toUpperCase();
       const bg = getAvatarGradient(name || "P");
       tile.innerHTML = `
-        <video class="tile-video" autoplay playsinline ${isLocal ? "muted" : ""}></video>
+        <video class="tile-video webrtc-tile-video" autoplay playsinline ${isLocal ? "muted" : ""}></video>
         <div class="tile-avatar-fallback hidden" style="background: ${bg};">${initial}</div>
         <div class="tile-label">${name}${isLocal ? " (You)" : ""}</div>
         <div class="tile-speaking-circle"></div>
@@ -4184,6 +4523,10 @@
       if (DOM.webrtcLocalVideo) {
         DOM.webrtcLocalVideo.srcObject = stream;
       }
+      if (DOM.webrtcVideoGrid && callType === "video") {
+        DOM.webrtcVideoGrid.innerHTML = "";
+        renderVideoTile("local", state.username || "You", stream, true);
+      }
 
       // 2. Instantiate RTCPeerConnection
       const pc = new RTCPeerConnection(RTC_CONFIG);
@@ -4202,6 +4545,9 @@
           webrtcState.remoteStream = event.streams[0];
           if (DOM.webrtcRemoteVideo) {
             DOM.webrtcRemoteVideo.srcObject = event.streams[0];
+          }
+          if (DOM.webrtcVideoGrid && webrtcState.callType === "video") {
+            renderVideoTile(senderSid, senderName, event.streams[0], false);
           }
         }
       };
@@ -4410,6 +4756,11 @@
       DOM.webrtcCallOverlay.classList.add("hidden");
       DOM.webrtcCallOverlay.classList.remove("minimized");
     }
+    if (DOM.webrtcVideoGrid) {
+      DOM.webrtcVideoGrid.innerHTML = "";
+    }
+    currentFacingMode = "user";
+    isLocalSelfViewMirrored = false;
     if (DOM.webrtcIncomingModal) {
       DOM.webrtcIncomingModal.classList.add("hidden");
     }
@@ -5003,8 +5354,14 @@
       DOM.chatForm.addEventListener("submit", handleSendMessage);
     }
     if (DOM.messageInput) {
-      DOM.messageInput.addEventListener("input", handleInputTyping);
+      DOM.messageInput.addEventListener("input", () => {
+        checkMentionTrigger();
+        handleInputTyping();
+      });
       DOM.messageInput.addEventListener("keydown", (e) => {
+        if (handleMentionsKeydown(e)) {
+          return;
+        }
         if (e.key === "Enter") {
           stopTyping();
         } else if (e.key === "Escape" && activeReply) {
@@ -5014,6 +5371,14 @@
         }
       });
     }
+
+    document.addEventListener("click", (e) => {
+      if (mentionsState.isOpen) {
+        if (!e.target.closest("#mentions-popover") && e.target !== DOM.messageInput) {
+          closeMentionsPopover();
+        }
+      }
+    });
 
     if (DOM.btnCancelReply) {
       DOM.btnCancelReply.addEventListener("click", cancelReply);
@@ -5242,6 +5607,18 @@
       DOM.btnWebrtcCam.addEventListener("click", () => {
         if (webrtcMesh.active) toggleMeshCamera();
         else toggleWebrtcCam();
+      });
+    }
+
+    if (DOM.btnWebrtcFlipCam) {
+      DOM.btnWebrtcFlipCam.addEventListener("click", () => {
+        switchCamera();
+      });
+    }
+
+    if (DOM.btnWebrtcMirrorCam) {
+      DOM.btnWebrtcMirrorCam.addEventListener("click", () => {
+        toggleLocalMirror();
       });
     }
 
