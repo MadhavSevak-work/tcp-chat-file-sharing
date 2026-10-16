@@ -1,6 +1,6 @@
 /**
  * NetChat Live — React 18 & Tailwind CSS UI Component
- * Exact 1:1 implementation matching the approved reference desktop and mobile designs.
+ * Exact 1:1 match of approved desktop and mobile designs with live Socket.IO state & RESTORED Landing Page.
  */
 
 (function () {
@@ -81,12 +81,53 @@
         return h("svg", { className, viewBox: "0 0 24 24", fill: "currentColor" },
           h("path", { d: "M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" })
         );
+      case "refresh":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }),
+          h("path", { d: "M21 3v5h-5" }),
+          h("path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }),
+          h("path", { d: "M8 16H3v5" })
+        );
+      case "eye":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" }),
+          h("circle", { cx: "12", cy: "12", r: "3" })
+        );
+      case "eye-off":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M9.88 9.88a3 3 0 1 0 4.24 4.24" }),
+          h("path", { d: "M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" }),
+          h("path", { d: "M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" }),
+          h("line", { x1: "2", x2: "22", y1: "2", y2: "22" })
+        );
+      case "shield":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("path", { d: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" })
+        );
       default:
         return null;
     }
   }
 
-  // User Avatar Component with Image or Gradient Fallback
+  // Deterministic avatar gradient generator from name
+  function getAvatarGradient(name = "") {
+    const gradients = [
+      "from-emerald-600 to-teal-800",
+      "from-blue-600 to-indigo-800",
+      "from-purple-600 to-violet-800",
+      "from-rose-600 to-pink-800",
+      "from-amber-600 to-orange-800",
+      "from-cyan-600 to-blue-800"
+    ];
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+      hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % gradients.length;
+    return gradients[idx];
+  }
+
+  // User Avatar Component with Image or Deterministic Gradient Fallback
   function Avatar({ name, src, size = "md", isSpeaking = false, isMuted = false, isLocal = false }) {
     const sizeClasses = {
       sm: "w-5 h-5 text-[10px]",
@@ -95,6 +136,7 @@
     }[size] || "w-7 h-7 text-xs";
 
     const initial = (name || "U").charAt(0).toUpperCase();
+    const gradient = getAvatarGradient(name);
 
     return h("div", { className: `relative shrink-0 rounded-full ${sizeClasses}` },
       src
@@ -105,7 +147,7 @@
           })
         : h("div", {
             className: `w-full h-full rounded-full flex items-center justify-center font-semibold text-white ${
-              isLocal ? "bg-zinc-800 border border-zinc-700" : "bg-gradient-to-br from-emerald-600 to-teal-800"
+              isLocal ? "bg-zinc-800 border border-zinc-700" : `bg-gradient-to-br ${gradient}`
             }`
           }, isLocal ? "" : initial),
       isSpeaking && h("div", {
@@ -145,77 +187,429 @@
     return parts;
   }
 
-  // Main NetChat Application Component
+  // ===========================================================================
+  // 1. RESTORED & RE-STYLED LANDING / ENTRY SCREEN (zinc-950 minimalist design)
+  // ===========================================================================
+  function LandingScreen({ isConnected, connectionStatus, onJoinSuccess }) {
+    const [mode, setMode] = useState("create"); // "create" | "join"
+    const [nickname, setNickname] = useState("");
+    const [roomId, setRoomId] = useState("");
+    const [passkey, setPasskey] = useState("");
+    const [showPasskey, setShowPasskey] = useState(false);
+    const [errorMsg, setErrorMsg] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    // Auto-detect invite link parameters (?room=... & pin=...)
+    useEffect(() => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const urlRoom = params.get("room");
+        const urlPin = params.get("pin");
+        if (urlRoom) {
+          setRoomId(urlRoom);
+          setMode("join");
+        }
+        if (urlPin) {
+          setPasskey(urlPin);
+        }
+      } catch (_) {}
+    }, []);
+
+    const handleGenerateRoom = () => {
+      setErrorMsg(null);
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.generateRoomId === "function") {
+        setRoomId(window.__NETCHAT_BRIDGE__.generateRoomId());
+      } else {
+        const adjectives = ["swift", "quiet", "shadow", "cyber", "hyper", "neon", "delta"];
+        const nouns = ["node", "relay", "packet", "nexus", "squad", "stream", "vault"];
+        const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const randomNoun = nouns[Math.floor(Math.random() * nouns.length)];
+        const randomNum = Math.floor(100 + Math.random() * 900);
+        setRoomId(`${randomAdj}-${randomNoun}-${randomNum}`);
+      }
+    };
+
+    const handleSubmit = (e) => {
+      if (e && e.preventDefault) e.preventDefault();
+      setErrorMsg(null);
+
+      const nick = nickname.trim();
+      const room = roomId.trim().toLowerCase();
+      const pin = passkey.trim();
+
+      if (!nick) {
+        setErrorMsg("Please enter your nickname.");
+        return;
+      }
+      if (!room) {
+        setErrorMsg("Please enter or generate a Room ID.");
+        return;
+      }
+      if (!pin) {
+        setErrorMsg("Please enter a Room Passkey.");
+        return;
+      }
+
+      setIsLoading(true);
+
+      const callback = (res) => {
+        setIsLoading(false);
+        if (res && res.status === "success") {
+          onJoinSuccess({ username: nick, roomId: room, passkey: pin });
+        } else {
+          setErrorMsg((res && res.message) ? res.message : "Failed to enter room. Check credentials.");
+        }
+      };
+
+      if (window.__NETCHAT_BRIDGE__) {
+        if (mode === "create") {
+          window.__NETCHAT_BRIDGE__.createRoom(nick, room, pin, callback);
+        } else {
+          window.__NETCHAT_BRIDGE__.joinRoom(nick, room, pin, callback);
+        }
+      } else {
+        // Fallback simulation if bridge is not ready
+        setTimeout(() => {
+          setIsLoading(false);
+          onJoinSuccess({ username: nick, roomId: room, passkey: pin });
+        }, 500);
+      }
+    };
+
+    const statusDotClass = isConnected
+      ? "bg-emerald-500 animate-pulse"
+      : (connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500");
+
+    const statusText = isConnected
+      ? "Connected"
+      : (connectionStatus === "connecting" ? "Connecting..." : "Offline");
+
+    return h("div", { className: "min-h-screen w-screen flex flex-col items-center justify-center bg-zinc-950 p-4 text-zinc-100 select-none relative overflow-hidden font-sans" },
+      // Background subtle ambient radial glow
+      h("div", { className: "absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/20 via-zinc-950/80 to-zinc-950 pointer-events-none" }),
+
+      // Centered Card Container (max-w-md w-full, bg-zinc-900, border border-zinc-800, rounded-2xl)
+      h("div", { className: "relative bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl z-10 backdrop-blur-xl" },
+        // Brand Header & Connection Pill
+        h("div", { className: "flex items-center justify-between mb-2" },
+          h("div", { className: "flex items-center gap-2" },
+            h("div", { className: "p-2 bg-zinc-800 border border-zinc-700/60 rounded-xl flex items-center justify-center text-emerald-400" },
+              h(Icon, { name: "lock", className: "w-5 h-5" })
+            ),
+            h("div", null,
+              h("h1", { className: "text-lg font-bold text-zinc-100 tracking-tight leading-none" }, "NetChat Live"),
+              h("span", { className: "text-[11px] text-zinc-400 font-normal" }, "Server Based Chatting Platform")
+            )
+          ),
+          // Live status badge
+          h("div", {
+            className: `px-2.5 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 border ${
+              isConnected ? "bg-emerald-950/50 text-emerald-400 border-emerald-500/30" : "bg-zinc-800/80 text-zinc-400 border-zinc-700"
+            }`
+          },
+            h("span", { className: `w-2 h-2 rounded-full ${statusDotClass}` }),
+            h("span", null, statusText)
+          )
+        ),
+
+        // Subtitle
+        h("p", { className: "text-xs text-zinc-400 mb-6 leading-relaxed" },
+          "Minimalist, zero-retention ephemeral chat with end-to-end encrypted messaging and peer-to-peer audio calls."
+        ),
+
+        // Clean Form Tabs (Create Room / Join Room)
+        h("div", { className: "grid grid-cols-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl mb-6 shadow-inner" },
+          h("button", {
+            type: "button",
+            onClick: () => { setMode("create"); setErrorMsg(null); },
+            className: `py-2 text-xs font-semibold rounded-lg transition-all ${
+              mode === "create"
+                ? "bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`
+          }, "Create Room"),
+          h("button", {
+            type: "button",
+            onClick: () => { setMode("join"); setErrorMsg(null); },
+            className: `py-2 text-xs font-semibold rounded-lg transition-all ${
+              mode === "join"
+                ? "bg-zinc-800 text-zinc-100 shadow-sm border border-zinc-700/50"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`
+          }, "Join Room")
+        ),
+
+        // Error message banner
+        errorMsg && h("div", { className: "bg-red-950/40 border border-red-800/60 text-red-300 text-xs px-3.5 py-2.5 rounded-xl mb-4 flex items-center gap-2 animate-in fade-in duration-150" },
+          h(Icon, { name: "power", className: "w-4 h-4 shrink-0 text-red-400" }),
+          h("span", { className: "flex-1" }, errorMsg)
+        ),
+
+        // Form Fields
+        h("form", { onSubmit: handleSubmit, className: "space-y-4" },
+          // Nickname Field
+          h("div", null,
+            h("label", { className: "text-xs font-medium text-zinc-400 mb-1.5 block" }, "Nickname"),
+            h("input", {
+              type: "text",
+              value: nickname,
+              onChange: (e) => setNickname(e.target.value),
+              placeholder: "e.g., Alex, Sam, DevMaster",
+              autoFocus: true,
+              style: { backgroundColor: "#09090b", color: "#f4f4f5" },
+              className: "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none transition-all"
+            })
+          ),
+
+          // Room ID Field
+          h("div", null,
+            h("label", { className: "text-xs font-medium text-zinc-400 mb-1.5 block" }, "Room ID"),
+            mode === "create"
+              ? h("div", { className: "flex items-center gap-2" },
+                  h("input", {
+                    type: "text",
+                    value: roomId,
+                    onChange: (e) => setRoomId(e.target.value.toLowerCase()),
+                    placeholder: "e.g., dev-squad, stealth-ops",
+                    style: { backgroundColor: "#09090b", color: "#f4f4f5" },
+                    className: "flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none font-mono transition-all"
+                  }),
+                  h("button", {
+                    type: "button",
+                    onClick: handleGenerateRoom,
+                    title: "Generate Random Room ID",
+                    className: "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white px-3 py-2.5 rounded-xl text-xs font-medium transition-colors border border-zinc-700/50 flex items-center gap-1.5 shrink-0"
+                  },
+                    h(Icon, { name: "refresh", className: "w-3.5 h-3.5" }),
+                    h("span", null, "Random")
+                  )
+                )
+              : h("input", {
+                  type: "text",
+                  value: roomId,
+                  onChange: (e) => setRoomId(e.target.value.toLowerCase()),
+                  placeholder: "Enter existing Room ID",
+                  style: { backgroundColor: "#09090b", color: "#f4f4f5" },
+                  className: "w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20 outline-none font-mono transition-all"
+                })
+          ),
+
+          // Room Passkey / PIN Field
+          h("div", null,
+            h("div", { className: "flex items-center justify-between mb-1.5" },
+              h("label", { className: "text-xs font-medium text-zinc-400 block" }, "Room Passkey (PIN)"),
+              h("span", { className: "text-[10px] text-zinc-500 flex items-center gap-1" },
+                h(Icon, { name: "shield", className: "w-2.5 h-2.5 text-emerald-500/70" }),
+                "Zero-knowledge E2EE"
+              )
+            ),
+            h("div", {
+              className: "relative flex items-center bg-zinc-950 border border-zinc-800 rounded-xl focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all"
+            },
+              h("input", {
+                type: showPasskey ? "text" : "password",
+                value: passkey,
+                onChange: (e) => setPasskey(e.target.value),
+                placeholder: "Room PIN / secret passkey",
+                style: { backgroundColor: "transparent", color: "#f4f4f5", border: "none", outline: "none" },
+                className: "flex-1 !bg-transparent px-3.5 py-2.5 text-sm !text-zinc-100 placeholder-zinc-500 outline-none font-mono"
+              }),
+              h("button", {
+                type: "button",
+                onClick: () => setShowPasskey((prev) => !prev),
+                title: showPasskey ? "Hide Passkey" : "Show Passkey",
+                className: "p-2.5 text-zinc-400 hover:text-zinc-200 transition-colors"
+              }, h(Icon, { name: showPasskey ? "eye-off" : "eye", className: "w-4 h-4" }))
+            )
+          ),
+
+          // Submit Button
+          h("button", {
+            type: "submit",
+            disabled: isLoading,
+            className: "mt-6 w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-semibold text-sm rounded-xl transition-all shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          },
+            h(Icon, { name: "lock", className: "w-4 h-4" }),
+            h("span", null, isLoading
+              ? "Connecting..."
+              : (mode === "create" ? "Create & Enter Room" : "Join Encrypted Room")
+            )
+          )
+        )
+      ),
+
+      // Footer disclaimer
+      h("div", { className: "mt-6 text-center text-xs text-zinc-500 relative z-10" },
+        "Pure peer-to-peer WebRTC & WebSocket mesh • No chats are saved to disk or server logs"
+      )
+    );
+  }
+
+  // ===========================================================================
+  // 2. MAIN NETCHAT LIVE APPLICATION (LIVE WIRED STATE & CONDITIONAL CALL RIBBON)
+  // ===========================================================================
   function NetChatApp() {
-    // State management
-    const [roomId, setRoomId] = useState("dev-squad");
-    const [username, setUsername] = useState("You");
-    const [isConnected, setIsConnected] = useState(true);
+    // Session state
+    const [inRoom, setInRoom] = useState(false);
+    const [roomId, setRoomId] = useState("");
+    const [username, setUsername] = useState("");
+    const [isConnected, setIsConnected] = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState("connecting");
     const [isMembersOpen, setIsMembersOpen] = useState(true);
-    const [isVoiceCallActive, setIsVoiceCallActive] = useState(true);
-    const [isVoiceMuted, setIsVoiceMuted] = useState(false);
-    const [isCameraOff, setIsCameraOff] = useState(true);
     const [toastMessage, setToastMessage] = useState(null);
 
-    // Initial mock/reference members matching screenshots exactly
-    const [members, setMembers] = useState([
-      { id: "alex", name: "Alex", isOnline: true, isSpeaking: true, isMuted: false, avatar: "/icons/avatar-alex.jpg" },
-      { id: "sam", name: "Sam", isOnline: true, isSpeaking: false, isMuted: true, avatar: "/icons/avatar-sam.jpg" },
-      { id: "you", name: "You", isOnline: true, isSpeaking: false, isMuted: false, isLocal: true, avatar: null }
-    ]);
+    // Call Ribbon state (MUST NOT be visible by default)
+    const [isCallActive, setIsCallActive] = useState(false);
+    const [callType, setCallType] = useState("audio");
+    const [meshPeers, setMeshPeers] = useState([]);
+    const [isVoiceMuted, setIsVoiceMuted] = useState(false);
+    const [isCameraOff, setIsCameraOff] = useState(false);
 
-    // Initial messages matching reference screenshots exactly
-    const [messages, setMessages] = useState([
-      { id: 1, sender: "Alex", text: "@Alex Yogat, can you sopy the nlibit with them?", isMe: false, avatar: "/icons/avatar-alex.jpg" },
-      { id: 2, sender: "You", text: "Hirv, I'm updated. Just pulled the patch.", isMe: true },
-      { id: 3, sender: "Alex", text: "@Alex I hope worning and break an out he workt!", isMe: false, avatar: "/icons/avatar-alex.jpg" },
-      { id: 4, sender: "You", text: "Just pulled the patch. @Sam flinwpatch.", isMe: true },
-      { id: 5, sender: "You", text: "I havet every the patch it aquals.", isMe: true }
-    ]);
+    // Live Room Users (for right sidebar and @mention autocomplete)
+    const [roomUsers, setRoomUsers] = useState([]);
 
-    // Chat input & autocomplete state
-    const [inputValue, setInputValue] = useState("Just pulled the patch. @");
-    const [isMentionOpen, setIsMentionOpen] = useState(true);
+    // Live Messages state (empty initially, mapped dynamically)
+    const [messages, setMessages] = useState([]);
+
+    // Chat input & mention autocomplete state
+    const [inputValue, setInputValue] = useState("");
+    const [isMentionOpen, setIsMentionOpen] = useState(false);
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
 
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
-    // Filter participants for mention popover
-    const mentionMatches = members
-      .filter((m) => !m.isLocal)
-      .filter((m) => m.name.toLowerCase().includes(mentionQuery.toLowerCase()));
+    // Toast helper
+    const showToast = (msg) => {
+      setToastMessage(msg);
+      setTimeout(() => setToastMessage(null), 3000);
+    };
 
-    // Keep active participants synced from legacy window.NetChatGlobalState if connected
+    // Filter participants for mention popover (excluding local user)
+    const mentionMatches = roomUsers
+      .filter((u) => !u.isLocal)
+      .filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase()));
+
+    // Synchronize initial state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
-      const interval = setInterval(() => {
-        if (window.__NETCHAT_STATE__) {
-          const s = window.__NETCHAT_STATE__;
-          if (s.roomId) setRoomId(s.roomId);
-          if (s.username) setUsername(s.username);
+      const syncFromBridge = () => {
+        if (window.__NETCHAT_BRIDGE__) {
+          const s = window.__NETCHAT_BRIDGE__.getState();
+          setIsConnected(s.isConnected);
+          setConnectionStatus(s.connectionStatus);
+          setIsCallActive(s.isCallActive);
+          setCallType(s.callType);
+          setIsVoiceMuted(s.isMuted);
+          setIsCameraOff(s.isCameraOff);
+          setMeshPeers(s.meshPeers || []);
+
+          if (s.roomId) {
+            setRoomId(s.roomId);
+            setInRoom(true);
+          }
+          if (s.username) {
+            setUsername(s.username);
+          }
+
           if (Array.isArray(s.onlineUsers) && s.onlineUsers.length > 0) {
             const roster = s.onlineUsers.map((u) => {
               const name = typeof u === "string" ? u : (u.username || "Peer");
-              const isLocal = name.toLowerCase() === (s.username || "you").toLowerCase();
+              const isLocal = name.toLowerCase() === (s.username || "").toLowerCase();
               return {
                 id: name.toLowerCase(),
                 name: name,
                 isOnline: true,
-                isSpeaking: false,
-                isMuted: false,
                 isLocal: isLocal,
-                avatar: name.toLowerCase() === "alex" ? "/icons/avatar-alex.jpg" : (name.toLowerCase() === "sam" ? "/icons/avatar-sam.jpg" : null)
+                avatar: null
               };
             });
-            setMembers(roster);
+            setRoomUsers(roster);
           }
         }
-      }, 1000);
-      return () => clearInterval(interval);
-    }, []);
+      };
 
-    // Handle input typing & detect '@'
+      syncFromBridge();
+      const interval = setInterval(syncFromBridge, 1000);
+
+      // Listen for reactive CustomEvents from app.js
+      const onConnectionChanged = (e) => {
+        if (e.detail) {
+          setIsConnected(e.detail.isConnected);
+          setConnectionStatus(e.detail.status);
+        }
+      };
+
+      const onNewMessage = (e) => {
+        if (e.detail) {
+          setMessages((prev) => [...prev, e.detail]);
+          setTimeout(() => {
+            if (messagesEndRef.current) {
+              messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+            }
+          }, 30);
+        }
+      };
+
+      const onUsersUpdated = (e) => {
+        if (Array.isArray(e.detail)) {
+          const roster = e.detail.map((u) => {
+            const name = typeof u === "string" ? u : (u.username || "Peer");
+            const isLocal = name.toLowerCase() === (username || "").toLowerCase();
+            return {
+              id: name.toLowerCase(),
+              name: name,
+              isOnline: true,
+              isLocal: isLocal,
+              avatar: null
+            };
+          });
+          setRoomUsers(roster);
+        }
+      };
+
+      const onRoomJoined = (e) => {
+        if (e.detail) {
+          setRoomId(e.detail.roomId);
+          setUsername(e.detail.username);
+          setInRoom(true);
+        }
+      };
+
+      const onRoomLeft = () => {
+        setInRoom(false);
+        setRoomId("");
+        setMessages([]);
+        setRoomUsers([]);
+        setIsCallActive(false);
+      };
+
+      const onCallChanged = (e) => {
+        if (e.detail) {
+          setIsCallActive(Boolean(e.detail.active));
+          if (e.detail.callType) setCallType(e.detail.callType);
+        }
+      };
+
+      window.addEventListener("netchat:connection_changed", onConnectionChanged);
+      window.addEventListener("netchat:new_message", onNewMessage);
+      window.addEventListener("netchat:users_updated", onUsersUpdated);
+      window.addEventListener("netchat:room_joined", onRoomJoined);
+      window.addEventListener("netchat:room_left", onRoomLeft);
+      window.addEventListener("netchat:call_changed", onCallChanged);
+
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener("netchat:connection_changed", onConnectionChanged);
+        window.removeEventListener("netchat:new_message", onNewMessage);
+        window.removeEventListener("netchat:users_updated", onUsersUpdated);
+        window.removeEventListener("netchat:room_joined", onRoomJoined);
+        window.removeEventListener("netchat:room_left", onRoomLeft);
+        window.removeEventListener("netchat:call_changed", onCallChanged);
+      };
+    }, [username]);
+
+    // Handle input typing & detect '@' for mention popover
     const handleInputChange = (e) => {
       const val = e.target.value;
       setInputValue(val);
@@ -298,21 +692,12 @@
       const trimmed = inputValue.trim();
       if (!trimmed) return;
 
-      const newMsg = {
-        id: Date.now(),
-        sender: username || "You",
-        text: trimmed,
-        isMe: true
-      };
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendMessage === "function") {
+        window.__NETCHAT_BRIDGE__.sendMessage(trimmed);
+      }
 
-      setMessages((prev) => [...prev, newMsg]);
       setInputValue("");
       setIsMentionOpen(false);
-
-      // Trigger legacy socket emit if active
-      if (window.__NETCHAT_SOCKET__ && typeof window.__NETCHAT_SEND__ === "function") {
-        window.__NETCHAT_SEND__(trimmed);
-      }
 
       setTimeout(() => {
         if (messagesEndRef.current) {
@@ -326,42 +711,92 @@
       const url = window.location.href;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(url).then(() => {
-          showToast("Room invite link copied!");
+          showToast("Room invite link copied to clipboard!");
         }).catch(() => {});
       } else {
         showToast(`Room: ${roomId}`);
       }
     };
 
-    const showToast = (msg) => {
-      setToastMessage(msg);
-      setTimeout(() => setToastMessage(null), 3000);
-    };
-
-    // Header actions
+    // Voice / Video Call Toggles
     const handleToggleVoice = () => {
-      setIsVoiceCallActive((prev) => !prev);
-      if (window.__NETCHAT_TOGGLE_CALL__) {
-        window.__NETCHAT_TOGGLE_CALL__("audio");
+      if (isCallActive) {
+        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
+        setIsCallActive(false);
+      } else {
+        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.startCall("audio");
+        setIsCallActive(true);
+        setCallType("audio");
       }
     };
 
     const handleToggleVideo = () => {
-      setIsVoiceCallActive(true);
-      if (window.__NETCHAT_TOGGLE_CALL__) {
-        window.__NETCHAT_TOGGLE_CALL__("video");
+      if (isCallActive && callType === "video") {
+        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
+        setIsCallActive(false);
+      } else {
+        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.startCall("video");
+        setIsCallActive(true);
+        setCallType("video");
       }
+    };
+
+    const handleToggleMute = () => {
+      if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.toggleMute();
+      setIsVoiceMuted((prev) => !prev);
+    };
+
+    const handleToggleCamera = () => {
+      if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.toggleCamera();
+      setIsCameraOff((prev) => !prev);
+    };
+
+    const handleEndCall = () => {
+      if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
+      setIsCallActive(false);
     };
 
     const handleDisconnect = () => {
       if (confirm("Disconnect and leave this room?")) {
-        if (window.__NETCHAT_DISCONNECT__) {
-          window.__NETCHAT_DISCONNECT__();
-        } else {
-          window.location.reload();
+        if (window.__NETCHAT_BRIDGE__) {
+          window.__NETCHAT_BRIDGE__.disconnect();
         }
+        setInRoom(false);
+        setRoomId("");
+        setMessages([]);
+        setRoomUsers([]);
       }
     };
+
+    // If not in a room, render the restored & re-styled Landing Screen
+    if (!inRoom) {
+      return h(LandingScreen, {
+        isConnected: isConnected,
+        connectionStatus: connectionStatus,
+        onJoinSuccess: ({ username: u, roomId: r }) => {
+          setUsername(u);
+          setRoomId(r);
+          setInRoom(true);
+        }
+      });
+    }
+
+    // Dynamic connection dot styling
+    const headerDotClass = isConnected
+      ? "bg-emerald-500 animate-pulse ring-2 ring-emerald-500/20"
+      : (connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500");
+
+    // Dynamic list of call participants: local user + connected mesh peers
+    const activeCallParticipants = [
+      { id: "local", name: username || "You", isLocal: true, isSpeaking: false, isMuted: isVoiceMuted },
+      ...meshPeers.map((p) => ({
+        id: p.id,
+        name: p.name,
+        isLocal: false,
+        isSpeaking: p.isSpeaking,
+        isMuted: p.isMuted
+      }))
+    ];
 
     return h("div", { className: "h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none" },
 
@@ -372,7 +807,10 @@
         // Left Brand
         h("div", { className: "flex items-center gap-1.5" },
           h("span", { className: "font-semibold text-zinc-100 text-lg tracking-tight" }, "NetChat Live"),
-          h("span", { className: "w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block ml-1.5 ring-2 ring-emerald-500/20 animate-pulse", title: "Connected" })
+          h("span", {
+            className: `w-2.5 h-2.5 rounded-full ${headerDotClass} inline-block ml-1.5`,
+            title: isConnected ? "Connected" : connectionStatus
+          })
         ),
 
         // Center Room Pill
@@ -395,16 +833,24 @@
           h("button", {
             type: "button",
             onClick: handleToggleVoice,
-            title: "Start Voice Call",
-            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+            title: isCallActive && callType === "audio" ? "Leave Voice Call" : "Start Voice Call",
+            className: `p-2 rounded-lg transition-colors border border-transparent ${
+              isCallActive && callType === "audio"
+                ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
+                : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
+            }`
           }, h(Icon, { name: "phone", className: "w-4 h-4" })),
 
           // Button 3 - Video Call
           h("button", {
             type: "button",
             onClick: handleToggleVideo,
-            title: "Start Video Call",
-            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50"
+            title: isCallActive && callType === "video" ? "Leave Video Call" : "Start Video Call",
+            className: `p-2 rounded-lg transition-colors border border-transparent ${
+              isCallActive && callType === "video"
+                ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
+                : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
+            }`
           }, h(Icon, { name: "video", className: "w-4 h-4" })),
 
           // Button 4 - Members Sidebar Toggle (with top-right notification badge)
@@ -417,7 +863,7 @@
             h(Icon, { name: "users", className: "w-4 h-4" }),
             h("span", {
               className: "absolute -top-1 -right-1 bg-zinc-700 text-zinc-200 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-zinc-950 shadow-sm"
-            }, members.length)
+            }, roomUsers.length)
           ),
 
           // Button 5 - Disconnect
@@ -431,24 +877,28 @@
       ),
 
       // =======================================================================
-      // 2. ACTIVE VOICE CALL RIBBON (Directly below header, above chat feed)
+      // 2. ACTIVE VOICE CALL RIBBON (Conditionally Rendered: ONLY when call is active)
       // =======================================================================
-      isVoiceCallActive && h("div", { className: "w-full bg-zinc-950/80 border-b border-zinc-800/80 px-4 py-2.5 flex items-center justify-between gap-4 overflow-x-auto shrink-0 backdrop-blur-md z-20" },
-        // Left (Status & Active Participants)
+      isCallActive && h("div", { className: "w-full bg-zinc-950/80 border-b border-zinc-800/80 px-4 py-2.5 flex items-center justify-between gap-4 overflow-x-auto shrink-0 backdrop-blur-md z-20 animate-in fade-in slide-in-from-top-2 duration-150" },
+        // Left (Status & Active Participants from WebRTC Mesh)
         h("div", { className: "flex items-center gap-3 min-w-0 overflow-x-auto py-0.5" },
-          h("span", { className: "text-xs font-medium text-zinc-400 whitespace-nowrap hidden sm:inline" }, "Active Voice Call"),
-          // Active Speaker (Alex)
-          h("div", { className: "flex items-center gap-2 bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs px-2.5 py-1 rounded-full shrink-0 shadow-sm" },
-            h(Avatar, { name: "Alex", src: "/icons/avatar-alex.jpg", size: "sm", isSpeaking: true }),
-            h("span", { className: "font-medium" }, "Alex")
+          h("span", { className: "text-xs font-medium text-zinc-400 whitespace-nowrap hidden sm:inline" },
+            callType === "video" ? "Active Video Call" : "Active Voice Call"
           ),
-          // Muted Participant (Sam)
-          h("div", { className: "flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 py-1 rounded-full shrink-0" },
-            h(Avatar, { name: "Sam", src: "/icons/avatar-sam.jpg", size: "sm", isMuted: true }),
-            h("span", { className: "font-medium" }, "Sam")
-          ),
-          // Self / Others
-          h("div", { className: "text-xs text-zinc-400 px-2 py-1 shrink-0" }, "You")
+          activeCallParticipants.map((p) => {
+            const isSpeaking = p.isSpeaking;
+            return h("div", {
+              key: p.id,
+              className: `flex items-center gap-2 text-xs px-2.5 py-1 rounded-full shrink-0 shadow-sm transition-all ${
+                isSpeaking
+                  ? "bg-emerald-950/40 border border-emerald-500 text-emerald-300"
+                  : "bg-zinc-900 border border-zinc-800 text-zinc-300"
+              }`
+            },
+              h(Avatar, { name: p.name, size: "sm", isSpeaking: isSpeaking, isMuted: p.isMuted, isLocal: p.isLocal }),
+              h("span", { className: "font-medium" }, p.name)
+            );
+          })
         ),
 
         // Right (Call Control Buttons)
@@ -456,7 +906,7 @@
           // Mute Toggle
           h("button", {
             type: "button",
-            onClick: () => setIsVoiceMuted((prev) => !prev),
+            onClick: handleToggleMute,
             className: `bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors ${
               isVoiceMuted ? "border-red-900/60 text-red-400" : ""
             }`
@@ -466,9 +916,9 @@
           ),
 
           // Camera Off Toggle
-          h("button", {
+          callType === "video" && h("button", {
             type: "button",
-            onClick: () => setIsCameraOff((prev) => !prev),
+            onClick: handleToggleCamera,
             className: "bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg border border-zinc-800 flex items-center gap-1.5 transition-colors"
           },
             h(Icon, { name: isCameraOff ? "camera-off" : "video", className: "w-3.5 h-3.5" }),
@@ -478,7 +928,7 @@
           // End Call
           h("button", {
             type: "button",
-            onClick: () => setIsVoiceCallActive(false),
+            onClick: handleEndCall,
             className: "bg-zinc-900 hover:bg-red-950/50 text-red-400 text-xs font-medium px-3 py-1.5 rounded-lg border border-red-900/40 flex items-center gap-1.5 transition-colors"
           },
             h(Icon, { name: "phone-off", className: "w-3.5 h-3.5" }),
@@ -498,28 +948,46 @@
         h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative" },
           // Scrollable messages container
           h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full" },
-            messages.map((msg) => {
-              if (msg.isMe) {
-                // Outgoing Message (You)
-                return h("div", { key: msg.id, className: "flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[70%]" },
-                  h("span", { className: "text-[11px] text-zinc-400 mb-1" }, "You"),
-                  h("div", { className: "bg-zinc-800 border border-zinc-700/60 text-zinc-100 text-sm p-3 rounded-2xl rounded-tr-sm shadow-sm leading-relaxed" },
-                    renderMessageText(msg.text)
-                  )
-                );
-              } else {
-                // Incoming Message (Alex / Peer)
-                return h("div", { key: msg.id, className: "flex items-start gap-2.5 max-w-[85%] sm:max-w-[70%]" },
-                  h(Avatar, { name: msg.sender, src: msg.avatar, size: "md" }),
-                  h("div", { className: "flex-1 min-w-0" },
-                    h("span", { className: "text-[11px] text-zinc-400 mb-1 block" }, msg.sender),
-                    h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 rounded-2xl rounded-tl-sm shadow-sm leading-relaxed" },
-                      renderMessageText(msg.text)
+            messages.length === 0
+              ? h("div", { className: "h-full flex flex-col items-center justify-center text-center p-8 text-zinc-500 space-y-3" },
+                  h("div", { className: "w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400" },
+                    h(Icon, { name: "lock", className: "w-6 h-6 text-emerald-500/80" })
+                  ),
+                  h("div", null,
+                    h("h3", { className: "text-sm font-semibold text-zinc-300" }, `Welcome to room: ${roomId}`),
+                    h("p", { className: "text-xs text-zinc-500 mt-1 max-w-sm" },
+                      "This room is live and ready. Messages are ephemeral and end-to-end encrypted with zero server retention."
                     )
                   )
-                );
-              }
-            }),
+                )
+              : messages.map((msg) => {
+                  if (msg.isMe) {
+                    // Outgoing Message (You)
+                    return h("div", { key: msg.id, className: "flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[70%]" },
+                      h("div", { className: "flex items-center gap-1.5 mb-1 text-[11px] text-zinc-400" },
+                        h("span", null, "You"),
+                        msg.timestamp && h("span", { className: "text-zinc-600 text-[10px]" }, msg.timestamp)
+                      ),
+                      h("div", { className: "bg-zinc-800 border border-zinc-700/60 text-zinc-100 text-sm p-3 rounded-2xl rounded-tr-sm shadow-sm leading-relaxed" },
+                        renderMessageText(msg.text)
+                      )
+                    );
+                  } else {
+                    // Incoming Message (Peer)
+                    return h("div", { key: msg.id, className: "flex items-start gap-2.5 max-w-[85%] sm:max-w-[70%]" },
+                      h(Avatar, { name: msg.sender, src: msg.avatar, size: "md" }),
+                      h("div", { className: "flex-1 min-w-0" },
+                        h("div", { className: "flex items-center gap-1.5 mb-1 text-[11px] text-zinc-400" },
+                          h("span", { className: "font-medium" }, msg.sender),
+                          msg.timestamp && h("span", { className: "text-zinc-600 text-[10px]" }, msg.timestamp)
+                        ),
+                        h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 rounded-2xl rounded-tl-sm shadow-sm leading-relaxed" },
+                          renderMessageText(msg.text)
+                        )
+                      )
+                    );
+                  }
+                }),
             h("div", { ref: messagesEndRef })
           ),
 
@@ -555,7 +1023,7 @@
 
             // Input Container with emerald focus ring matching reference design
             h("div", {
-              className: "relative flex items-center bg-zinc-900 border border-emerald-500/80 focus-within:border-emerald-500 rounded-xl px-3 py-1.5 transition-all shadow-inner"
+              className: "relative flex items-center bg-zinc-900 border border-zinc-800 focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500/30 rounded-xl px-3 py-1.5 transition-all shadow-inner"
             },
               // Left: Paperclip icon button
               h("button", {
@@ -593,7 +1061,7 @@
         // =====================================================================
         // 3. ROOM MEMBERS SIDEBAR (Exact side panel)
         // =====================================================================
-        // Mobile Backdrop Overlay (subtle to match reference screenshot)
+        // Mobile Backdrop Overlay
         isMembersOpen && h("div", {
           onClick: () => setIsMembersOpen(false),
           className: "lg:hidden fixed inset-0 top-14 bg-black/30 z-30 transition-opacity"
@@ -603,26 +1071,28 @@
         isMembersOpen && h("aside", {
           className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-y-auto"
         },
-          // Header: "Room Members (3)"
-          h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide" }, `Room Members (${members.length})`),
+          // Header: "Room Members (count)"
+          h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide" }, `Room Members (${roomUsers.length})`),
 
           // Member List
           h("div", { className: "space-y-1" },
-            members.map((m) =>
-              h("div", {
-                key: m.id,
-                className: "flex items-center justify-between py-2 px-1 text-xs rounded-lg hover:bg-zinc-900/50 transition-colors"
-              },
-                // Left: Avatar + Name
-                h("div", { className: "flex items-center gap-2 min-w-0" },
-                  h(Avatar, { name: m.name, src: m.avatar, size: "sm", isLocal: m.isLocal }),
-                  h("span", { className: "text-zinc-200 font-medium truncate" }, m.name),
-                  m.isLocal && h("span", { className: "text-zinc-400 text-[11px] font-normal" }, "(You)")
-                ),
-                // Right: Active status dot
-                h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
-              )
-            )
+            roomUsers.length === 0
+              ? h("div", { className: "text-xs text-zinc-500 italic py-2" }, "No other peers in room")
+              : roomUsers.map((m) =>
+                  h("div", {
+                    key: m.id,
+                    className: "flex items-center justify-between py-2 px-1 text-xs rounded-lg hover:bg-zinc-900/50 transition-colors"
+                  },
+                    // Left: Avatar + Name
+                    h("div", { className: "flex items-center gap-2 min-w-0" },
+                      h(Avatar, { name: m.name, src: m.avatar, size: "sm", isLocal: m.isLocal }),
+                      h("span", { className: "text-zinc-200 font-medium truncate" }, m.name),
+                      m.isLocal && h("span", { className: "text-zinc-400 text-[11px] font-normal" }, "(You)")
+                    ),
+                    // Right: Active status dot
+                    h("span", { className: "w-2 h-2 rounded-full bg-emerald-500 shrink-0" })
+                  )
+                )
           )
         )
       ),
@@ -642,7 +1112,7 @@
     if (window.ReactDOM && typeof ReactDOM.createRoot === "function") {
       const root = ReactDOM.createRoot(rootEl);
       root.render(h(NetChatApp));
-      console.log("[React] NetChat Live React app mounted successfully.");
+      console.log("[React] NetChat Live React app mounted successfully with live state.");
     }
   }
 

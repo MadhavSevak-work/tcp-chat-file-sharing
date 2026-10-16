@@ -1470,12 +1470,18 @@
       if (DOM.miniTransport) DOM.miniTransport.textContent = "WebSocket";
       if (DOM.diagTransport) DOM.diagTransport.textContent = "WebSocket";
       startPingMonitoring();
+      try {
+        window.dispatchEvent(new CustomEvent("netchat:connection_changed", { detail: { isConnected: true, status: "connected" } }));
+      } catch (_) {}
     });
 
     state.socket.on("disconnect", () => {
       logActivity("WebSocket connection to Gateway closed.");
       setConnectionStatus("disconnected", "Disconnected");
       updateModalConnectionBadge("status-disconnected", "Offline");
+      try {
+        window.dispatchEvent(new CustomEvent("netchat:connection_changed", { detail: { isConnected: false, status: "disconnected" } }));
+      } catch (_) {}
     });
 
     state.socket.on("connect_error", (error) => {
@@ -1483,6 +1489,9 @@
       logActivity(`Connection pending/delayed (attempt ${reconnectAttemptsCount})...`);
       setConnectionStatus("disconnected", "Connecting...");
       updateModalConnectionBadge("status-connecting", "Connecting...");
+      try {
+        window.dispatchEvent(new CustomEvent("netchat:connection_changed", { detail: { isConnected: false, status: "connecting" } }));
+      } catch (_) {}
     });
 
     if (state.socket.io) {
@@ -2489,6 +2498,21 @@
       formattedTime = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
+    try {
+      window.dispatchEvent(new CustomEvent("netchat:new_message", {
+        detail: {
+          id: msgId,
+          sender: sender,
+          text: content,
+          timestamp: formattedTime,
+          isMe: Boolean(isMe),
+          isPrivate: Boolean(isPrivate),
+          peer: peer,
+          isDecryptError: Boolean(isDecryptError)
+        }
+      }));
+    } catch (_) {}
+
     if (isPrivate) {
       const badge = document.createElement("span");
       badge.className = "msg-badge badge-private";
@@ -2635,6 +2659,12 @@
     if (state.roomId && state.username && !normalizedUsers.some(u => u.username.toLowerCase() === state.username.toLowerCase())) {
       normalizedUsers.unshift({ username: state.username, socket_id: state.socket?.id || null });
     }
+
+    try {
+      window.dispatchEvent(new CustomEvent("netchat:users_updated", {
+        detail: normalizedUsers
+      }));
+    } catch (_) {}
 
     const count = normalizedUsers.length;
     if (DOM.userCount) DOM.userCount.textContent = count;
@@ -5808,14 +5838,158 @@
     });
 
     window.__NETCHAT_STATE__ = state;
-    window.__NETCHAT_DISCONNECT__ = () => disconnectSession(true);
-    window.__NETCHAT_TOGGLE_CALL__ = (type) => startRoomCall(type);
-    window.__NETCHAT_SEND__ = (text) => {
-      if (DOM.messageInput) {
-        DOM.messageInput.value = text;
-        handleSendMessage(new Event("submit"));
+    window.__NETCHAT_BRIDGE__ = {
+      getState: () => ({
+        isConnected: Boolean(state.socket && state.socket.connected),
+        connectionStatus: state.connectionStatus || (state.socket?.connected ? "connected" : "disconnected"),
+        roomId: state.roomId || "",
+        username: state.username || "",
+        roomPasskey: state.roomPasskey || "",
+        onlineUsers: Array.isArray(state.onlineUsers) ? [...state.onlineUsers] : [],
+        isCallActive: Boolean(webrtcMesh.active || (webrtcState.callStatus && webrtcState.callStatus !== "idle")),
+        callType: webrtcMesh.callType || webrtcState.callType || "audio",
+        meshPeers: Object.keys(webrtcMesh.peers || {}).map((peerSid) => ({
+          id: peerSid,
+          name: webrtcMesh.peers[peerSid]?.username || peerSid,
+          isSpeaking: Boolean(webrtcMesh.peers[peerSid]?.isSpeaking),
+          isMuted: false
+        })),
+        isMuted: Boolean(webrtcMesh.isAudioMuted || webrtcState.isAudioMuted),
+        isCameraOff: Boolean(webrtcMesh.isVideoMuted || webrtcState.isVideoMuted)
+      }),
+      createRoom: (username, roomId, pin, cb) => {
+        if (!state.socket || !state.socket.connected) {
+          if (cb) cb({ status: "error", message: "Connecting to gateway. Please wait..." });
+          return;
+        }
+        const u = username.trim();
+        const r = roomId.trim().toLowerCase();
+        const p = pin.trim();
+        if (DOM.usernameInput) DOM.usernameInput.value = u;
+        if (DOM.roomInput) DOM.roomInput.value = r;
+        if (DOM.passkeyInput) DOM.passkeyInput.value = p;
+        const payload = {
+          room_id: r,
+          pin: p,
+          passkey: p,
+          username: u,
+          session_id: getClientSessionId()
+        };
+        state.socket.emit("create_room", payload, (response) => {
+          if (response && response.status === "success") {
+            state.username = u;
+            state.roomId = r;
+            state.roomPasskey = p;
+            state.isE2EE = true;
+            const initialPeers = (response.users || response.peers || [u]);
+            updateUserList(initialPeers);
+            state.socket.emit("join", { username: u });
+            handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            try {
+              window.dispatchEvent(new CustomEvent("netchat:room_joined", { detail: { roomId: r, username: u } }));
+            } catch (_) {}
+            if (cb) cb(response);
+          } else {
+            if (cb) cb(response);
+          }
+        });
+      },
+      joinRoom: (username, roomId, pin, cb) => {
+        if (!state.socket || !state.socket.connected) {
+          if (cb) cb({ status: "error", message: "Connecting to gateway. Please wait..." });
+          return;
+        }
+        const u = username.trim();
+        const r = roomId.trim().toLowerCase();
+        const p = pin.trim();
+        if (DOM.usernameInput) DOM.usernameInput.value = u;
+        if (DOM.roomInput) DOM.roomInput.value = r;
+        if (DOM.passkeyInput) DOM.passkeyInput.value = p;
+        const payload = {
+          room_id: r,
+          pin: p,
+          passkey: p,
+          username: u,
+          session_id: getClientSessionId()
+        };
+        state.socket.emit("join_room", payload, (response) => {
+          if (response && response.status === "success") {
+            state.username = u;
+            state.roomId = r;
+            state.roomPasskey = p;
+            state.isE2EE = true;
+            const initialPeers = (response.users || response.peers || [u]);
+            updateUserList(initialPeers);
+            state.socket.emit("join", { username: u });
+            handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            try {
+              window.dispatchEvent(new CustomEvent("netchat:room_joined", { detail: { roomId: r, username: u } }));
+            } catch (_) {}
+            if (cb) cb(response);
+          } else {
+            if (cb) cb(response);
+          }
+        });
+      },
+      sendMessage: (text) => {
+        if (!text || !text.trim()) return;
+        if (DOM.messageInput) {
+          DOM.messageInput.value = text;
+          handleSendMessage(new Event("submit"));
+        } else if (state.socket && state.roomId) {
+          if (state.isE2EE && state.roomPasskey && window.E2EE) {
+            window.E2EE.encryptMessage(text, state.roomPasskey).then((payload) => {
+              state.socket.emit("send_message", {
+                room_id: state.roomId,
+                payload: payload,
+                sender: state.username,
+                type: "e2ee"
+              });
+            });
+          } else {
+            state.socket.emit("chat_message", {
+              room_id: state.roomId,
+              content: text,
+              sender: state.username
+            });
+          }
+        }
+      },
+      disconnect: () => {
+        disconnectSession(true);
+        try {
+          window.dispatchEvent(new CustomEvent("netchat:room_left"));
+        } catch (_) {}
+      },
+      startCall: (type = "audio") => {
+        startRoomCall(type);
+        try {
+          window.dispatchEvent(new CustomEvent("netchat:call_changed", { detail: { active: true, callType: type } }));
+        } catch (_) {}
+      },
+      toggleMute: () => {
+        if (webrtcMesh.active) toggleMeshMic();
+        else toggleWebrtcMic();
+      },
+      toggleCamera: () => {
+        if (webrtcMesh.active) toggleMeshCamera();
+        else toggleWebrtcCam();
+      },
+      endCall: () => {
+        if (webrtcMesh.active) leaveRoomCall();
+        else endWebrtcCall(true);
+        try {
+          window.dispatchEvent(new CustomEvent("netchat:call_changed", { detail: { active: false } }));
+        } catch (_) {}
+      },
+      generateRoomId: () => {
+        return generateRandomRoomId();
       }
     };
+
+    window.__NETCHAT_DISCONNECT__ = window.__NETCHAT_BRIDGE__.disconnect;
+    window.__NETCHAT_TOGGLE_CALL__ = window.__NETCHAT_BRIDGE__.startCall;
+    window.__NETCHAT_SEND__ = window.__NETCHAT_BRIDGE__.sendMessage;
   }
 
   // Run on DOM Ready
