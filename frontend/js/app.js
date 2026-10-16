@@ -1289,16 +1289,28 @@
 
       isQrScannerScanning = true;
 
-      await html5QrScannerInstance.start(
-        { facingMode: "environment" },
-        qrConfig,
-        (decodedText) => {
-          handleQrScanSuccess(decodedText);
-        },
-        () => {
-          // ignore frame parse errors
-        }
-      );
+      try {
+        await html5QrScannerInstance.start(
+          { facingMode: "environment" },
+          qrConfig,
+          (decodedText) => {
+            handleQrScanSuccess(decodedText);
+          },
+          () => {
+            // ignore frame parse errors
+          }
+        );
+      } catch (camErr) {
+        // Fallback to front camera or default camera
+        await html5QrScannerInstance.start(
+          { facingMode: "user" },
+          qrConfig,
+          (decodedText) => {
+            handleQrScanSuccess(decodedText);
+          },
+          () => {}
+        );
+      }
     } catch (err) {
       console.warn("[QR Scanner] Failed to start camera:", err);
       isQrScannerScanning = false;
@@ -1318,6 +1330,7 @@
         console.warn("[QR Scanner] Error stopping camera:", err);
       }
     }
+    html5QrScannerInstance = null;
     isQrScannerScanning = false;
     if (DOM.qrScannerModal) {
       DOM.qrScannerModal.classList.add("hidden");
@@ -1335,20 +1348,33 @@
     let pin = "";
 
     try {
-      if (decodedText.startsWith("http://") || decodedText.startsWith("https://") || decodedText.includes("?")) {
-        const url = new URL(decodedText, window.location.origin);
-        room = (url.searchParams.get("room") || "").trim().toLowerCase();
-        pin = (url.searchParams.get("pin") || "").trim();
-      } else {
-        const params = new URLSearchParams(decodedText);
-        room = (params.get("room") || "").trim().toLowerCase();
-        pin = (params.get("pin") || "").trim();
+      const trimmed = decodedText.trim();
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        const json = JSON.parse(trimmed);
+        if (json && typeof json === "object") {
+          room = (json.roomId || json.room_id || json.room || "").trim().toLowerCase();
+          pin = (json.passkey || json.pin || "").trim();
+        }
       }
-    } catch (_) {
-      const matchRoom = decodedText.match(/[?&]room=([^&]+)/i);
-      const matchPin = decodedText.match(/[?&]pin=([^&]+)/i);
-      if (matchRoom) room = decodeURIComponent(matchRoom[1]).trim().toLowerCase();
-      if (matchPin) pin = decodeURIComponent(matchPin[1]).trim();
+    } catch (_) {}
+
+    if (!room) {
+      try {
+        if (decodedText.startsWith("http://") || decodedText.startsWith("https://") || decodedText.includes("?")) {
+          const url = new URL(decodedText, window.location.origin);
+          room = (url.searchParams.get("roomId") || url.searchParams.get("room_id") || url.searchParams.get("room") || "").trim().toLowerCase();
+          pin = (url.searchParams.get("passkey") || url.searchParams.get("pin") || "").trim();
+        } else {
+          const params = new URLSearchParams(decodedText);
+          room = (params.get("roomId") || params.get("room_id") || params.get("room") || "").trim().toLowerCase();
+          pin = (params.get("passkey") || params.get("pin") || "").trim();
+        }
+      } catch (_) {
+        const matchRoom = decodedText.match(/[?&](?:roomId|room_id|room)=([^&]+)/i);
+        const matchPin = decodedText.match(/[?&](?:passkey|pin)=([^&]+)/i);
+        if (matchRoom) room = decodeURIComponent(matchRoom[1]).trim().toLowerCase();
+        if (matchPin) pin = decodeURIComponent(matchPin[1]).trim();
+      }
     }
 
     if (room) {
@@ -1369,7 +1395,7 @@
       }
 
       try {
-        window.dispatchEvent(new CustomEvent("netchat:qr_scanned", { detail: { room, pin } }));
+        window.dispatchEvent(new CustomEvent("netchat:qr_scanned", { detail: { room, pin, roomId: room, passkey: pin } }));
       } catch (_) {}
 
       clearLoginError();
@@ -1895,6 +1921,14 @@
     if (!pin) {
       isSubmittingAuth = false;
       showLoginError("Please enter a Room PIN.");
+      if (passEl) passEl.focus();
+      return;
+    }
+
+    const passkeyRegex = /^(?=.*[A-Z])(?=.*[!@#$&*]).{8,}$/;
+    if (!passkeyRegex.test(pin)) {
+      isSubmittingAuth = false;
+      showLoginError("Passkey must be 8+ chars with an uppercase letter and special character.");
       if (passEl) passEl.focus();
       return;
     }
@@ -3909,7 +3943,7 @@
       const initial = (name || "P").charAt(0).toUpperCase();
       const bg = getAvatarGradient(name || "P");
       tile.innerHTML = `
-        <video class="tile-video webrtc-tile-video" autoplay playsinline ${isLocal ? "muted" : ""}></video>
+        <video class="tile-video webrtc-tile-video ${isLocal ? "scale-x-[-1]" : ""}" autoplay playsinline ${isLocal ? "muted" : ""}></video>
         <div class="tile-avatar-fallback hidden" style="background: ${bg};">${initial}</div>
         <div class="tile-label">${name}${isLocal ? " (You)" : ""}</div>
         <div class="tile-speaking-circle"></div>
@@ -5894,6 +5928,12 @@
         const u = username.trim();
         const r = roomId.trim().toLowerCase();
         const p = pin.trim();
+
+        const passkeyRegex = /^(?=.*[A-Z])(?=.*[!@#$&*]).{8,}$/;
+        if (!passkeyRegex.test(p)) {
+          if (cb) cb({ status: "error", message: "Passkey must be 8+ chars with an uppercase letter and special character." });
+          return;
+        }
         if (DOM.usernameInput) DOM.usernameInput.value = u;
         if (DOM.roomInput) DOM.roomInput.value = r;
         if (DOM.passkeyInput) DOM.passkeyInput.value = p;
