@@ -798,29 +798,29 @@
       }))
     ];
 
-    return h("div", { className: "h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none" },
+    return h("div", { className: "h-[100dvh] overflow-hidden flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased select-none" },
 
       // =======================================================================
-      // 1. TOP HEADER (h-14 / 56px, bg-zinc-950, border-b border-zinc-800/80 px-4)
+      // 1. TOP HEADER (h-14 / 56px, bg-zinc-950, border-b border-zinc-800/80 px-3 sm:px-4)
       // =======================================================================
-      h("header", { className: "h-14 bg-zinc-950 border-b border-zinc-800/80 px-4 flex items-center justify-between shrink-0 z-30" },
+      h("header", { className: "h-14 bg-zinc-950 border-b border-zinc-800/80 flex items-center justify-between gap-2 px-3 sm:px-4 shrink-0 z-30" },
         // Left Brand
-        h("div", { className: "flex items-center gap-1.5" },
-          h("span", { className: "font-semibold text-zinc-100 text-lg tracking-tight" }, "NetChat Live"),
+        h("div", { className: "flex items-center shrink-0 min-w-0" },
+          h("span", { className: "font-semibold text-zinc-100 text-base sm:text-lg tracking-tight whitespace-nowrap shrink-0" }, "NetChat Live"),
           h("span", {
-            className: `w-2.5 h-2.5 rounded-full ${headerDotClass} inline-block ml-1.5`,
+            className: `w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full shrink-0 ml-1 sm:ml-2 ${headerDotClass} inline-block`,
             title: isConnected ? "Connected" : connectionStatus
           })
         ),
 
         // Center Room Pill
-        h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm" },
-          h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400" }),
-          h("span", { className: "font-mono font-medium" }, `room: ${roomId}`)
+        h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm shrink min-w-[80px] overflow-hidden whitespace-nowrap text-ellipsis" },
+          h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400 shrink-0" }),
+          h("span", { className: "font-mono font-medium whitespace-nowrap overflow-hidden text-ellipsis" }, `room: ${roomId}`)
         ),
 
         // Right Actions Group (Exact 5-icon order)
-        h("div", { className: "flex items-center gap-1.5 sm:gap-2" },
+        h("div", { className: "flex items-center gap-1 sm:gap-2 shrink-0" },
           // Button 1 - Share/Link
           h("button", {
             type: "button",
@@ -945,11 +945,11 @@
         // =====================================================================
         // 4. CHAT FEED & MESSAGE BUBBLES
         // =====================================================================
-        h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative" },
+        h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative min-w-0" },
           // Scrollable messages container
-          h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]" },
+          h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4 max-w-4xl mx-auto w-full [scrollbar-width:thin] [scrollbar-color:#27272a_transparent] flex flex-col" },
             messages.length === 0
-              ? h("div", { className: "h-full flex flex-col items-center justify-center text-center p-8 text-zinc-500 space-y-3" },
+              ? h("div", { className: "flex-1 flex flex-col items-center justify-center text-center p-8 text-zinc-500 space-y-3" },
                   h("div", { className: "w-12 h-12 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400" },
                     h(Icon, { name: "lock", className: "w-6 h-6 text-emerald-500/80" })
                   ),
@@ -999,7 +999,7 @@
           // ===================================================================
           // 5. DOCKED BOTTOM INPUT BAR & @MENTION AUTOCOMPLETE
           // ===================================================================
-          h("footer", { className: "sticky bottom-0 bg-zinc-950 border-t border-zinc-800/80 p-3 sm:p-4 pb-safe relative z-20" },
+          h("footer", { className: "shrink-0 w-full bg-zinc-950 border-t border-zinc-800 p-3 pb-safe z-10 relative" },
 
             // @Mention Autocomplete Popover (Triggers when typing '@')
             isMentionOpen && mentionMatches.length > 0 && h("div", {
@@ -1069,13 +1069,13 @@
 
         // Sidebar Container (Docked on desktop >= 1024px, Slide-over on mobile < 1024px)
         isMembersOpen && h("aside", {
-          className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800/80 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]"
+          className: "fixed top-14 right-0 bottom-0 w-48 sm:w-56 bg-zinc-950 border-l border-zinc-800/80 z-40 p-3 sm:p-4 shadow-2xl lg:static lg:w-60 lg:z-10 lg:shadow-none shrink-0 overflow-hidden flex flex-col"
         },
           // Header: "Room Members (count)"
-          h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide" }, `Room Members (${roomUsers.length})`),
+          h("div", { className: "text-xs font-semibold text-zinc-300 mb-3 tracking-wide shrink-0" }, `Room Members (${roomUsers.length})`),
 
           // Member List
-          h("div", { className: "space-y-1" },
+          h("div", { className: "space-y-1 overflow-y-auto flex-1 [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]" },
             roomUsers.length === 0
               ? h("div", { className: "text-xs text-zinc-500 italic py-2" }, "No other peers in room")
               : roomUsers.map((m) =>
