@@ -1552,11 +1552,14 @@
       handleJoinSuccess(data);
     });
 
-    state.socket.on("join_error", (data) => {
+    const handleJoinErrorMsg = (data) => {
       const errMsg = (data && data.message)
         ? data.message
-        : "Username is already taken in this room. Please choose another.";
+        : "Username already taken in this room.";
       showLoginError(errMsg, true);
+      try {
+        window.dispatchEvent(new CustomEvent("netchat:join_error", { detail: { message: errMsg } }));
+      } catch (_) {}
       // Keep user on join modal with username input focused and highlighted
       if (DOM.loginOverlay) {
         DOM.loginOverlay.classList.remove("hidden");
@@ -1568,7 +1571,9 @@
         DOM.usernameInput.classList.add("input-error");
         DOM.usernameInput.focus();
       }
-    });
+    };
+    state.socket.on("join_error", handleJoinErrorMsg);
+    state.socket.on("join-error", handleJoinErrorMsg);
 
     // Zero-Knowledge E2EE Room Socket Listeners
     state.socket.on("room_joined", (data) => {

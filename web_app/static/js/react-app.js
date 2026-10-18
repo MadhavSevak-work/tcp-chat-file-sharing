@@ -484,6 +484,7 @@
     const [passkeyError, setPasskeyError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
+    const [joinError, setJoinError] = useState("");
     const nicknameInputRef = useRef(null);
 
     // Auto-detect invite link parameters (?room=... & passkey=...)
@@ -538,8 +539,48 @@
         }
       };
 
+      // Socket join-error listeners
+      const getSocket = () => (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket || null;
+      const handleJoinError = (payload) => {
+        setIsLoading(false);
+        const msg = (payload && payload.message) ? payload.message : "Username already taken in this room.";
+        setJoinError(msg);
+      };
+
+      const sock = getSocket();
+      if (sock) {
+        sock.on("join-error", handleJoinError);
+        sock.on("join_error", handleJoinError);
+      }
+
+      const socketCheckTimer = setInterval(() => {
+        const s = getSocket();
+        if (s) {
+          s.off("join-error", handleJoinError);
+          s.off("join_error", handleJoinError);
+          s.on("join-error", handleJoinError);
+          s.on("join_error", handleJoinError);
+        }
+      }, 1000);
+
+      const onWindowJoinError = (e) => {
+        setIsLoading(false);
+        const msg = (e.detail && e.detail.message) ? e.detail.message : "Username already taken in this room.";
+        setJoinError(msg);
+      };
+      window.addEventListener("netchat:join_error", onWindowJoinError);
+
       window.addEventListener("netchat:qr_scanned", onQrScanned);
-      return () => window.removeEventListener("netchat:qr_scanned", onQrScanned);
+      return () => {
+        clearInterval(socketCheckTimer);
+        const s = getSocket();
+        if (s) {
+          s.off("join-error", handleJoinError);
+          s.off("join_error", handleJoinError);
+        }
+        window.removeEventListener("netchat:join_error", onWindowJoinError);
+        window.removeEventListener("netchat:qr_scanned", onQrScanned);
+      };
     }, []);
 
     // Toggle tab mode: clear roomId and passkey, keep nickname
@@ -550,6 +591,7 @@
         setPasskey("");
         setErrorMsg(null);
         setPasskeyError(null);
+        setJoinError("");
       }
     };
 
@@ -617,6 +659,7 @@
       if (e && e.preventDefault) e.preventDefault();
       setErrorMsg(null);
       setPasskeyError(null);
+      setJoinError("");
 
       const nick = nickname.trim();
       const room = roomId.trim().toLowerCase();
@@ -650,7 +693,12 @@
         if (res && res.status === "success") {
           onJoinSuccess({ username: nick, roomId: room, passkey: pin });
         } else {
-          setErrorMsg((res && res.message) ? res.message : "Authentication failed. Check credentials.");
+          const msg = (res && res.message) ? res.message : "Authentication failed. Check credentials.";
+          if (msg.toLowerCase().includes("username already taken") || msg.toLowerCase().includes("username is already taken") || msg.toLowerCase().includes("nickname already")) {
+            setJoinError(msg);
+          } else {
+            setErrorMsg(msg);
+          }
         }
       };
 
@@ -731,12 +779,17 @@
                 ref: nicknameInputRef,
                 type: "text",
                 value: nickname,
-                onChange: (e) => setNickname(e.target.value),
+                onChange: (e) => {
+                  setNickname(e.target.value);
+                  setJoinError("");
+                  setErrorMsg(null);
+                },
                 placeholder: "@enter_username",
                 autoFocus: true,
                 style: { backgroundColor: "#18181b", color: "#e4e4e7", fontSize: "16px" },
                 className: "w-full bg-[#18181b] border border-zinc-800 rounded-xl px-3 py-2.5 text-[16px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-600 transition-colors"
-              })
+              }),
+              joinError && h("p", { className: "text-red-400 text-[12px] mt-1 px-1" }, joinError)
             ),
 
             // Room ID Input
@@ -1976,8 +2029,15 @@
           h(QRCode, {
             value: `${window.location.origin}/?room=${roomId}&passkey=${encodeURIComponent(passkey)}`
           }),
-          h("div", { className: "mt-4 text-center font-mono text-xs text-zinc-400 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800/80 w-full truncate" },
-            `Room: ${roomId}`
+          h("div", { className: "w-full bg-zinc-950/50 rounded-lg p-3 mt-4 flex flex-col gap-2 border border-zinc-800/50" },
+            h("div", { className: "flex justify-between items-center text-sm" },
+              h("span", { className: "text-zinc-500" }, "Room ID:"),
+              h("span", { className: "font-mono text-zinc-300" }, roomId)
+            ),
+            h("div", { className: "flex justify-between items-center text-sm" },
+              h("span", { className: "text-zinc-500" }, "Passkey:"),
+              h("span", { className: "font-mono text-zinc-300" }, passkey)
+            )
           )
         )
       )

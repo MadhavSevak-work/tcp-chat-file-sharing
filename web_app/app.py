@@ -626,6 +626,7 @@ def handle_create_room(data):
 
 
 @socketio.on("join_room")
+@socketio.on("join-room")
 def handle_join_room(data):
     """
     Validates PIN and joins client to existing E2EE room channel.
@@ -642,8 +643,8 @@ def handle_join_room(data):
     if not isinstance(data, dict):
         return {"status": "error", "message": "Invalid payload format."}
 
-    room_id = sanitize_filename(str(data.get("room_id", "")).strip().lower())
-    username = str(data.get("username", "")).strip()
+    room_id = sanitize_filename(str(data.get("room_id") or data.get("roomId") or "").strip().lower())
+    username = str(data.get("username") or data.get("nickname") or "").strip()
     pin = str(data.get("pin") or data.get("passkey") or "").strip()
     client_session_id = str(data.get("session_id") or "").strip()
 
@@ -724,8 +725,9 @@ def handle_join_room(data):
                 # Genuine collision with another active user in the same room
                 err = {
                     "status": "error",
-                    "message": "Username is already taken in this room. Please choose another."
+                    "message": "Username already taken in this room."
                 }
+                emit("join-error", {"message": err["message"]})
                 emit("join_error", {"message": err["message"]})
                 emit("room_error", {"message": err["message"]})
                 return err
