@@ -123,6 +123,13 @@
           h("line", { x1: "18", y1: "6", x2: "6", y2: "18" }),
           h("line", { x1: "6", y1: "6", x2: "18", y2: "18" })
         );
+      case "smile":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("circle", { cx: "12", cy: "12", r: "10" }),
+          h("path", { d: "M8 14s1.5 2 4 2 4-2 4-2" }),
+          h("line", { x1: "9", x2: "9.01", y1: "9", y2: "9" }),
+          h("line", { x1: "15", x2: "15.01", y1: "9", y2: "9" })
+        );
       default:
         return null;
     }
@@ -255,6 +262,209 @@
     });
   }
 
+  // Live Camera QR Scanner Modal Component (html5-qrcode)
+  function QrCameraScannerModal({ onScan, onClose }) {
+    const scannerRef = useRef(null);
+
+    useEffect(() => {
+      let html5QrCode = null;
+      let isMounted = true;
+
+      const startScanner = async () => {
+        try {
+          if (typeof window.Html5Qrcode !== "undefined") {
+            html5QrCode = new window.Html5Qrcode("landing-qr-reader");
+            scannerRef.current = html5QrCode;
+
+            const qrConfig = {
+              fps: 10,
+              qrbox: { width: 220, height: 220 },
+              aspectRatio: 1.0
+            };
+
+            const onSuccess = (decodedText) => {
+              if (!isMounted) return;
+              isMounted = false;
+              if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().then(() => {
+                  try { html5QrCode.clear(); } catch (_) {}
+                }).catch(() => {});
+              }
+              onScan(decodedText);
+            };
+
+            try {
+              await html5QrCode.start(
+                { facingMode: "environment" },
+                qrConfig,
+                onSuccess,
+                () => {}
+              );
+            } catch (_) {
+              if (!isMounted) return;
+              await html5QrCode.start(
+                { facingMode: "user" },
+                qrConfig,
+                onSuccess,
+                () => {}
+              );
+            }
+          }
+        } catch (err) {
+          console.warn("[QR Scanner] Camera start error:", err);
+        }
+      };
+
+      const timer = setTimeout(startScanner, 120);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+        if (scannerRef.current) {
+          try {
+            if (scannerRef.current.isScanning) {
+              scannerRef.current.stop().then(() => {
+                try { scannerRef.current.clear(); } catch (_) {}
+              }).catch(() => {});
+            } else {
+              scannerRef.current.clear();
+            }
+          } catch (_) {}
+        }
+      };
+    }, []);
+
+    return h("div", {
+      className: "fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4",
+      onClick: (e) => {
+        if (e.target === e.currentTarget) onClose();
+      }
+    },
+      h("div", {
+        className: "w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col items-center shadow-2xl relative"
+      },
+        h("h3", { className: "text-base font-semibold text-zinc-100 mb-1" }, "Scan Room QR Code"),
+        h("p", { className: "text-xs text-zinc-400 text-center mb-4" }, "Point camera at a NetChat Live room QR code"),
+        h("div", {
+          id: "landing-qr-reader",
+          className: "w-full aspect-square max-w-[280px] bg-black rounded-xl overflow-hidden border border-zinc-800 relative flex items-center justify-center"
+        }),
+        h("button", {
+          type: "button",
+          onClick: onClose,
+          className: "mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
+        }, "Close Camera")
+      )
+    );
+  }
+
+  // Comprehensive Dark-Themed Emoji Picker Component with EmojiMart support
+  function EmojiPickerComponent({ onSelect, onClose }) {
+    const containerRef = useRef(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [activeTab, setActiveTab] = useState(0);
+
+    const categories = [
+      {
+        name: "Smileys",
+        icon: "😀",
+        emojis: ["😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "☺️", "😊", "😇", "🙂", "😉", "😌", "😍", "🥰", "😘", "😗", "😋", "😛", "😜", "🤪", "🤨", "🧐", "🤓", "😎", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤗", "🤔", "🤭", "🤫", "🤥", "😶", "😐", "😑", "😬", "🙄", "😯", "😦", "😧", "😮", "😲", "🥱", "😴", "🤤", "😪", "😵", "🤐", "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕"]
+      },
+      {
+        name: "Gestures",
+        icon: "👍",
+        emojis: ["👍", "👎", "👊", "✊", "🤛", "🤜", "🤞", "✌️", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆", "👇", "☝️", "✋", "🤚", "🖐️", "🖖", "👋", "🤙", "💪", "🦾", "✍️", "🙏", "🤝", "👏", "🙌", "👐", "🤲", "🫂", "💅", "🤳", "🙋", "🙆", "🙅", "🤷"]
+      },
+      {
+        name: "Hearts & Sparkles",
+        icon: "❤️",
+        emojis: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "🔥", "✨", "⚡", "💥", "💫", "🌟", "⭐", "🎉", "🎊", "🎈", "🎁", "🏆", "🥇", "🎯", "🚀", "🛸", "💯"]
+      },
+      {
+        name: "Animals & Food",
+        icon: "🐶",
+        emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🦄", "☕", "🍵", "🧃", "🥤", "🍺", "🍻", "🍷", "🍕", "🍔", "🍟", "🌮", "🍣", "🍦", "🍩", "🍪", "🎂", "🍫", "🍿", "🍎", "🍓", "🥑"]
+      },
+      {
+        name: "Objects & Tech",
+        icon: "💡",
+        emojis: ["💡", "💻", "📱", "📷", "🔍", "🔒", "🔑", "🛡️", "⚙️", "🧪", "📦", "✉️", "📝", "📅", "📌", "📍", "🏷️", "💰", "💳", "💎", "⏳", "⏰", "📢", "🔔", "🎵", "🎶", "💬", "💭", "💤", "🌐", "🧭", "🏁", "🏳️", "🌈", "☀️", "🌙", "🪐", "☁️", "❄️", "☔"]
+      }
+    ];
+
+    // Try mounting EmojiMart if available in DOM
+    useEffect(() => {
+      if (window.EmojiMart && window.EmojiMart.Picker && containerRef.current) {
+        try {
+          const picker = new window.EmojiMart.Picker({
+            theme: "dark",
+            onEmojiSelect: (emoji) => {
+              onSelect(emoji);
+            }
+          });
+          containerRef.current.innerHTML = "";
+          containerRef.current.appendChild(picker);
+          return () => {
+            if (containerRef.current) containerRef.current.innerHTML = "";
+          };
+        } catch (_) {}
+      }
+    }, []);
+
+    const allEmojis = categories.flatMap(c => c.emojis);
+    const displayedEmojis = searchQuery.trim()
+      ? allEmojis.filter((e) => e.includes(searchQuery.trim()) || true).slice(0, 48)
+      : categories[activeTab].emojis;
+
+    return h("div", {
+      ref: containerRef,
+      className: "w-72 sm:w-80 bg-zinc-900 border border-zinc-800 text-zinc-100 flex flex-col p-2 select-none"
+    },
+      // Search bar + Close
+      h("div", { className: "flex items-center gap-2 mb-2 pb-1 border-b border-zinc-800" },
+        h("input", {
+          type: "text",
+          value: searchQuery,
+          onChange: (e) => setSearchQuery(e.target.value),
+          placeholder: "Search emojis...",
+          className: "flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-700"
+        }),
+        h("button", {
+          type: "button",
+          onClick: onClose,
+          className: "text-zinc-500 hover:text-zinc-200 p-1 rounded hover:bg-zinc-800 cursor-pointer text-xs"
+        }, h(Icon, { name: "x", className: "w-3.5 h-3.5" }))
+      ),
+
+      // Category Tabs
+      !searchQuery.trim() && h("div", { className: "flex items-center justify-between px-1 mb-2 border-b border-zinc-800/60 pb-1.5" },
+        categories.map((cat, idx) =>
+          h("button", {
+            key: cat.name,
+            type: "button",
+            onClick: () => setActiveTab(idx),
+            title: cat.name,
+            className: `p-1 rounded-md text-base transition-transform hover:scale-110 cursor-pointer ${
+              activeTab === idx ? "bg-zinc-800 ring-1 ring-zinc-700" : "opacity-60 hover:opacity-100"
+            }`
+          }, cat.icon)
+        )
+      ),
+
+      // Emoji Grid (scrollable)
+      h("div", { className: "grid grid-cols-7 sm:grid-cols-8 gap-1 max-h-48 overflow-y-auto p-1 [scrollbar-width:thin] [scrollbar-color:#27272a_transparent]" },
+        displayedEmojis.map((emoji, idx) =>
+          h("button", {
+            key: `${emoji}-${idx}`,
+            type: "button",
+            onClick: () => onSelect({ native: emoji }),
+            className: "w-8 h-8 flex items-center justify-center text-lg rounded-lg hover:bg-zinc-800 hover:scale-125 active:scale-95 transition-all cursor-pointer"
+          }, emoji)
+        )
+      )
+    );
+  }
+
   // ===========================================================================
   // 1. EXACT 1:1 PIXEL-PERFECT LANDING SCREEN (Create / Join Room)
   // ===========================================================================
@@ -268,6 +478,7 @@
     const [errorMsg, setErrorMsg] = useState(null);
     const [passkeyError, setPasskeyError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [isScanning, setIsScanning] = useState(false);
     const nicknameInputRef = useRef(null);
 
     // Auto-detect invite link parameters (?room=... & passkey=...)
@@ -346,9 +557,54 @@
 
     // QR Scanner Action
     const handleScanQrClick = () => {
-      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.startQrScanner === "function") {
-        window.__NETCHAT_BRIDGE__.startQrScanner();
+      setIsScanning(true);
+    };
+
+    const handleQrDetected = (decodedText) => {
+      if (!decodedText) return;
+      let room = "";
+      let pass = "";
+
+      // 1. Check if it's a URL containing ?room= and &passkey=
+      if (decodedText.includes("?") && (decodedText.includes("room=") || decodedText.includes("roomId="))) {
+        try {
+          const url = new URL(decodedText.startsWith("http") ? decodedText : `http://localhost/${decodedText}`);
+          room = url.searchParams.get("room") || url.searchParams.get("roomId") || url.searchParams.get("room_id") || "";
+          pass = url.searchParams.get("passkey") || url.searchParams.get("pin") || "";
+        } catch (_) {}
       }
+
+      // 2. Otherwise attempt to JSON.parse() it
+      if (!room) {
+        try {
+          const parsed = JSON.parse(decodedText);
+          if (parsed && typeof parsed === "object") {
+            room = parsed.roomId || parsed.room || parsed.room_id || "";
+            pass = parsed.passkey || parsed.pin || "";
+          }
+        } catch (_) {}
+      }
+
+      // Fallback regex if needed
+      if (!room) {
+        const matchRoom = decodedText.match(/[?&](?:room|roomId|room_id)=([^&]+)/i);
+        const matchPass = decodedText.match(/[?&](?:passkey|pin)=([^&]+)/i);
+        if (matchRoom) room = decodeURIComponent(matchRoom[1]);
+        if (matchPass) pass = decodeURIComponent(matchPass[1]);
+      }
+
+      // 3. Immediately update roomId and passkey state variables
+      if (room) setRoomId(room.toLowerCase());
+      if (pass) setPasskey(pass);
+
+      // 4. Set isScanning to false to close camera, ensuring user stays on "Join Room" tab
+      setIsJoinMode(true);
+      setIsScanning(false);
+      setErrorMsg(null);
+      setPasskeyError(null);
+      setTimeout(() => {
+        if (nicknameInputRef.current) nicknameInputRef.current.focus();
+      }, 100);
     };
 
     // Submit Action (Create / Join)
@@ -557,7 +813,13 @@
       // Decorative bottom-right sparkle watermark matching reference design
       h("div", { className: "absolute bottom-6 right-6 pointer-events-none opacity-20 hidden sm:block" },
         h(Icon, { name: "sparkle", className: "w-8 h-8 text-zinc-400" })
-      )
+      ),
+
+      // Live Camera QR Scanner Modal Overlay
+      isScanning && h(QrCameraScannerModal, {
+        onScan: handleQrDetected,
+        onClose: () => setIsScanning(false)
+      })
     );
   }
 
@@ -596,6 +858,7 @@
 
     // Chat input & mention autocomplete state
     const [inputValue, setInputValue] = useState("");
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
     const [isMentionOpen, setIsMentionOpen] = useState(false);
     const [mentionQuery, setMentionQuery] = useState("");
     const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
@@ -665,7 +928,7 @@
       setIsShareMenuOpen((prev) => !prev);
     };
 
-    // Close file sharing popover on outside click
+    // Close file sharing popover & emoji picker on outside click
     useEffect(() => {
       const handleClickOutside = (e) => {
         if (isShareMenuOpen) {
@@ -675,10 +938,28 @@
             setIsShareMenuOpen(false);
           }
         }
+        if (showEmojiPicker) {
+          const picker = document.getElementById("chat-emoji-picker-container");
+          const btn = document.getElementById("btn-chat-emoji-toggle");
+          if (picker && !picker.contains(e.target) && btn && !btn.contains(e.target)) {
+            setShowEmojiPicker(false);
+          }
+        }
       };
       document.addEventListener("click", handleClickOutside);
       return () => document.removeEventListener("click", handleClickOutside);
-    }, [isShareMenuOpen]);
+    }, [isShareMenuOpen, showEmojiPicker]);
+
+    // Handle emoji selection: append to existing input without overwriting
+    const handleEmojiSelect = (emoji) => {
+      const char = typeof emoji === "string" ? emoji : (emoji.native || emoji.emoji || "");
+      if (char) {
+        setInputValue((prev) => prev + char);
+      }
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
+    };
 
     // Synchronize state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
@@ -1385,12 +1666,39 @@
                 className: "flex-1 !bg-transparent !border-0 !outline-none !shadow-none text-[16px] !text-zinc-100 placeholder-zinc-500 px-2 py-1.5 font-normal"
               }),
 
+              // Smile/Emoji icon button inside/next to text input field
+              h("button", {
+                id: "btn-chat-emoji-toggle",
+                type: "button",
+                onClick: (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setShowEmojiPicker((prev) => !prev);
+                },
+                title: "Insert Emoji",
+                "aria-label": "Insert Emoji",
+                className: `text-zinc-400 hover:text-white p-2 sm:p-1.5 rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 ${
+                  showEmojiPicker ? "text-white bg-zinc-800" : ""
+                }`
+              }, h(Icon, { name: "smile", className: "w-4 h-4" })),
+
               // Right: Send button
               h("button", {
                 type: "button",
                 onClick: sendMessage,
-                className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95 cursor-pointer"
-              }, "Send")
+                className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95 cursor-pointer shrink-0 ml-1"
+              }, "Send"),
+
+              // Emoji Picker Popover Container
+              showEmojiPicker && h("div", {
+                id: "chat-emoji-picker-container",
+                className: "absolute bottom-full right-2 sm:right-4 mb-2 z-50 shadow-2xl border border-zinc-800 rounded-xl overflow-hidden"
+              },
+                h(EmojiPickerComponent, {
+                  onSelect: handleEmojiSelect,
+                  onClose: () => setShowEmojiPicker(false)
+                })
+              )
             )
           )
         ),
