@@ -270,25 +270,45 @@
     const [isLoading, setIsLoading] = useState(false);
     const nicknameInputRef = useRef(null);
 
-    // Auto-detect invite link parameters (?room=... & pin=...)
+    // Auto-detect invite link parameters (?room=... & passkey=...)
     useEffect(() => {
       try {
         const params = new URLSearchParams(window.location.search);
-        const urlRoom = params.get("roomId") || params.get("room_id") || params.get("room");
-        const urlPin = params.get("passkey") || params.get("pin");
-        if (urlRoom) {
+        const urlRoom = params.get('room') || params.get('roomId') || params.get('room_id');
+        const urlPasskey = params.get('passkey') || params.get('pin');
+
+        if (urlRoom && urlPasskey) {
+          setRoomId(urlRoom);
+          setPasskey(urlPasskey);
+          // Ensure the UI switches to the "Join Room" tab automatically
+          setIsJoinMode(true);
+          // Clean up the URL bar so the credentials don't stay visible
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (urlRoom) {
           setRoomId(urlRoom.toLowerCase());
           setIsJoinMode(true);
-        }
-        if (urlPin) {
-          setPasskey(urlPin);
+        } else if (urlPasskey) {
+          setPasskey(urlPasskey);
         }
       } catch (_) {}
 
       const onQrScanned = (e) => {
         if (e.detail) {
-          const scannedRoom = e.detail.roomId || e.detail.room;
-          const scannedPasskey = e.detail.passkey || e.detail.pin;
+          let scannedRoom = e.detail.roomId || e.detail.room;
+          let scannedPasskey = e.detail.passkey || e.detail.pin;
+          if (typeof e.detail === "string") {
+            try {
+              if (e.detail.startsWith("http://") || e.detail.startsWith("https://")) {
+                const u = new URL(e.detail);
+                scannedRoom = u.searchParams.get("room") || u.searchParams.get("roomId") || scannedRoom;
+                scannedPasskey = u.searchParams.get("passkey") || u.searchParams.get("pin") || scannedPasskey;
+              } else if (e.detail.startsWith("{")) {
+                const parsed = JSON.parse(e.detail);
+                scannedRoom = parsed.roomId || parsed.room || scannedRoom;
+                scannedPasskey = parsed.passkey || parsed.pin || scannedPasskey;
+              }
+            } catch (_) {}
+          }
           if (scannedRoom) setRoomId(scannedRoom.toLowerCase());
           if (scannedPasskey) setPasskey(scannedPasskey);
           setIsJoinMode(true);
@@ -1456,7 +1476,7 @@
           h("h3", { className: "text-base font-semibold text-zinc-100 mb-1" }, "Room QR Code"),
           h("p", { className: "text-xs text-zinc-400 text-center mb-4" }, "Scan to join this secure room"),
           h(QRCode, {
-            value: JSON.stringify({ roomId, passkey })
+            value: `${window.location.origin}/?room=${roomId}&passkey=${encodeURIComponent(passkey)}`
           }),
           h("div", { className: "mt-4 text-center font-mono text-xs text-zinc-400 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800/80 w-full truncate" },
             `Room: ${roomId}`
