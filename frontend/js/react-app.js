@@ -130,6 +130,11 @@
           h("line", { x1: "9", x2: "9.01", y1: "9", y2: "9" }),
           h("line", { x1: "15", x2: "15.01", y1: "9", y2: "9" })
         );
+      case "reply":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("polyline", { points: "9 17 4 12 9 7" }),
+          h("path", { d: "M20 18v-2a4 4 0 0 0-4-4H4" })
+        );
       default:
         return null;
     }
@@ -856,12 +861,15 @@
     // Live Messages state (empty initially, mapped dynamically)
     const [messages, setMessages] = useState([]);
 
-    // Chat input & mention autocomplete state
+    // Chat input, reply, typing, and mention autocomplete state
     const [inputValue, setInputValue] = useState("");
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [isMentionOpen, setIsMentionOpen] = useState(false);
-    const [mentionQuery, setMentionQuery] = useState("");
-    const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
+    const [typingUsers, setTypingUsers] = useState([]);
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [showMentionMenu, setShowMentionMenu] = useState(false);
+    const [mentionFilter, setMentionFilter] = useState("");
+    const typingTimeoutRef = useRef(null);
+    const isTypingRef = useRef(false);
 
     // Direct/Broadcast File Sharing Popover state
     const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
@@ -877,10 +885,43 @@
       setTimeout(() => setToastMessage(null), 3000);
     };
 
-    // Filter participants for mention popover (excluding local user)
-    const mentionMatches = roomUsers
-      .filter((u) => !u.isLocal)
-      .filter((u) => u.name.toLowerCase().includes(mentionQuery.toLowerCase()));
+    // Filtered participants for mention popover (excluding local user)
+    const filteredMentionUsers = roomUsers
+      .filter((u) => !u.isLocal && u.name.toLowerCase() !== (username || "").toLowerCase())
+      .filter((u) => (u.name || "").toLowerCase().includes(mentionFilter.toLowerCase()));
+
+    // Selection logic for @username mention
+    const handleSelectMention = (targetUsername) => {
+      const input = inputRef.current;
+      const cursorPos = input ? input.selectionStart : inputValue.length;
+      const textBefore = inputValue.slice(0, cursorPos);
+      const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
+
+      let nextVal;
+      let newCursorPos;
+      if (match) {
+        const atOffset = match[0].startsWith("@") ? 0 : 1;
+        const atIndex = match.index + atOffset;
+        const before = inputValue.substring(0, atIndex);
+        const after = inputValue.substring(cursorPos);
+        nextVal = `${before}@${targetUsername} ${after}`;
+        newCursorPos = before.length + targetUsername.length + 2;
+      } else {
+        nextVal = `${inputValue}@${targetUsername} `;
+        newCursorPos = nextVal.length;
+      }
+
+      setInputValue(nextVal);
+      setShowMentionMenu(false);
+      setMentionFilter("");
+
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
+    };
 
     // Other online peers in room (excluding local user)
     const otherPeers = roomUsers.filter((u) => !u.isLocal);
@@ -945,10 +986,16 @@
             setShowEmojiPicker(false);
           }
         }
+        if (showMentionMenu) {
+          const menu = document.getElementById("chat-mentions-popover");
+          if (menu && !menu.contains(e.target) && inputRef.current && !inputRef.current.contains(e.target)) {
+            setShowMentionMenu(false);
+          }
+        }
       };
       document.addEventListener("click", handleClickOutside);
       return () => document.removeEventListener("click", handleClickOutside);
-    }, [isShareMenuOpen, showEmojiPicker]);
+    }, [isShareMenuOpen, showEmojiPicker, showMentionMenu]);
 
     // Handle emoji selection: append to existing input without overwriting
     const handleEmojiSelect = (emoji) => {
@@ -1063,6 +1110,9 @@
         setPasskey("");
         setMessages([]);
         setRoomUsers([]);
+        setTypingUsers([]);
+        setReplyingTo(null);
+        setShowMentionMenu(false);
         setIsCallActive(false);
         setShowQrModal(false);
       };
@@ -1097,76 +1147,130 @@
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // Handle input typing & detect '@' for mention popover
+    // Real-Time Typing Indicator Socket Listeners
+    useEffect(() => {
+      const getSocket = () => (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket || null;
+      let activeSocket = getSocket();
+      const typerTimers = {};
+
+      const handleUserTyping = (data) => {
+        if (!data) return;
+        const name = data.nickname || data.username || (typeof data === "string" ? data : "");
+        if (!name || name.toLowerCase() === (username || "").toLowerCase()) return;
+
+        setTypingUsers((prev) => (prev.includes(name) ? prev : [...prev, name]));
+
+        if (typerTimers[name]) {
+          clearTimeout(typerTimers[name]);
+        }
+        typerTimers[name] = setTimeout(() => {
+          setTypingUsers((prev) => prev.filter((u) => u !== name));
+          delete typerTimers[name];
+        }, 3500);
+      };
+
+      const handleUserStopTyping = (data) => {
+        if (!data) return;
+        const name = data.nickname || data.username || (typeof data === "string" ? data : "");
+        if (!name) return;
+        if (typerTimers[name]) {
+          clearTimeout(typerTimers[name]);
+          delete typerTimers[name];
+        }
+        setTypingUsers((prev) => prev.filter((u) => u.toLowerCase() !== name.toLowerCase()));
+      };
+
+      const attach = (s) => {
+        if (!s) return;
+        s.on("user-typing", handleUserTyping);
+        s.on("user_typing", handleUserTyping);
+        s.on("typing", handleUserTyping);
+        s.on("user-stop-typing", handleUserStopTyping);
+        s.on("user_stop_typing", handleUserStopTyping);
+        s.on("stop-typing", handleUserStopTyping);
+        s.on("stop_typing", handleUserStopTyping);
+      };
+
+      const detach = (s) => {
+        if (!s) return;
+        s.off("user-typing", handleUserTyping);
+        s.off("user_typing", handleUserTyping);
+        s.off("typing", handleUserTyping);
+        s.off("user-stop-typing", handleUserStopTyping);
+        s.off("user_stop_typing", handleUserStopTyping);
+        s.off("stop-typing", handleUserStopTyping);
+        s.off("stop_typing", handleUserStopTyping);
+      };
+
+      attach(activeSocket);
+
+      const checkInterval = setInterval(() => {
+        const s = getSocket();
+        if (s && s !== activeSocket) {
+          detach(activeSocket);
+          activeSocket = s;
+          attach(activeSocket);
+        }
+      }, 1000);
+
+      return () => {
+        clearInterval(checkInterval);
+        detach(activeSocket);
+        Object.values(typerTimers).forEach(clearTimeout);
+      };
+    }, [username, roomId]);
+
+    // Handle input typing & detect '@' for mention popover + typing indicator
     const handleInputChange = (e) => {
       const val = e.target.value;
       setInputValue(val);
 
+      // 1. Typing indicator emit with 2000ms debounce
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+      if (socket && roomId) {
+        const nickname = username || "Anonymous";
+        if (!isTypingRef.current) {
+          isTypingRef.current = true;
+          socket.emit("typing", { roomId, room_id: roomId, nickname, username: nickname });
+        }
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+          isTypingRef.current = false;
+          socket.emit("stop-typing", { roomId, room_id: roomId, nickname, username: nickname });
+          socket.emit("stop_typing", { roomId, room_id: roomId, nickname, username: nickname });
+        }, 2000);
+      }
+
+      // 2. Mentions tracking
       const cursorPos = e.target.selectionStart;
       const textBefore = val.slice(0, cursorPos);
       const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
 
-      if (match) {
-        setMentionQuery(match[1]);
-        setMentionSelectedIndex(0);
-        setIsMentionOpen(true);
+      if (match && !textBefore.endsWith(" ") && val.trim().length > 0) {
+        setShowMentionMenu(true);
+        setMentionFilter(match[1] || "");
       } else {
-        setIsMentionOpen(false);
+        setShowMentionMenu(false);
+        setMentionFilter("");
       }
     };
 
-    // Insert chosen mention
-    const insertMention = (name) => {
-      const input = inputRef.current;
-      if (!input) return;
-
-      const cursorPos = input.selectionStart;
-      const textBefore = inputValue.slice(0, cursorPos);
-      const match = /(?:^|\s)@([a-zA-Z0-9_-]*)$/.exec(textBefore);
-      if (!match) return;
-
-      const atOffset = match[0].startsWith("@") ? 0 : 1;
-      const atIndex = match.index + atOffset;
-      const before = inputValue.substring(0, atIndex);
-      const after = inputValue.substring(cursorPos);
-      const nextVal = `${before}@${name} ${after}`;
-
-      setInputValue(nextVal);
-      setIsMentionOpen(false);
-
-      setTimeout(() => {
-        const nextPos = before.length + name.length + 2;
-        input.focus();
-        input.setSelectionRange(nextPos, nextPos);
-      }, 0);
-    };
-
-    // Handle Keydown (Arrow navigation, Tab/Enter selection)
+    // Handle Keydown
     const handleKeyDown = (e) => {
-      if (isMentionOpen && mentionMatches.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setMentionSelectedIndex((prev) => (prev + 1) % mentionMatches.length);
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setMentionSelectedIndex((prev) => (prev - 1 + mentionMatches.length) % mentionMatches.length);
-          return;
-        }
-        if (e.key === "Tab" || e.key === "Enter") {
-          e.preventDefault();
-          const target = mentionMatches[mentionSelectedIndex];
-          if (target) {
-            insertMention(target.name);
-          }
-          return;
-        }
+      if (showMentionMenu && filteredMentionUsers.length > 0) {
         if (e.key === "Escape") {
           e.preventDefault();
-          setIsMentionOpen(false);
+          setShowMentionMenu(false);
           return;
         }
+      }
+
+      if (e.key === "Escape" && replyingTo) {
+        e.preventDefault();
+        setReplyingTo(null);
+        return;
       }
 
       if (e.key === "Enter" && !e.shiftKey) {
@@ -1183,8 +1287,30 @@
       const trimmed = inputValue.trim();
       if (!trimmed) return;
 
+      // Stop typing immediately on message sent
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (isTypingRef.current) {
+        isTypingRef.current = false;
+        const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+        if (socket && roomId) {
+          const nickname = username || "Anonymous";
+          socket.emit("stop-typing", { roomId, room_id: roomId, nickname, username: nickname });
+          socket.emit("stop_typing", { roomId, room_id: roomId, nickname, username: nickname });
+        }
+      }
+
       const now = new Date();
       const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      const replyPayload = replyingTo ? {
+        id: replyingTo.id,
+        sender: replyingTo.sender,
+        text: replyingTo.text,
+        snippet: (replyingTo.text || "").substring(0, 80)
+      } : null;
+
       const newMessageObject = {
         id: (window.crypto && typeof crypto.randomUUID === "function")
           ? crypto.randomUUID()
@@ -1193,16 +1319,19 @@
         sender: username || "You",
         isMe: true,
         timestamp: timeStr,
-        avatar: null
+        avatar: null,
+        replyTo: replyPayload
       };
 
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendMessage === "function") {
-        window.__NETCHAT_BRIDGE__.sendMessage(trimmed);
+        window.__NETCHAT_BRIDGE__.sendMessage(trimmed, replyPayload);
       }
 
       setMessages((prevMessages) => [...prevMessages, newMessageObject]);
       setInputValue("");
-      setIsMentionOpen(false);
+      setReplyingTo(null);
+      setShowMentionMenu(false);
+      setMentionFilter("");
     };
 
     // Share link handler
@@ -1341,6 +1470,9 @@
       setRoomId('');
       setPasskey('');
       setMessages([]);
+      setTypingUsers([]);
+      setReplyingTo(null);
+      setShowMentionMenu(false);
       setLocalStream(null);
       setJoined(false); // Do this LAST.
     };
@@ -1551,27 +1683,49 @@
                   )
                 )
               : messages.map((msg) => {
+                  const rep = msg.replyTo || msg.replyingTo || msg.reply_to;
+                  const quotedBox = rep && h("div", {
+                    className: "bg-black/20 rounded p-1.5 mb-1 text-[11px] border-l-2 border-emerald-500/50 text-zinc-300"
+                  },
+                    h("div", { className: "font-medium text-emerald-400/90 text-[10px]" }, rep.sender || "User"),
+                    h("div", { className: "truncate opacity-80" }, rep.text || rep.snippet || rep.content || "")
+                  );
+
                   if (msg.isMe) {
                     // Outgoing Message (You)
-                    return h("div", { key: msg.id, className: "flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[70%]" },
+                    return h("div", { key: msg.id, className: "group flex flex-col items-end ml-auto max-w-[85%] sm:max-w-[70%]" },
                       h("div", { className: "flex items-center gap-1.5 mb-1 text-[11px] text-zinc-400" },
+                        h("button", {
+                          type: "button",
+                          onClick: () => setReplyingTo(msg),
+                          title: "Reply to message",
+                          className: "text-zinc-500 hover:text-zinc-300 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        }, h(Icon, { name: "reply", className: "w-3 h-3" })),
                         h("span", null, "You"),
                         msg.timestamp && h("span", { className: "text-zinc-600 text-[10px]" }, msg.timestamp)
                       ),
                       h("div", { className: "bg-zinc-800 border border-zinc-700/60 text-zinc-100 text-sm p-3 rounded-2xl rounded-tr-sm shadow-sm leading-relaxed" },
+                        quotedBox,
                         renderMessageText(msg.text)
                       )
                     );
                   } else {
                     // Incoming Message (Peer)
-                    return h("div", { key: msg.id, className: "flex items-start gap-2.5 max-w-[85%] sm:max-w-[70%]" },
+                    return h("div", { key: msg.id, className: "group flex items-start gap-2.5 max-w-[85%] sm:max-w-[70%]" },
                       h(Avatar, { name: msg.sender, src: msg.avatar, size: "md" }),
                       h("div", { className: "flex-1 min-w-0" },
                         h("div", { className: "flex items-center gap-1.5 mb-1 text-[11px] text-zinc-400" },
                           h("span", { className: "font-medium" }, msg.sender),
-                          msg.timestamp && h("span", { className: "text-zinc-600 text-[10px]" }, msg.timestamp)
+                          msg.timestamp && h("span", { className: "text-zinc-600 text-[10px]" }, msg.timestamp),
+                          h("button", {
+                            type: "button",
+                            onClick: () => setReplyingTo(msg),
+                            title: "Reply to message",
+                            className: "text-zinc-500 hover:text-zinc-300 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ml-auto sm:ml-0"
+                          }, h(Icon, { name: "reply", className: "w-3 h-3" }))
                         ),
                         h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 rounded-2xl rounded-tl-sm shadow-sm leading-relaxed" },
+                          quotedBox,
                           renderMessageText(msg.text)
                         )
                       )
@@ -1587,28 +1741,45 @@
           ),
 
           // ===================================================================
-          // 5. DOCKED BOTTOM INPUT BAR & @MENTION AUTOCOMPLETE
+          // 5. DOCKED BOTTOM INPUT BAR, TYPING INDICATOR & MENTIONS
           // ===================================================================
           h("footer", { className: "shrink-0 w-full bg-zinc-950 border-t border-zinc-800 p-3 pb-safe z-10 relative" },
 
-            // @Mention Autocomplete Popover (Triggers when typing '@')
-            isMentionOpen && mentionMatches.length > 0 && h("div", {
-              className: "absolute bottom-full mb-2 left-4 w-60 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-1 z-40 max-h-44 overflow-y-auto backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150"
+            // 1. TYPING INDICATOR UI (Directly above the main chat input bar)
+            typingUsers.length > 0 && h("div", {
+              className: "absolute bottom-full left-4 mb-1 text-zinc-500 text-[11px] italic pointer-events-none"
+            }, `${typingUsers.join(', ')} is typing...`),
+
+            // 2. MESSAGE REPLY FEATURE (Input Preview UI)
+            replyingTo && h("div", {
+              className: "w-full bg-zinc-900 border-t border-zinc-800 border-b-0 px-3 py-2 text-xs flex justify-between items-center text-zinc-400 rounded-t-xl mb-1.5"
             },
-              mentionMatches.map((m, idx) => {
-                const isSelected = idx === mentionSelectedIndex;
-                return h("div", {
-                  key: m.id,
-                  onClick: () => insertMention(m.name),
-                  className: `flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer text-xs transition-colors ${
-                    isSelected ? "bg-zinc-800" : "hover:bg-zinc-800"
-                  }`
-                },
-                  h(Avatar, { name: m.name, src: m.avatar, size: "sm" }),
-                  h("span", { className: "text-zinc-200 font-medium" }, `@${m.name}`),
-                  h("span", { className: "text-zinc-500 text-[11px] ml-auto" }, "(online)")
-                );
-              })
+              h("div", { className: "border-l-2 border-emerald-500 pl-2 flex flex-col min-w-0 pr-2" },
+                h("span", { className: "font-semibold text-emerald-400 text-[11px]" }, `Replying to ${replyingTo.sender || "User"}`),
+                h("span", { className: "truncate text-zinc-400 text-xs" }, replyingTo.text || "")
+              ),
+              h("button", {
+                type: "button",
+                onClick: () => setReplyingTo(null),
+                className: "text-zinc-500 hover:text-zinc-200 p-1 rounded-lg transition-colors cursor-pointer shrink-0 ml-2",
+                title: "Cancel Reply"
+              },
+                h(Icon, { name: "x", className: "w-3.5 h-3.5" })
+              )
+            ),
+
+            // 3. MENTIONS / TAGGING FEATURE (@username floating popover)
+            showMentionMenu && filteredMentionUsers.length > 0 && h("div", {
+              id: "chat-mentions-popover",
+              className: "absolute bottom-full left-0 mb-2 w-48 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl z-50 overflow-hidden max-h-48 overflow-y-auto"
+            },
+              filteredMentionUsers.map((u) =>
+                h("div", {
+                  key: u.id || u.name,
+                  onClick: () => handleSelectMention(u.name),
+                  className: "px-3 py-2 text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer"
+                }, `@${u.name}`)
+              )
             ),
 
             // Input Container with emerald focus ring matching reference design

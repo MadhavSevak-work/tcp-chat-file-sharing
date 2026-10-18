@@ -2546,7 +2546,9 @@
           isMe: Boolean(isMe),
           isPrivate: Boolean(isPrivate),
           peer: peer,
-          isDecryptError: Boolean(isDecryptError)
+          isDecryptError: Boolean(isDecryptError),
+          replyTo: replyTo,
+          reply_to: replyTo
         }
       }));
     } catch (_) {}
@@ -6000,27 +6002,34 @@
           }
         });
       },
-      sendMessage: (text) => {
+      sendMessage: (text, replyTo = null) => {
         if (!text || !text.trim()) return;
+        if (replyTo) {
+          activeReply = replyTo;
+        }
         if (DOM.messageInput) {
           DOM.messageInput.value = text;
           handleSendMessage(new Event("submit"));
         } else if (state.socket && state.roomId) {
           if (state.isE2EE && state.roomPasskey && window.E2EE) {
             window.E2EE.encryptMessage(text, state.roomPasskey).then((payload) => {
-              state.socket.emit("send_message", {
+              const msgPacket = {
                 room_id: state.roomId,
                 payload: payload,
                 sender: state.username,
                 type: "e2ee"
-              });
+              };
+              if (replyTo) msgPacket.reply_to = replyTo;
+              state.socket.emit("send_message", msgPacket);
             });
           } else {
-            state.socket.emit("chat_message", {
+            const msgPacket = {
               room_id: state.roomId,
               content: text,
               sender: state.username
-            });
+            };
+            if (replyTo) msgPacket.reply_to = replyTo;
+            state.socket.emit("chat_message", msgPacket);
           }
         }
       },
