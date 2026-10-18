@@ -553,6 +553,9 @@
     const [passkey, setPasskey] = useState("");
     const [showQrModal, setShowQrModal] = useState(false);
     const [username, setUsername] = useState("");
+    const [localStream, setLocalStream] = useState(null);
+    const peersRef = useRef({});
+    const isDisconnectingRef = useRef(false);
     const [isConnected, setIsConnected] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState("connecting");
     const [isMembersOpen, setIsMembersOpen] = useState(true);
@@ -660,6 +663,7 @@
     // Synchronize state from window.__NETCHAT_BRIDGE__ or window.__NETCHAT_STATE__
     useEffect(() => {
       const syncFromBridge = () => {
+        if (isDisconnectingRef.current) return;
         if (window.__NETCHAT_BRIDGE__) {
           const s = window.__NETCHAT_BRIDGE__.getState();
           setIsConnected(s.isConnected);
@@ -740,6 +744,7 @@
       };
 
       const onRoomJoined = (e) => {
+        if (isDisconnectingRef.current) return;
         if (e.detail) {
           setRoomId(e.detail.roomId);
           setUsername(e.detail.username);
@@ -930,64 +935,94 @@
       setIsCallActive(false);
     };
 
-    const handleDisconnect = () => {
-      // a. localStream?.getTracks().forEach(track => track.stop());
-      const localStream = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.localStream)
+    const handleDisconnect = (e) => {
+      // 1. PREVENT DEFAULT & STOP MEDIA FIRST:
+      if (e && typeof e.preventDefault === "function") {
+        e.preventDefault();
+      }
+      isDisconnectingRef.current = true;
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      }
+      const activeStream = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.localStream)
         || (window.webrtcMesh && window.webrtcMesh.localStream)
         || (window.webrtcState && window.webrtcState.localStream)
         || null;
-      localStream?.getTracks().forEach(track => track.stop());
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
       if (window.webrtcMesh && window.webrtcMesh.localStream) {
-        window.webrtcMesh.localStream?.getTracks().forEach(track => track.stop());
         window.webrtcMesh.localStream = null;
       }
       if (window.webrtcState && window.webrtcState.localStream) {
-        window.webrtcState.localStream?.getTracks().forEach(track => track.stop());
         window.webrtcState.localStream = null;
       }
 
-      // b. socket.emit('leave-room');
+      // 2. DESTROY PEER CONNECTIONS & SOCKET CLEANUP:
+      if (peersRef.current) {
+        Object.keys(peersRef.current).forEach((key) => {
+          try {
+            const peer = peersRef.current[key];
+            if (peer && typeof peer.close === "function") peer.close();
+            else if (peer && peer.pc && typeof peer.pc.close === "function") peer.pc.close();
+          } catch (_) {}
+        });
+        peersRef.current = {};
+      }
+      if (window.webrtcMesh && window.webrtcMesh.peers) {
+        Object.keys(window.webrtcMesh.peers).forEach((key) => {
+          try {
+            if (window.webrtcMesh.peers[key]?.pc) window.webrtcMesh.peers[key].pc.close();
+          } catch (_) {}
+        });
+        window.webrtcMesh.peers = {};
+      }
+      if (window.webrtcState && window.webrtcState.peerConnection) {
+        try { window.webrtcState.peerConnection.close(); } catch (_) {}
+        window.webrtcState.peerConnection = null;
+      }
+
       const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket)
         || window.socket
         || null;
       if (socket) {
         socket.emit('leave-room');
         try {
+          socket.off('room-joined');
+          socket.off('room_joined');
+          socket.off('joined');
           socket.emit('leave_room', { room_id: roomId, username: username });
         } catch (_) {}
       }
 
-      // c. Close and nullify all peer connections
-      if (window.webrtcMesh && window.webrtcMesh.peers) {
-        Object.keys(window.webrtcMesh.peers).forEach((key) => {
-          try {
-            if (window.webrtcMesh.peers[key]?.pc) {
-              window.webrtcMesh.peers[key].pc.close();
-            }
-          } catch (_) {}
-        });
-        window.webrtcMesh.peers = null;
-      }
-      if (window.webrtcState && window.webrtcState.peerConnection) {
-        try {
-          window.webrtcState.peerConnection.close();
-        } catch (_) {}
-        window.webrtcState.peerConnection = null;
+      if (window.__NETCHAT_STATE__) {
+        window.__NETCHAT_STATE__.roomId = "";
+        window.__NETCHAT_STATE__.roomPasskey = "";
+        window.__NETCHAT_STATE__.peerList = [];
+        window.__NETCHAT_STATE__.onlineUsers = [];
       }
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.disconnect === "function") {
         try {
           window.__NETCHAT_BRIDGE__.disconnect();
         } catch (_) {}
       }
+      try {
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, document.title, window.location.pathname);
+        }
+      } catch (_) {}
 
-      // d. Reset state to return to the landing screen
-      setJoined(false);
-      setRoomId('');
-      setPasskey('');
-      setMessages([]);
       setShowQrModal(false);
       setRoomUsers([]);
       setIsCallActive(false);
+
+      // 3. STATE RESET (Strict Order):
+      setRoomId('');
+      setPasskey('');
+      setMessages([]);
+      setLocalStream(null);
+      setJoined(false); // Do this LAST.
     };
 
     // If not in a room, render the restored & re-styled Landing Screen
@@ -995,6 +1030,7 @@
       return h(LandingScreen, {
         isConnected: isConnected,
         onJoinSuccess: ({ username: u, roomId: r, passkey: p }) => {
+          isDisconnectingRef.current = false;
           setUsername(u);
           setRoomId(r);
           setPasskey(p || "");
