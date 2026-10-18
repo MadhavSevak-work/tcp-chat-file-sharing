@@ -111,6 +111,18 @@
           h("path", { d: "M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" }),
           h("circle", { cx: "12", cy: "13", r: "3" })
         );
+      case "qr":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("rect", { x: "3", y: "3", width: "7", height: "7" }),
+          h("rect", { x: "14", y: "3", width: "7", height: "7" }),
+          h("rect", { x: "14", y: "14", width: "7", height: "7" }),
+          h("rect", { x: "3", y: "14", width: "7", height: "7" })
+        );
+      case "x":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("line", { x1: "18", y1: "6", x2: "6", y2: "18" }),
+          h("line", { x1: "6", y1: "6", x2: "18", y2: "18" })
+        );
       default:
         return null;
     }
@@ -192,6 +204,55 @@
     }
 
     return parts;
+  }
+
+  // QR Code Renderer Component using QR library
+  function QRCode({ value, size = 192, className = "" }) {
+    const qrRef = useRef(null);
+
+    useEffect(() => {
+      if (!qrRef.current || !value) return;
+      const el = qrRef.current;
+      el.innerHTML = "";
+
+      try {
+        if (typeof window.QRCode !== "undefined") {
+          if (typeof window.QRCode.toCanvas === "function") {
+            const canvas = document.createElement("canvas");
+            el.appendChild(canvas);
+            window.QRCode.toCanvas(canvas, value, {
+              width: size,
+              margin: 2,
+              color: { dark: "#09090b", light: "#ffffff" }
+            }, (err) => {
+              if (err) console.warn("QRCode.toCanvas error:", err);
+            });
+          } else {
+            new window.QRCode(el, {
+              text: value,
+              width: size,
+              height: size,
+              colorDark: "#09090b",
+              colorLight: "#ffffff",
+              correctLevel: (typeof window.QRCode.CorrectLevel !== "undefined") ? window.QRCode.CorrectLevel.M : 0
+            });
+            const canvas = el.querySelector("canvas");
+            const img = el.querySelector("img");
+            if (canvas && img) {
+              img.style.display = "none";
+              img.setAttribute("aria-hidden", "true");
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("QR code render failed:", err);
+      }
+    }, [value, size]);
+
+    return h("div", {
+      ref: qrRef,
+      className: `bg-white p-3 rounded-xl flex items-center justify-center shadow-md ${className}`
+    });
   }
 
   // ===========================================================================
@@ -485,8 +546,12 @@
   // ===========================================================================
   function NetChatApp() {
     // Session state
-    const [inRoom, setInRoom] = useState(false);
+    const [joined, setJoined] = useState(false);
+    const inRoom = joined;
+    const setInRoom = setJoined;
     const [roomId, setRoomId] = useState("");
+    const [passkey, setPasskey] = useState("");
+    const [showQrModal, setShowQrModal] = useState(false);
     const [username, setUsername] = useState("");
     const [isConnected, setIsConnected] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState("connecting");
@@ -607,7 +672,8 @@
 
           if (s.roomId) {
             setRoomId(s.roomId);
-            setInRoom(true);
+            if (s.roomPasskey) setPasskey(s.roomPasskey);
+            setJoined(true);
           }
           if (s.username) {
             setUsername(s.username);
@@ -677,16 +743,19 @@
         if (e.detail) {
           setRoomId(e.detail.roomId);
           setUsername(e.detail.username);
-          setInRoom(true);
+          if (e.detail.passkey || e.detail.pin) setPasskey(e.detail.passkey || e.detail.pin);
+          setJoined(true);
         }
       };
 
       const onRoomLeft = () => {
-        setInRoom(false);
+        setJoined(false);
         setRoomId("");
+        setPasskey("");
         setMessages([]);
         setRoomUsers([]);
         setIsCallActive(false);
+        setShowQrModal(false);
       };
 
       const onCallChanged = (e) => {
@@ -862,25 +931,74 @@
     };
 
     const handleDisconnect = () => {
-      if (confirm("Disconnect and leave this room?")) {
-        if (window.__NETCHAT_BRIDGE__) {
-          window.__NETCHAT_BRIDGE__.disconnect();
-        }
-        setInRoom(false);
-        setRoomId("");
-        setMessages([]);
-        setRoomUsers([]);
+      // a. localStream?.getTracks().forEach(track => track.stop());
+      const localStream = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.localStream)
+        || (window.webrtcMesh && window.webrtcMesh.localStream)
+        || (window.webrtcState && window.webrtcState.localStream)
+        || null;
+      localStream?.getTracks().forEach(track => track.stop());
+      if (window.webrtcMesh && window.webrtcMesh.localStream) {
+        window.webrtcMesh.localStream?.getTracks().forEach(track => track.stop());
+        window.webrtcMesh.localStream = null;
       }
+      if (window.webrtcState && window.webrtcState.localStream) {
+        window.webrtcState.localStream?.getTracks().forEach(track => track.stop());
+        window.webrtcState.localStream = null;
+      }
+
+      // b. socket.emit('leave-room');
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket)
+        || window.socket
+        || null;
+      if (socket) {
+        socket.emit('leave-room');
+        try {
+          socket.emit('leave_room', { room_id: roomId, username: username });
+        } catch (_) {}
+      }
+
+      // c. Close and nullify all peer connections
+      if (window.webrtcMesh && window.webrtcMesh.peers) {
+        Object.keys(window.webrtcMesh.peers).forEach((key) => {
+          try {
+            if (window.webrtcMesh.peers[key]?.pc) {
+              window.webrtcMesh.peers[key].pc.close();
+            }
+          } catch (_) {}
+        });
+        window.webrtcMesh.peers = null;
+      }
+      if (window.webrtcState && window.webrtcState.peerConnection) {
+        try {
+          window.webrtcState.peerConnection.close();
+        } catch (_) {}
+        window.webrtcState.peerConnection = null;
+      }
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.disconnect === "function") {
+        try {
+          window.__NETCHAT_BRIDGE__.disconnect();
+        } catch (_) {}
+      }
+
+      // d. Reset state to return to the landing screen
+      setJoined(false);
+      setRoomId('');
+      setPasskey('');
+      setMessages([]);
+      setShowQrModal(false);
+      setRoomUsers([]);
+      setIsCallActive(false);
     };
 
     // If not in a room, render the restored & re-styled Landing Screen
-    if (!inRoom) {
+    if (!joined) {
       return h(LandingScreen, {
         isConnected: isConnected,
-        onJoinSuccess: ({ username: u, roomId: r }) => {
+        onJoinSuccess: ({ username: u, roomId: r, passkey: p }) => {
           setUsername(u);
           setRoomId(r);
-          setInRoom(true);
+          setPasskey(p || "");
+          setJoined(true);
         }
       });
     }
@@ -917,10 +1035,21 @@
           })
         ),
 
-        // Center Room Pill
-        h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm shrink min-w-[80px] overflow-hidden whitespace-nowrap text-ellipsis" },
-          h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400 shrink-0" }),
-          h("span", { className: "font-mono font-medium whitespace-nowrap overflow-hidden text-ellipsis" }, `room: ${roomId}`)
+        // Center Room Pill + Share QR Button
+        h("div", { className: "flex items-center gap-1.5 shrink min-w-0" },
+          h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm min-w-[80px] overflow-hidden whitespace-nowrap text-ellipsis" },
+            h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400 shrink-0" }),
+            h("span", { className: "font-mono font-medium whitespace-nowrap overflow-hidden text-ellipsis" }, `room: ${roomId}`)
+          ),
+          h("button", {
+            type: "button",
+            onClick: () => setShowQrModal(true),
+            title: "Share QR",
+            "aria-label": "Share QR",
+            className: "text-zinc-400 hover:text-white p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+          },
+            h(Icon, { name: "qr", className: "w-4 h-4" })
+          )
         ),
 
         // Right Actions Group (Exact 5-icon order)
@@ -970,12 +1099,13 @@
             }, roomUsers.length)
           ),
 
-          // Button 5 - Disconnect
+          // Button 5 - Red Disconnect/Power Button
           h("button", {
             type: "button",
             onClick: handleDisconnect,
-            title: "Disconnect Session",
-            className: "hover:bg-red-500/10 text-red-400/90 hover:text-red-400 p-2 rounded-lg transition-colors border border-transparent hover:border-red-900/40 cursor-pointer"
+            title: "Disconnect",
+            "aria-label": "Disconnect",
+            className: "text-red-500 hover:text-red-400 bg-red-500/10 hover:bg-red-500/20 p-2 rounded-lg transition-colors border border-red-500/20 hover:border-red-500/40 cursor-pointer"
           }, h(Icon, { name: "power", className: "w-4 h-4" }))
         )
       ),
@@ -1265,7 +1395,38 @@
       // Toast Notification
       toastMessage && h("div", {
         className: "fixed bottom-20 left-1/2 -translate-x-1/2 bg-zinc-900 border border-zinc-700 text-zinc-200 text-xs px-4 py-2 rounded-full shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-3"
-      }, toastMessage)
+      }, toastMessage),
+
+      // QR Code Generator Modal (Desktop & Mobile)
+      showQrModal && h("div", {
+        className: "fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4",
+        onClick: (e) => {
+          if (e.target === e.currentTarget) setShowQrModal(false);
+        }
+      },
+        h("div", {
+          className: "bg-zinc-900 border border-zinc-800 rounded-2xl p-6 flex flex-col items-center max-w-sm w-full shadow-2xl relative"
+        },
+          // Close button
+          h("button", {
+            type: "button",
+            onClick: () => setShowQrModal(false),
+            title: "Close QR Modal",
+            "aria-label": "Close",
+            className: "absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+          },
+            h(Icon, { name: "x", className: "w-5 h-5" })
+          ),
+          h("h3", { className: "text-base font-semibold text-zinc-100 mb-1" }, "Room QR Code"),
+          h("p", { className: "text-xs text-zinc-400 text-center mb-4" }, "Scan to join this secure room"),
+          h(QRCode, {
+            value: JSON.stringify({ roomId, passkey })
+          }),
+          h("div", { className: "mt-4 text-center font-mono text-xs text-zinc-400 bg-zinc-950 px-3 py-1.5 rounded-lg border border-zinc-800/80 w-full truncate" },
+            `Room: ${roomId}`
+          )
+        )
+      )
     );
   }
 
