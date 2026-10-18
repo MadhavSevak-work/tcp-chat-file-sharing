@@ -1016,12 +1016,15 @@
 
       const onNewMessage = (e) => {
         if (e.detail) {
-          setMessages((prev) => [...prev, e.detail]);
-          setTimeout(() => {
-            if (messagesEndRef.current) {
-              messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+          setMessages((prev) => {
+            if (e.detail.id && prev.some((m) => m.id === e.detail.id)) {
+              return prev;
             }
-          }, 30);
+            if (e.detail.isMe && prev.some((m) => m.isMe && m.text === e.detail.text)) {
+              return prev;
+            }
+            return [...prev, e.detail];
+          });
         }
       };
 
@@ -1088,6 +1091,11 @@
         window.removeEventListener("netchat:call_changed", onCallChanged);
       };
     }, [username]);
+
+    // Auto-scroll to bottom whenever messages array changes
+    useEffect(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
 
     // Handle input typing & detect '@' for mention popover
     const handleInputChange = (e) => {
@@ -1163,27 +1171,38 @@
 
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        sendMessage();
+        sendMessage(e);
       }
     };
 
     // Send chat message
-    const sendMessage = () => {
+    const sendMessage = (e) => {
+      if (e && typeof e.preventDefault === "function") {
+        e.preventDefault();
+      }
       const trimmed = inputValue.trim();
       if (!trimmed) return;
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      const newMessageObject = {
+        id: (window.crypto && typeof crypto.randomUUID === "function")
+          ? crypto.randomUUID()
+          : `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        text: trimmed,
+        sender: username || "You",
+        isMe: true,
+        timestamp: timeStr,
+        avatar: null
+      };
 
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendMessage === "function") {
         window.__NETCHAT_BRIDGE__.sendMessage(trimmed);
       }
 
+      setMessages((prevMessages) => [...prevMessages, newMessageObject]);
       setInputValue("");
       setIsMentionOpen(false);
-
-      setTimeout(() => {
-        if (messagesEndRef.current) {
-          messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 50);
     };
 
     // Share link handler
@@ -1685,7 +1704,7 @@
               // Right: Send button
               h("button", {
                 type: "button",
-                onClick: sendMessage,
+                onClick: (e) => sendMessage(e),
                 className: "text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors shadow-sm active:scale-95 cursor-pointer shrink-0 ml-1"
               }, "Send"),
 
