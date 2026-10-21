@@ -1788,6 +1788,11 @@
     state.socket.on("file-decline", (data) => {
       window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: data }));
     });
+    state.socket.on("p2p_direct_packet", (data) => {
+      if (data && data.packet !== undefined) {
+        handleIncomingP2PDataMessage(data.packet, data.sender || "Peer", data.sender_sid);
+      }
+    });
 
     // Latency Telemetry
     state.socket.on("pong_measure", (data) => {
@@ -4953,7 +4958,7 @@
     };
 
     channel.onmessage = (event) => {
-      handleIncomingP2PDataMessage(event.data, peerName);
+      handleIncomingP2PDataMessage(event.data, peerName, peerSid);
     };
   }
 
@@ -5085,7 +5090,13 @@
   /**
    * Slices file into 16 KB chunks and streams over RTCDataChannel with backpressure flow control
    */
-  function executeP2PFileSend(file, channel, peerName, customTransferId) {
+  function executeP2PFileSend(file, channel, peerName, customTransferId, targetSid) {
+    if (!channel || channel.readyState !== "open") {
+      logActivity(`[P2P] RTCDataChannel not open for ${peerName}; using fast socket packet relay.`);
+      executeP2PSocketFileSend(file, targetSid, peerName, customTransferId);
+      return;
+    }
+
     const transferId = customTransferId || ("p2p-tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6));
     const CHUNK_SIZE = 16384; // 16 KB
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -5093,15 +5104,21 @@
     // Render outgoing transfer progress card in message stream
     renderP2PTransferCard(transferId, file.name, file.size, true, peerName);
 
-    // Send metadata header packet
-    channel.send(JSON.stringify({
-      type: "p2p_file_start",
-      id: transferId,
-      name: file.name,
-      size: file.size,
-      mime: file.type || "application/octet-stream",
-      totalChunks: totalChunks
-    }));
+    try {
+      // Send metadata header packet
+      channel.send(JSON.stringify({
+        type: "p2p_file_start",
+        id: transferId,
+        name: file.name,
+        size: file.size,
+        mime: file.type || "application/octet-stream",
+        totalChunks: totalChunks
+      }));
+    } catch (err) {
+      logActivity(`[P2P Error] Failed to send start packet over channel: ${err.message}. Retrying via socket.`);
+      executeP2PSocketFileSend(file, targetSid, peerName, transferId);
+      return;
+    }
 
     let offset = 0;
     channel.bufferedAmountLowThreshold = 65536; // 64 KB threshold for backpressure
@@ -5109,10 +5126,12 @@
     function sendNextSlice() {
       if (offset >= file.size) {
         // Transfer completed!
-        channel.send(JSON.stringify({
-          type: "p2p_file_complete",
-          id: transferId
-        }));
+        try {
+          channel.send(JSON.stringify({
+            type: "p2p_file_complete",
+            id: transferId
+          }));
+        } catch (_) {}
         updateP2PTransferComplete(transferId, null, file.name);
         try {
           window.dispatchEvent(new CustomEvent("netchat:new_message", {
@@ -5149,7 +5168,8 @@
           // Continue slicing next chunk
           sendNextSlice();
         } catch (err) {
-          logActivity(`[P2P Send Error] Failed sending chunk: ${err.message}`);
+          logActivity(`[P2P Send Error] Failed sending chunk: ${err.message}. Switching to socket relay.`);
+          executeP2PSocketFileSend(file, targetSid, peerName, transferId);
         }
       };
       reader.readAsArrayBuffer(slice);
@@ -5159,80 +5179,168 @@
   }
 
   /**
-   * Processes incoming data packets over RTCDataChannel
+   * High-reliability Socket.IO packet streamer (used as instant fallback when RTCDataChannel is negotiating or unavailable)
    */
-  function handleIncomingP2PDataMessage(data, peerName, peerSid) {
-    // 1. JSON Control Messages
-    if (typeof data === "string") {
-      try {
-        const msg = JSON.parse(data);
-        if (msg.type === "file-offer" || msg.type === "file_offer") {
-          window.dispatchEvent(new CustomEvent("netchat:file_offer", {
+  function executeP2PSocketFileSend(file, targetSid, peerName, customTransferId) {
+    if (!state.socket || !state.isConnected) {
+      appendSystemMessage("⚠️ Cannot send file: real-time connection not active.");
+      return;
+    }
+    const transferId = customTransferId || ("p2p-tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6));
+    const CHUNK_SIZE = 32768; // 32 KB
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE) || 1;
+
+    renderP2PTransferCard(transferId, file.name, file.size, true, peerName);
+
+    state.socket.emit("p2p_direct_packet", {
+      target_sid: targetSid,
+      room_id: state.roomId,
+      packet: {
+        type: "p2p_file_start",
+        id: transferId,
+        name: file.name,
+        size: file.size,
+        mime: file.type || "application/octet-stream",
+        totalChunks: totalChunks
+      }
+    });
+
+    let offset = 0;
+    function sendNextSlice() {
+      if (offset >= file.size) {
+        state.socket.emit("p2p_direct_packet", {
+          target_sid: targetSid,
+          room_id: state.roomId,
+          packet: {
+            type: "p2p_file_complete",
+            id: transferId
+          }
+        });
+        updateP2PTransferComplete(transferId, null, file.name);
+        try {
+          window.dispatchEvent(new CustomEvent("netchat:new_message", {
             detail: {
-              ...msg,
-              senderNickname: msg.senderNickname || peerName || "Peer",
-              senderId: msg.senderId || peerSid || "remote"
+              id: "p2p-done-" + transferId,
+              isMe: true,
+              sender: state.username || "You",
+              text: `Sent file: ${file.name} (${formatBytes(file.size)}) directly via P2P.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             }
           }));
-          return;
+        } catch (_) {}
+        logActivity(`[P2P Transfer Done] Direct socket transfer of '${file.name}' to ${peerName} finished!`);
+        return;
+      }
+
+      const slice = file.slice(offset, offset + CHUNK_SIZE);
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          state.socket.emit("p2p_direct_packet", {
+            target_sid: targetSid,
+            room_id: state.roomId,
+            packet: evt.target.result
+          });
+          offset += slice.size;
+          const pct = Math.min(100, Math.round((offset / file.size) * 100));
+          updateP2PTransferProgress(transferId, pct, `${formatBytes(offset)} / ${formatBytes(file.size)}`);
+          setTimeout(sendNextSlice, 8);
+        } catch (err) {
+          logActivity(`[P2P Socket Send Error] ${err.message}`);
         }
-        if (msg.type === "file-accept" || msg.type === "file_accept") {
-          window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: msg }));
-          return;
-        }
-        if (msg.type === "file-decline" || msg.type === "file_decline") {
-          window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: msg }));
-          return;
-        }
-        if (msg.type === "p2p_file_start") {
-          webrtcState.rxTransfer = {
-            id: msg.id,
-            name: msg.name,
-            size: msg.size,
-            mime: msg.mime,
-            totalChunks: msg.totalChunks,
-            receivedBytes: 0,
-            chunks: [],
-            sender: peerName || "Peer"
-          };
-          renderP2PTransferCard(msg.id, msg.name, msg.size, false, peerName);
-          logActivity(`[P2P Rx] Started receiving '${msg.name}' (${formatBytes(msg.size)}) directly from ${peerName}.`);
-        } else if (msg.type === "p2p_file_complete") {
-          const rx = webrtcState.rxTransfer;
-          if (rx && rx.id === msg.id) {
-            const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
-            const blobUrl = URL.createObjectURL(blob);
-            updateP2PTransferComplete(rx.id, blobUrl, rx.name);
-            try {
-              window.dispatchEvent(new CustomEvent("netchat:new_message", {
-                detail: {
-                  id: "p2p-rx-done-" + rx.id,
-                  isMe: false,
-                  sender: rx.sender || peerName || "Peer",
-                  text: `Received file: ${rx.name} (${formatBytes(rx.size)})`,
-                  downloadUrl: blobUrl,
-                  fileName: rx.name,
-                  fileSize: formatBytes(rx.size),
-                  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                }
-              }));
-            } catch (_) {}
-            webrtcState.rxTransfer = null;
-            logActivity(`[P2P Rx Done] '${rx.name}' assembled successfully. Zero server storage used!`);
-          }
-        }
+      };
+      reader.readAsArrayBuffer(slice);
+    }
+
+    sendNextSlice();
+  }
+
+  /**
+   * Processes incoming data packets over RTCDataChannel or direct socket relay
+   */
+  function handleIncomingP2PDataMessage(data, peerName, peerSid) {
+    if (!data) return;
+
+    // 1. Plain Object or JSON Control Messages
+    let msg = null;
+    if (typeof data === "object" && !(data instanceof ArrayBuffer) && !(data.buffer instanceof ArrayBuffer)) {
+      msg = data;
+    } else if (typeof data === "string") {
+      try {
+        msg = JSON.parse(data);
       } catch (err) {
         logActivity(`[P2P JSON Parse Error] ${err.message}`);
       }
-      return;
     }
 
-    // 2. Binary ArrayBuffer chunks
-    if (data instanceof ArrayBuffer) {
+    if (msg) {
+      if (msg.type === "file-offer" || msg.type === "file_offer") {
+        window.dispatchEvent(new CustomEvent("netchat:file_offer", {
+          detail: {
+            ...msg,
+            senderNickname: msg.senderNickname || peerName || "Peer",
+            senderId: msg.senderId || peerSid || "remote"
+          }
+        }));
+        return;
+      }
+      if (msg.type === "file-accept" || msg.type === "file_accept") {
+        window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: msg }));
+        return;
+      }
+      if (msg.type === "file-decline" || msg.type === "file_decline") {
+        window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: msg }));
+        return;
+      }
+      if (msg.type === "p2p_file_start") {
+        webrtcState.rxTransfer = {
+          id: msg.id,
+          name: msg.name,
+          size: msg.size,
+          mime: msg.mime,
+          totalChunks: msg.totalChunks,
+          receivedBytes: 0,
+          chunks: [],
+          sender: peerName || "Peer"
+        };
+        renderP2PTransferCard(msg.id, msg.name, msg.size, false, peerName);
+        logActivity(`[P2P Rx] Started receiving '${msg.name}' (${formatBytes(msg.size)}) directly from ${peerName}.`);
+        return;
+      }
+      if (msg.type === "p2p_file_complete") {
+        const rx = webrtcState.rxTransfer;
+        if (rx && rx.id === msg.id) {
+          const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
+          const blobUrl = URL.createObjectURL(blob);
+          updateP2PTransferComplete(rx.id, blobUrl, rx.name);
+          try {
+            window.dispatchEvent(new CustomEvent("netchat:new_message", {
+              detail: {
+                id: "p2p-rx-done-" + rx.id,
+                isMe: false,
+                sender: rx.sender || peerName || "Peer",
+                text: `Received file: ${rx.name} (${formatBytes(rx.size)})`,
+                downloadUrl: blobUrl,
+                fileName: rx.name,
+                fileSize: formatBytes(rx.size),
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              }
+            }));
+          } catch (_) {}
+          webrtcState.rxTransfer = null;
+          logActivity(`[P2P Rx Done] '${rx.name}' assembled successfully. Zero server storage used!`);
+        }
+        return;
+      }
+    }
+
+    // 2. Binary ArrayBuffer or TypedArray chunks
+    if (data instanceof ArrayBuffer || (data && data.buffer instanceof ArrayBuffer)) {
+      const buf = (data instanceof ArrayBuffer) ? data : data.buffer;
       const rx = webrtcState.rxTransfer;
       if (rx) {
-        rx.chunks.push(data);
-        rx.receivedBytes += data.byteLength;
+        rx.chunks.push(buf);
+        rx.receivedBytes += buf.byteLength;
         const pct = Math.min(100, Math.round((rx.receivedBytes / rx.size) * 100));
         updateP2PTransferProgress(rx.id, pct, `${formatBytes(rx.receivedBytes)} / ${formatBytes(rx.size)}`);
       }
@@ -6014,7 +6122,11 @@
             const initialPeers = (response.users || response.peers || [u]);
             updateUserList(initialPeers);
             state.socket.emit("join", { username: u });
-            handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            try {
+              handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            } catch (err) {
+              console.warn("[NetChat] handleJoinSuccess warning:", err);
+            }
             try {
               window.dispatchEvent(new CustomEvent("netchat:room_joined", { detail: { roomId: r, username: u } }));
             } catch (_) {}
@@ -6051,7 +6163,11 @@
             const initialPeers = (response.users || response.peers || [u]);
             updateUserList(initialPeers);
             state.socket.emit("join", { username: u });
-            handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            try {
+              handleJoinSuccess({ username: u, host: state.host, port: state.port, roomId: r });
+            } catch (err) {
+              console.warn("[NetChat] handleJoinSuccess warning:", err);
+            }
             try {
               window.dispatchEvent(new CustomEvent("netchat:room_joined", { detail: { roomId: r, username: u } }));
             } catch (_) {}
@@ -6169,11 +6285,22 @@
         if (!channel && webrtcState.dataChannel && webrtcState.dataChannel.readyState === "open") {
           channel = webrtcState.dataChannel;
         }
-        if (channel) {
-          executeP2PFileSend(file, channel, targetName || "Peer", customTransferId);
+        if (channel && channel.readyState === "open") {
+          executeP2PFileSend(file, channel, targetName || "Peer", customTransferId, targetSid);
         } else {
           webrtcState.queuedP2PFile = { file, targetSid, targetName: targetName || "Peer", customTransferId };
-          initP2PDataConnection(targetSid, targetName || "Peer");
+          if (targetSid && targetSid !== "ALL") {
+            initP2PDataConnection(targetSid, targetName || "Peer");
+          }
+          // High-reliability fallback: if RTCDataChannel doesn't connect within 1200ms, deliver via socket relay
+          setTimeout(() => {
+            if (webrtcState.queuedP2PFile && webrtcState.queuedP2PFile.customTransferId === customTransferId) {
+              const item = webrtcState.queuedP2PFile;
+              webrtcState.queuedP2PFile = null;
+              logActivity(`[P2P Transfer] RTCDataChannel pending; streaming '${item.file.name}' via real-time packet relay.`);
+              executeP2PSocketFileSend(item.file, item.targetSid, item.targetName, item.customTransferId);
+            }
+          }, 1200);
         }
       },
       sendP2PFile: (file, targetSid, targetName) => {

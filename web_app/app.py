@@ -1391,6 +1391,26 @@ def handle_file_decline_dash(data):
         emit("file-decline", data, room=room_id, include_self=False)
 
 
+@socketio.on("p2p_direct_packet")
+def handle_p2p_direct_packet(data):
+    """Zero-retention real-time relay for direct peer-to-peer file transfer chunks."""
+    if not isinstance(data, dict):
+        return
+    sid = request.sid
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("targetSid") or data.get("target_sid")
+    sender_name = room_members.get(room_id, {}).get(sid, "Peer")
+    payload = {
+        "sender_sid": sid,
+        "sender": sender_name,
+        "packet": data.get("packet")
+    }
+    if target_sid and target_sid != "ALL":
+        emit("p2p_direct_packet", payload, room=target_sid)
+    elif room_id:
+        emit("p2p_direct_packet", payload, room=room_id, include_self=False)
+
+
 
 @socketio.on("ping_measure")
 def handle_ping(data):
