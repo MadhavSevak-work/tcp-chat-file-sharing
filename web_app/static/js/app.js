@@ -1277,6 +1277,23 @@
     }
 
     try {
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+        try {
+          const probe = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } },
+            audio: false
+          });
+          probe.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
+        } catch (permErr) {
+          console.warn("[QR Scanner] Permission denied:", permErr);
+          if (DOM.qrScannerError) {
+            DOM.qrScannerError.textContent = "Camera permission denied or not supported on this browser. Please allow camera permissions in Settings > Chrome.";
+            DOM.qrScannerError.classList.remove("hidden");
+          }
+          return;
+        }
+      }
+
       if (!html5QrScannerInstance) {
         html5QrScannerInstance = new Html5Qrcode("qr-reader");
       }
@@ -1287,35 +1304,48 @@
         aspectRatio: 1.0
       };
 
+      const enforceWebKitVideo = () => {
+        const videos = document.querySelectorAll("#qr-reader video");
+        videos.forEach((v) => {
+          v.setAttribute("playsinline", "true");
+          v.setAttribute("webkit-playsinline", "true");
+          v.setAttribute("autoplay", "true");
+          v.setAttribute("muted", "true");
+          v.muted = true;
+          v.playsInline = true;
+          v.play().catch(() => {});
+        });
+      };
+
       isQrScannerScanning = true;
 
       try {
         await html5QrScannerInstance.start(
-          { facingMode: "environment" },
-          qrConfig,
-          (decodedText) => {
-            handleQrScanSuccess(decodedText);
-          },
-          () => {
-            // ignore frame parse errors
-          }
-        );
-      } catch (camErr) {
-        // Fallback to front camera or default camera
-        await html5QrScannerInstance.start(
-          { facingMode: "user" },
+          { facingMode: { ideal: "environment" } },
           qrConfig,
           (decodedText) => {
             handleQrScanSuccess(decodedText);
           },
           () => {}
         );
+        enforceWebKitVideo();
+      } catch (camErr) {
+        // Fallback to front camera or default camera
+        await html5QrScannerInstance.start(
+          { facingMode: { ideal: "user" } },
+          qrConfig,
+          (decodedText) => {
+            handleQrScanSuccess(decodedText);
+          },
+          () => {}
+        );
+        enforceWebKitVideo();
       }
     } catch (err) {
       console.warn("[QR Scanner] Failed to start camera:", err);
       isQrScannerScanning = false;
       if (DOM.qrScannerError) {
-        DOM.qrScannerError.textContent = "Camera access denied or unavailable. Please grant camera permission or enter Room ID manually.";
+        DOM.qrScannerError.textContent = "Camera permission denied or not supported on this browser. Please allow camera permissions in Settings > Chrome.";
         DOM.qrScannerError.classList.remove("hidden");
       }
     }

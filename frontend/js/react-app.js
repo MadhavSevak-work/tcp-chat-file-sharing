@@ -279,13 +279,49 @@
   // Live Camera QR Scanner Modal Component (html5-qrcode)
   function QrCameraScannerModal({ onScan, onClose }) {
     const scannerRef = useRef(null);
+    const [cameraError, setCameraError] = useState(null);
 
     useEffect(() => {
       let html5QrCode = null;
       let isMounted = true;
+      let webKitInterval = null;
+      let videoObserver = null;
+
+      // Enforce playsinline, autoplay, and muted on Apple WebKit (iOS Chrome / Safari)
+      const enforceAppleWebKitVideo = () => {
+        const videos = document.querySelectorAll("#landing-qr-reader video, #landing-qr-video");
+        videos.forEach((v) => {
+          v.setAttribute("playsinline", "true");
+          v.setAttribute("webkit-playsinline", "true");
+          v.setAttribute("autoplay", "true");
+          v.setAttribute("muted", "true");
+          v.muted = true;
+          v.playsInline = true;
+          v.play().catch(() => {});
+        });
+      };
 
       const startScanner = async () => {
         try {
+          // Explicit permission probe for mobile browsers / iOS WebKit
+          if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+            try {
+              const probeStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: { ideal: "environment" } },
+                audio: false
+              });
+              probeStream.getTracks().forEach((track) => {
+                try { track.stop(); } catch (_) {}
+              });
+            } catch (permErr) {
+              console.warn("[QR Scanner] Camera permission rejected:", permErr);
+              if (isMounted) {
+                setCameraError("Camera permission denied or not supported on this browser. Please allow camera permissions in Settings > Chrome.");
+              }
+              return;
+            }
+          }
+
           if (typeof window.Html5Qrcode !== "undefined") {
             html5QrCode = new window.Html5Qrcode("landing-qr-reader");
             scannerRef.current = html5QrCode;
@@ -307,25 +343,49 @@
               onScan(decodedText);
             };
 
+            // Observe container to inject WebKit attributes as soon as video DOM node is inserted
+            const container = document.getElementById("landing-qr-reader");
+            if (container && window.MutationObserver) {
+              videoObserver = new MutationObserver(enforceAppleWebKitVideo);
+              videoObserver.observe(container, { childList: true, subtree: true, attributes: true });
+            }
+            webKitInterval = setInterval(enforceAppleWebKitVideo, 150);
+
             try {
               await html5QrCode.start(
-                { facingMode: "environment" },
+                { facingMode: { ideal: "environment" } },
                 qrConfig,
                 onSuccess,
                 () => {}
               );
+              enforceAppleWebKitVideo();
             } catch (_) {
               if (!isMounted) return;
-              await html5QrCode.start(
-                { facingMode: "user" },
-                qrConfig,
-                onSuccess,
-                () => {}
-              );
+              try {
+                await html5QrCode.start(
+                  { facingMode: { ideal: "user" } },
+                  qrConfig,
+                  onSuccess,
+                  () => {}
+                );
+                enforceAppleWebKitVideo();
+              } catch (innerErr) {
+                console.warn("[QR Scanner] Fallback camera failed:", innerErr);
+                if (isMounted) {
+                  setCameraError("Camera permission denied or not supported on this browser. Please allow camera permissions in Settings > Chrome.");
+                }
+              }
+            }
+          } else {
+            if (isMounted) {
+              setCameraError("QR scanner engine is still loading. Please retry in a moment.");
             }
           }
         } catch (err) {
           console.warn("[QR Scanner] Camera start error:", err);
+          if (isMounted) {
+            setCameraError("Camera permission denied or not supported on this browser. Please allow camera permissions in Settings > Chrome.");
+          }
         }
       };
 
@@ -334,6 +394,10 @@
       return () => {
         isMounted = false;
         clearTimeout(timer);
+        if (webKitInterval) clearInterval(webKitInterval);
+        if (videoObserver) {
+          try { videoObserver.disconnect(); } catch (_) {}
+        }
         if (scannerRef.current) {
           try {
             if (scannerRef.current.isScanning) {
@@ -359,6 +423,9 @@
       },
         h("h3", { className: "text-base font-semibold text-zinc-100 mb-1" }, "Scan Room QR Code"),
         h("p", { className: "text-xs text-zinc-400 text-center mb-4" }, "Point camera at a NetChat Live room QR code"),
+        cameraError && h("div", {
+          className: "w-full bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-xl text-center mb-4 leading-relaxed"
+        }, cameraError),
         h("div", {
           id: "landing-qr-reader",
           className: "w-full aspect-square max-w-[280px] bg-black rounded-xl overflow-hidden border border-zinc-800 relative flex items-center justify-center"
@@ -366,7 +433,7 @@
         h("button", {
           type: "button",
           onClick: onClose,
-          className: "px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 mt-4 transition-colors cursor-pointer"
+          className: "px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 mt-4 transition-colors cursor-pointer text-xs sm:text-sm font-medium"
         }, "Cancel / Close Camera")
       )
     );
@@ -942,6 +1009,7 @@
     const isCallActiveRef = useRef(false);
     const [callType, setCallType] = useState("audio");
     const [meshPeers, setMeshPeers] = useState([]);
+    const [isMuted, setIsMuted] = useState(false);
     const [isVoiceMuted, setIsVoiceMuted] = useState(false);
     const [isCameraOff, setIsCameraOff] = useState(false);
 
@@ -1836,6 +1904,7 @@
       setActiveCall(null);
       setLocalStream(null);
       setRemoteStream(null);
+      setIsMuted(false);
       setIsVoiceMuted(false);
       setIsCameraOff(false);
       setCallPeerName("");
@@ -2105,9 +2174,15 @@
     };
 
     const handleToggleMute = () => {
-      if (localStreamRef.current) {
-        const audioTracks = localStreamRef.current.getAudioTracks();
-        audioTracks.forEach((t) => { t.enabled = !t.enabled; });
+      const stream = localStream || localStreamRef.current;
+      const audioTrack = stream?.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        const newMuted = !audioTrack.enabled;
+        setIsMuted(newMuted);
+        setIsVoiceMuted(newMuted);
+      } else {
+        setIsMuted((prev) => !prev);
         setIsVoiceMuted((prev) => !prev);
       }
       if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.toggleMute();
@@ -2254,76 +2329,79 @@
       // =======================================================================
       // 1. TOP HEADER (h-14 / 56px, bg-zinc-950, border-b border-zinc-800/80 px-3 sm:px-4)
       // =======================================================================
-      h("header", { className: "h-14 bg-zinc-950 border-b border-zinc-800/80 flex items-center justify-between gap-2 px-3 sm:px-4 shrink-0 z-30" },
+      h("header", { className: "flex items-center justify-between px-3 py-2 w-full min-h-[52px] bg-zinc-950 border-b border-zinc-800/80 shrink-0 z-30" },
         // Left Brand
-        h("div", { className: "flex items-center shrink-0 min-w-0" },
-          h("span", { className: "font-semibold text-zinc-100 text-base sm:text-lg tracking-tight whitespace-nowrap shrink-0" }, "NetChat Live"),
+        h("div", { className: "flex items-center shrink-0 min-w-0 mr-1 sm:mr-2" },
+          h("span", { className: "font-semibold text-zinc-100 text-sm sm:text-base tracking-tight whitespace-nowrap shrink-0" },
+            "NetChat",
+            h("span", { className: "hidden sm:inline" }, " Live")
+          ),
           h("span", {
-            className: `w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full shrink-0 ml-1 sm:ml-2 ${headerDotClass} inline-block`,
+            className: `w-2 h-2 rounded-full shrink-0 ml-1.5 ${headerDotClass} inline-block`,
             title: isConnected ? "Connected" : connectionStatus
           })
         ),
 
         // Center Room Pill + Share QR Button
-        h("div", { className: "flex items-center gap-1.5 shrink min-w-0" },
-          h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm min-w-[80px] overflow-hidden whitespace-nowrap text-ellipsis" },
+        h("div", { className: "flex items-center gap-1 sm:gap-1.5 shrink min-w-0" },
+          h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg flex items-center gap-1 sm:gap-1.5 shadow-sm max-w-[110px] sm:max-w-xs truncate" },
             h(Icon, { name: "lock", className: "w-3 h-3 text-zinc-400 shrink-0" }),
-            h("span", { className: "font-mono font-medium whitespace-nowrap overflow-hidden text-ellipsis" }, `room: ${roomId}`)
+            h("span", { className: "font-mono font-medium truncate text-xs" }, `room: ${roomId}`)
           ),
           h("button", {
             type: "button",
             onClick: () => setShowQrModal(true),
             title: "Share QR",
             "aria-label": "Share QR",
-            className: "text-zinc-400 hover:text-white p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+            className: "text-zinc-400 hover:text-white p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer shrink-0 min-w-[32px] min-h-[32px] sm:min-w-0 sm:min-h-0"
           },
-            h(Icon, { name: "qr", className: "w-4 h-4" })
+            h(Icon, { name: "qr", className: "w-3.5 h-3.5 sm:w-4 sm:h-4" })
           ),
           h("button", {
             type: "button",
             onClick: handleCopyInviteLink,
             title: "Copy Invite Link",
             "aria-label": "Copy Invite Link",
-            className: "text-zinc-400 hover:text-white p-2 sm:p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 cursor-pointer"
+            className: "text-zinc-400 hover:text-white p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer shrink-0 min-w-[32px] min-h-[32px] sm:min-w-0 sm:min-h-0"
           },
-            h(Icon, { name: isLinkCopied ? "check" : "link", className: `w-4 h-4 ${isLinkCopied ? "text-emerald-400" : ""}` })
+            h(Icon, { name: isLinkCopied ? "check" : "link", className: `w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLinkCopied ? "text-emerald-400" : ""}` })
           )
         ),
 
         // Right Actions Group
-        h("div", { className: "flex items-center gap-1 sm:gap-2 shrink-0" },
+        h("div", { className: "flex items-center gap-1 sm:gap-2 shrink-0 ml-1 sm:ml-2" },
           // Button 1 - Voice Call
           h("button", {
             type: "button",
             onClick: handleToggleVoice,
-            title: isCallActive && callType === "audio" ? "Leave Voice Call" : "Start Voice Call",
-            className: `p-2 rounded-lg transition-colors border border-transparent cursor-pointer ${
-              isCallActive && callType === "audio"
+            title: (isCallActive || activeCall !== null) && callType === "audio" ? "Leave Voice Call" : "Start Voice Call",
+            className: `p-1.5 sm:p-2 rounded-lg transition-colors border border-transparent cursor-pointer min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 flex items-center justify-center ${
+              (isCallActive || activeCall !== null) && callType === "audio"
                 ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
                 : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
             }`
-          }, h(Icon, { name: "phone", className: "w-4 h-4" })),
+          }, h(Icon, { name: "phone", className: "w-3.5 h-3.5 sm:w-4 sm:h-4" })),
 
           // Button 3 - Video Call
           h("button", {
             type: "button",
             onClick: handleToggleVideo,
-            title: isCallActive && callType === "video" ? "Leave Video Call" : "Start Video Call",
-            className: `p-2 rounded-lg transition-colors border border-transparent cursor-pointer ${
-              isCallActive && callType === "video"
+            title: (isCallActive || activeCall !== null) && callType === "video" ? "Leave Video Call" : "Start Video Call",
+            className: `p-1.5 sm:p-2 rounded-lg transition-colors border border-transparent cursor-pointer min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 flex items-center justify-center ${
+              (isCallActive || activeCall !== null) && callType === "video"
                 ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/40"
                 : "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700/50"
             }`
-          }, h(Icon, { name: "video", className: "w-4 h-4" })),
+          }, h(Icon, { name: "video", className: "w-3.5 h-3.5 sm:w-4 sm:h-4" })),
 
           // Button 4 - Members Sidebar Toggle (with top-right notification badge)
           h("button", {
             type: "button",
             onClick: () => setIsMembersOpen((prev) => !prev),
             title: "Toggle Room Members Sidebar",
-            className: "relative hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50 cursor-pointer"
+            className: "relative hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-1.5 sm:p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50 cursor-pointer min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
           },
-            h(Icon, { name: "users", className: "w-4 h-4" }),
+            h(Icon, { name: "users", className: "w-3.5 h-3.5 sm:w-4 sm:h-4" }),
             h("span", {
               className: "absolute -top-1 -right-1 bg-zinc-700 text-zinc-200 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center border border-zinc-950 shadow-sm"
             }, roomUsers.length)
@@ -2335,8 +2413,8 @@
             onClick: handleDisconnect,
             title: "Disconnect",
             "aria-label": "Disconnect",
-            className: "text-red-500 hover:text-red-400 bg-red-500/10 hover:bg-red-500/20 p-2 rounded-lg transition-colors border border-red-500/20 hover:border-red-500/40 cursor-pointer"
-          }, h(Icon, { name: "power", className: "w-4 h-4" }))
+            className: "text-red-500 hover:text-red-400 bg-red-500/10 hover:bg-red-500/20 p-1.5 sm:p-2 rounded-lg transition-colors border border-red-500/20 hover:border-red-500/40 cursor-pointer min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 flex items-center justify-center"
+          }, h(Icon, { name: "power", className: "w-3.5 h-3.5 sm:w-4 sm:h-4" }))
         )
       ),
 
@@ -2345,36 +2423,39 @@
       // =======================================================================
       (isCallActive || activeCall !== null) && h("div", {
         id: "call-control-bar",
-        className: "w-full bg-zinc-900/90 border-b border-zinc-800 px-4 py-2 flex items-center justify-between z-40 backdrop-blur-sm shrink-0 transition-all duration-150"
+        className: "w-full bg-zinc-900/95 border-b border-zinc-800 px-3 py-2 flex items-center justify-between gap-2 overflow-x-auto z-40 backdrop-blur-sm shrink-0 transition-all duration-150"
       },
         // Left: Active participant indicator / caller name pill (madhav / text-zinc-300)
-        h("div", { className: "flex items-center gap-2.5 min-w-0" },
+        h("div", { className: "flex items-center gap-2 min-w-0 shrink" },
           h("div", { className: "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0 ring-2 ring-emerald-500/20" }),
-          h("div", { className: "flex items-center gap-1.5 min-w-0" },
-            h("span", { className: "text-xs font-semibold text-zinc-300 truncate" },
-              callPeerName || (activeCall && activeCall.peerName) || username || "madhav"
-            ),
-            h("span", { className: "text-[10px] text-zinc-500 uppercase tracking-wider hidden sm:inline" },
-              `• ${callType || "audio"} call`
-            )
+          h("span", { className: "text-xs font-semibold text-zinc-300 truncate max-w-[120px] sm:max-w-xs" },
+            callPeerName || (activeCall && activeCall.peerName) || username || "madhav"
+          ),
+          h("span", { className: "text-[10px] text-zinc-500 uppercase tracking-wider hidden sm:inline shrink-0" },
+            `• ${callType || "audio"} call`
           )
         ),
 
-        // Right: Action controls (Mute, Camera, End)
-        h("div", { className: "flex items-center gap-2 shrink-0" },
-          // Mute toggle button: toggles audioTrack.enabled, updates button state visually (bg-zinc-800 vs bg-zinc-700)
+        // Right: Action controls (Mute, Camera, End) - min 36px touch targets
+        h("div", { className: "flex items-center gap-1.5 sm:gap-2 shrink-0" },
+          // Mute toggle button: toggles audioTrack.enabled, updates button state visually
           h("button", {
             type: "button",
             onClick: handleToggleMute,
-            title: isVoiceMuted ? "Unmute Microphone" : "Mute Microphone",
-            className: `px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm ${
-              isVoiceMuted
-                ? "bg-zinc-700 text-zinc-200 border-zinc-600"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700"
+            title: (isMuted || isVoiceMuted) ? "Unmute Microphone" : "Mute Microphone",
+            className: `px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm min-h-[36px] shrink-0 ${
+              (isMuted || isVoiceMuted)
+                ? "bg-red-500/10 border border-red-500/30 text-red-400"
+                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
             }`
           },
-            h(Icon, { name: isVoiceMuted ? "mic-off" : "mic", className: `w-3.5 h-3.5 ${isVoiceMuted ? "text-red-400" : "text-zinc-400"}` }),
-            h("span", null, isVoiceMuted ? "Unmute" : "Mute")
+            h(Icon, {
+              name: (isMuted || isVoiceMuted) ? "mic-off" : "mic",
+              className: `w-3.5 h-3.5 ${(isMuted || isVoiceMuted) ? "text-red-400" : "text-zinc-400"}`
+            }),
+            h("span", {
+              className: (isMuted || isVoiceMuted) ? "text-red-400" : ""
+            }, (isMuted || isVoiceMuted) ? "Unmute" : "Mute")
           ),
 
           // Camera toggle (video calls only)
@@ -2382,10 +2463,10 @@
             type: "button",
             onClick: handleToggleCamera,
             title: isCameraOff ? "Turn Camera On" : "Turn Camera Off",
-            className: `px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm ${
+            className: `px-2.5 sm:px-3 py-1.5 rounded-lg border text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm min-h-[36px] shrink-0 ${
               isCameraOff
                 ? "bg-zinc-700 text-zinc-200 border-zinc-600"
-                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700"
+                : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700"
             }`
           },
             h(Icon, { name: isCameraOff ? "camera-off" : "video", className: "w-3.5 h-3.5 text-zinc-400" }),
@@ -2397,7 +2478,7 @@
             type: "button",
             onClick: handleEndCall,
             title: "End Call",
-            className: "bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer shadow-sm"
+            className: "bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 px-2.5 sm:px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer shadow-sm min-h-[36px] shrink-0"
           },
             h(Icon, { name: "phone-off", className: "w-3.5 h-3.5" }),
             h("span", null, "End")
@@ -2414,17 +2495,17 @@
         // 4. CHAT FEED & MESSAGE BUBBLES
         // =====================================================================
         h("main", { className: "flex-1 flex flex-col overflow-hidden bg-zinc-950 relative min-w-0" },
-          // Persistent Video Screen Grid (above chat area)
+          // Persistent Video Screen Grid (above chat area, aspect-video, object-cover)
           (isCallActive || activeCall !== null) && callType === "video" && h("div", {
             id: "react-active-video-grid",
-            className: "w-full bg-zinc-950/95 border-b border-zinc-800/80 p-3 sm:p-4 shrink-0 transition-all z-30"
+            className: "w-full bg-zinc-950/95 border-b border-zinc-800 shrink-0 transition-all z-30"
           },
             h("div", {
-              className: "max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-3 h-48 sm:h-64"
+              className: "w-full grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 max-h-[45vh] overflow-y-auto max-w-4xl mx-auto"
             },
-              // Remote Video Pane (Primary)
+              // Remote Video Card
               h("div", {
-                className: "relative w-full h-full bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg"
+                className: "relative w-full aspect-video bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex items-center justify-center shadow-md"
               },
                 h("video", {
                   ref: remoteVideoRef,
@@ -2443,16 +2524,16 @@
                   callPeerName || (activeCall && activeCall.peerName) || "Peer"
                 )
               ),
-              // Local Video Pane (Mirror)
+              // Local Video Card
               h("div", {
-                className: "relative w-full h-full bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg"
+                className: "relative w-full aspect-video bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex items-center justify-center shadow-md"
               },
                 h("video", {
                   ref: localVideoRef,
                   autoPlay: true,
                   playsInline: true,
                   muted: true,
-                  className: `w-full h-full object-cover ${isCameraOff ? "hidden" : "scale-x-[-1]"}`
+                  className: `w-full h-full object-cover scale-x-[-1] ${isCameraOff ? "hidden" : "block"}`
                 }),
                 isCameraOff && h("div", { className: "flex flex-col items-center justify-center text-center p-4" },
                   h("div", { className: "w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-2" },
