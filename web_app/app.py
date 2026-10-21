@@ -1348,6 +1348,50 @@ def handle_file_reject(data):
         session.send_file_reject(transfer_id, sender, filename)
 
 
+# WebRTC P2P Direct File Handshake Relays
+@socketio.on("file-offer")
+def handle_file_offer_dash(data):
+    """Relays WebRTC direct file offer metadata to target peer with zero server retention."""
+    if not isinstance(data, dict):
+        return
+    sid = request.sid
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("targetSid") or data.get("target_sid")
+    if target_sid and target_sid != "ALL":
+        emit("file-offer", data, room=target_sid)
+    elif room_id:
+        emit("file-offer", data, room=room_id, include_self=False)
+
+
+@socketio.on("file-accept")
+def handle_file_accept_dash(data):
+    """Relays WebRTC file accept approval signal to the offering sender."""
+    if not isinstance(data, dict):
+        return
+    sid = request.sid
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    if target_sid:
+        emit("file-accept", data, room=target_sid)
+    elif room_id:
+        emit("file-accept", data, room=room_id, include_self=False)
+
+
+@socketio.on("file-decline")
+def handle_file_decline_dash(data):
+    """Relays WebRTC file decline signal to the offering sender."""
+    if not isinstance(data, dict):
+        return
+    sid = request.sid
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    if target_sid:
+        emit("file-decline", data, room=target_sid)
+    elif room_id:
+        emit("file-decline", data, room=room_id, include_self=False)
+
+
+
 @socketio.on("ping_measure")
 def handle_ping(data):
     """Immediate echo for round-trip latency calculation."""

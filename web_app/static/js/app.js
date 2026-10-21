@@ -1778,6 +1778,17 @@
       handleCallUserLeft(data);
     });
 
+    // WebRTC Direct File Transfer Handshake Listeners
+    state.socket.on("file-offer", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_offer", { detail: data }));
+    });
+    state.socket.on("file-accept", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: data }));
+    });
+    state.socket.on("file-decline", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: data }));
+    });
+
     // Latency Telemetry
     state.socket.on("pong_measure", (data) => {
       if (data && data.client_time) {
@@ -4929,7 +4940,7 @@
       if (webrtcState.queuedP2PFile) {
         const item = webrtcState.queuedP2PFile;
         webrtcState.queuedP2PFile = null;
-        executeP2PFileSend(item.file, channel, item.peerName);
+        executeP2PFileSend(item.file, channel, item.targetName || item.peerName, item.customTransferId);
       }
     };
 
@@ -5074,8 +5085,8 @@
   /**
    * Slices file into 16 KB chunks and streams over RTCDataChannel with backpressure flow control
    */
-  function executeP2PFileSend(file, channel, peerName) {
-    const transferId = "p2p-tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6);
+  function executeP2PFileSend(file, channel, peerName, customTransferId) {
+    const transferId = customTransferId || ("p2p-tx-" + Date.now() + "-" + Math.random().toString(36).substr(2, 6));
     const CHUNK_SIZE = 16384; // 16 KB
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
@@ -5103,6 +5114,17 @@
           id: transferId
         }));
         updateP2PTransferComplete(transferId, null, file.name);
+        try {
+          window.dispatchEvent(new CustomEvent("netchat:new_message", {
+            detail: {
+              id: "p2p-done-" + transferId,
+              isMe: true,
+              sender: state.username || "You",
+              text: `Sent file: ${file.name} (${formatBytes(file.size)}) directly via P2P.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            }
+          }));
+        } catch (_) {}
         logActivity(`[P2P Transfer Done] Direct transfer of '${file.name}' to ${peerName} finished!`);
         return;
       }
@@ -5139,11 +5161,29 @@
   /**
    * Processes incoming data packets over RTCDataChannel
    */
-  function handleIncomingP2PDataMessage(data, peerName) {
+  function handleIncomingP2PDataMessage(data, peerName, peerSid) {
     // 1. JSON Control Messages
     if (typeof data === "string") {
       try {
         const msg = JSON.parse(data);
+        if (msg.type === "file-offer" || msg.type === "file_offer") {
+          window.dispatchEvent(new CustomEvent("netchat:file_offer", {
+            detail: {
+              ...msg,
+              senderNickname: msg.senderNickname || peerName || "Peer",
+              senderId: msg.senderId || peerSid || "remote"
+            }
+          }));
+          return;
+        }
+        if (msg.type === "file-accept" || msg.type === "file_accept") {
+          window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: msg }));
+          return;
+        }
+        if (msg.type === "file-decline" || msg.type === "file_decline") {
+          window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: msg }));
+          return;
+        }
         if (msg.type === "p2p_file_start") {
           webrtcState.rxTransfer = {
             id: msg.id,
@@ -5163,6 +5203,20 @@
             const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
             const blobUrl = URL.createObjectURL(blob);
             updateP2PTransferComplete(rx.id, blobUrl, rx.name);
+            try {
+              window.dispatchEvent(new CustomEvent("netchat:new_message", {
+                detail: {
+                  id: "p2p-rx-done-" + rx.id,
+                  isMe: false,
+                  sender: rx.sender || peerName || "Peer",
+                  text: `Received file: ${rx.name} (${formatBytes(rx.size)})`,
+                  downloadUrl: blobUrl,
+                  fileName: rx.name,
+                  fileSize: formatBytes(rx.size),
+                  timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                }
+              }));
+            } catch (_) {}
             webrtcState.rxTransfer = null;
             logActivity(`[P2P Rx Done] '${rx.name}' assembled successfully. Zero server storage used!`);
           }
@@ -6039,7 +6093,7 @@
         }
       },
       disconnect: () => {
-        disconnectSession(true);
+        disconnectHandler();
         try {
           window.dispatchEvent(new CustomEvent("netchat:room_left"));
         } catch (_) {}
@@ -6085,6 +6139,41 @@
         } else {
           const btn = document.getElementById("btn-pwa-install") || document.getElementById("btn-login-pwa-install");
           if (btn) btn.click();
+        }
+      },
+      sendDataChannelMessage: (targetSid, messageStr) => {
+        let sent = false;
+        if (targetSid && webrtcMesh.peers && webrtcMesh.peers[targetSid]) {
+          const peer = webrtcMesh.peers[targetSid];
+          if (peer.dc && peer.dc.readyState === "open") {
+            try {
+              peer.dc.send(messageStr);
+              sent = true;
+            } catch (_) {}
+          }
+        }
+        if (!sent && webrtcState.dataChannel && webrtcState.dataChannel.readyState === "open") {
+          try {
+            webrtcState.dataChannel.send(messageStr);
+            sent = true;
+          } catch (_) {}
+        }
+        return sent;
+      },
+      startChunkedTransfer: (file, targetSid, targetName, customTransferId) => {
+        let channel = null;
+        if (targetSid && webrtcMesh.peers && webrtcMesh.peers[targetSid]) {
+          const peer = webrtcMesh.peers[targetSid];
+          if (peer.dc && peer.dc.readyState === "open") channel = peer.dc;
+        }
+        if (!channel && webrtcState.dataChannel && webrtcState.dataChannel.readyState === "open") {
+          channel = webrtcState.dataChannel;
+        }
+        if (channel) {
+          executeP2PFileSend(file, channel, targetName || "Peer", customTransferId);
+        } else {
+          webrtcState.queuedP2PFile = { file, targetSid, targetName: targetName || "Peer", customTransferId };
+          initP2PDataConnection(targetSid, targetName || "Peer");
         }
       },
       sendP2PFile: (file, targetSid, targetName) => {

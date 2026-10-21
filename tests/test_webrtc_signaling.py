@@ -129,6 +129,56 @@ class TestWebRTCSignalingRouter(unittest.TestCase):
         self.assertEqual(len(left_events), 1)
         self.assertEqual(left_events[0]["args"][0]["sender_sid"], self.p2_sid)
 
+    def test_file_handshake_routing(self):
+        # Peer 1 sends file-offer to Peer 2
+        offer_data = {
+            "type": "file-offer",
+            "fileName": "sample_project.zip",
+            "fileSize": 1048576,
+            "fileId": "test-file-123",
+            "senderNickname": "Peer1",
+            "senderId": self.p1_sid,
+            "targetSid": self.p2_sid,
+            "roomId": "rtc-test-room"
+        }
+        self.client1.emit("file-offer", offer_data)
+
+        recv2 = self.client2.get_received()
+        offer_events = [e for e in recv2 if e["name"] == "file-offer"]
+        self.assertEqual(len(offer_events), 1)
+        self.assertEqual(offer_events[0]["args"][0]["fileId"], "test-file-123")
+        self.assertEqual(offer_events[0]["args"][0]["fileName"], "sample_project.zip")
+
+        # Peer 2 accepts file offer
+        accept_data = {
+            "type": "file-accept",
+            "fileId": "test-file-123",
+            "senderId": self.p1_sid,
+            "targetSid": self.p1_sid,
+            "roomId": "rtc-test-room"
+        }
+        self.client2.emit("file-accept", accept_data)
+
+        recv1 = self.client1.get_received()
+        accept_events = [e for e in recv1 if e["name"] == "file-accept"]
+        self.assertEqual(len(accept_events), 1)
+        self.assertEqual(accept_events[0]["args"][0]["fileId"], "test-file-123")
+
+        # Peer 2 declines another file offer
+        decline_data = {
+            "type": "file-decline",
+            "fileId": "test-file-456",
+            "senderId": self.p1_sid,
+            "targetSid": self.p1_sid,
+            "roomId": "rtc-test-room"
+        }
+        self.client2.emit("file-decline", decline_data)
+
+        recv1 = self.client1.get_received()
+        decline_events = [e for e in recv1 if e["name"] == "file-decline"]
+        self.assertEqual(len(decline_events), 1)
+        self.assertEqual(decline_events[0]["args"][0]["fileId"], "test-file-456")
+
 
 if __name__ == "__main__":
     unittest.main()

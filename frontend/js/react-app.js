@@ -118,6 +118,15 @@
           h("rect", { x: "14", y: "14", width: "7", height: "7" }),
           h("rect", { x: "3", y: "14", width: "7", height: "7" })
         );
+      case "check":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("polyline", { points: "20 6 9 17 4 12" })
+        );
+      case "copy":
+        return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
+          h("rect", { x: "9", y: "9", width: "13", height: "13", rx: "2", ry: "2" }),
+          h("path", { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" })
+        );
       case "x":
         return h("svg", { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" },
           h("line", { x1: "18", y1: "6", x2: "6", y2: "18" }),
@@ -495,15 +504,28 @@
         const urlPasskey = params.get('passkey') || params.get('pin');
 
         if (urlRoom && urlPasskey) {
-          setRoomId(urlRoom);
+          setRoomId(urlRoom.toLowerCase());
           setPasskey(urlPasskey);
           // Ensure the UI switches to the "Join Room" tab automatically
           setIsJoinMode(true);
           // Clean up the URL bar so the credentials don't stay visible
-          window.history.replaceState({}, document.title, window.location.pathname);
+          try {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          } catch (_) {}
+          // Place focus directly into the nickname field so the recipient only needs to type their name and join
+          setTimeout(() => {
+            if (nicknameInputRef.current) {
+              nicknameInputRef.current.focus();
+            }
+          }, 100);
         } else if (urlRoom) {
           setRoomId(urlRoom.toLowerCase());
           setIsJoinMode(true);
+          setTimeout(() => {
+            if (nicknameInputRef.current) {
+              nicknameInputRef.current.focus();
+            }
+          }, 100);
         } else if (urlPasskey) {
           setPasskey(urlPasskey);
         }
@@ -932,10 +954,49 @@
     const pendingFileTargetRef = useRef(null);
     const p2pFileInputRef = useRef(null);
 
+    // Invite Link copy state & WebRTC File Offer Handshake state
+    const [isLinkCopied, setIsLinkCopied] = useState(false);
+    const [incomingFileOffer, setIncomingFileOffer] = useState(null);
+    const pendingUploadsRef = useRef({});
+
+    // Byte formatter for file sizes
+    const formatBytes = (bytes, decimals = 1) => {
+      if (!bytes || bytes === 0) return "0 B";
+      const k = 1024;
+      const dm = decimals < 0 ? 0 : decimals;
+      const sizes = ["B", "KB", "MB", "GB", "TB"];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
+    };
+
     // Toast helper
     const showToast = (msg) => {
       setToastMessage(msg);
       setTimeout(() => setToastMessage(null), 3000);
+    };
+
+    // Copy direct invite URL to clipboard
+    const handleCopyInviteLink = async () => {
+      const inviteUrl = `${window.location.origin}/?room=${encodeURIComponent(roomId)}&passkey=${encodeURIComponent(passkey)}`;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(inviteUrl);
+        } else {
+          const textArea = document.createElement("textarea");
+          textArea.value = inviteUrl;
+          textArea.style.position = "fixed";
+          textArea.style.opacity = "0";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+        }
+        setIsLinkCopied(true);
+        showToast("Invite link copied!");
+        setTimeout(() => setIsLinkCopied(false), 2000);
+      } catch (err) {
+        showToast("Failed to copy invite link");
+      }
     };
 
     // Filtered participants for mention popover (excluding local user)
@@ -989,30 +1050,119 @@
       }
     };
 
-    // Native file change handler
+    // Native file change handler with WebRTC File Offer Handshake
     const handleFileSelected = (e) => {
       if (!e.target || !e.target.files || e.target.files.length === 0) return;
       const file = e.target.files[0];
       const target = pendingFileTargetRef.current;
       pendingFileTargetRef.current = null;
 
-      if (target === "ALL" || target?.type === "ALL" || target?.socketId === "ALL") {
-        if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendP2PFile === "function") {
-          window.__NETCHAT_BRIDGE__.sendP2PFile(file, "ALL", "All Peers");
-        }
-        showToast(`Broadcasting '${file.name}' to all peers...`);
-      } else if (target) {
-        const peerObj = roomUsers.find((u) => u.socketId === target || u.id === target || u.name === target);
-        const targetSid = typeof target === "string" ? target : (target.socketId || target.id);
-        const targetName = peerObj ? peerObj.name : (typeof target === "string" ? target : (target.name || target.username));
-        if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendP2PFile === "function") {
-          window.__NETCHAT_BRIDGE__.sendP2PFile(file, targetSid, targetName);
-        }
-        showToast(`Sending '${file.name}' to @${targetName}...`);
+      const myNickname = username || "Anonymous";
+      const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
+      const uniqueId = "file-" + Date.now() + "-" + Math.random().toString(36).substr(2, 7);
+
+      const isAll = (target === "ALL" || target?.type === "ALL" || target?.socketId === "ALL");
+      const targetSid = isAll
+        ? "ALL"
+        : (typeof target === "string" ? target : (target?.socketId || target?.id));
+      const peerObj = (!isAll && target)
+        ? roomUsers.find((u) => u.socketId === targetSid || u.id === targetSid || u.name === target)
+        : null;
+      const targetName = isAll ? "All Peers" : (peerObj ? peerObj.name : (typeof target === "string" ? target : "Peer"));
+
+      // 1. DO NOT send the raw file data immediately. Store actual File object in temporary ref:
+      pendingUploadsRef.current[uniqueId] = {
+        file: file,
+        targetSid: targetSid,
+        targetName: targetName,
+        fileId: uniqueId
+      };
+
+      // 2. Send metadata offer:
+      const offerData = {
+        type: "file-offer",
+        fileName: file.name,
+        fileSize: file.size,
+        fileId: uniqueId,
+        senderNickname: myNickname,
+        senderId: mySocketId,
+        targetSid: targetSid,
+        targetName: targetName,
+        roomId: roomId
+      };
+      const offerPayloadStr = JSON.stringify(offerData);
+
+      // Attempt send over WebRTC Data Channel
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
+        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(targetSid, offerPayloadStr);
       }
+
+      // Also send over Socket.IO
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+      if (socket) {
+        socket.emit("file-offer", offerData);
+      }
+
+      showToast(`Waiting for @${targetName} to accept '${file.name}'...`);
       try {
         e.target.value = "";
       } catch (_) {}
+    };
+
+    // Receiver actions for WebRTC file offer
+    const handleAcceptOffer = () => {
+      if (!incomingFileOffer) return;
+      const { fileId, senderId, senderNickname, fileName } = incomingFileOffer;
+      const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
+
+      const acceptPayload = {
+        type: "file-accept",
+        fileId: fileId,
+        senderId: senderId,
+        receiverId: mySocketId,
+        receiverNickname: username || "User",
+        targetSid: senderId,
+        roomId: roomId
+      };
+      const acceptStr = JSON.stringify(acceptPayload);
+
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
+        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(senderId, acceptStr);
+      }
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+      if (socket) {
+        socket.emit("file-accept", acceptPayload);
+      }
+
+      showToast(`Accepted '${fileName || "file"}'. Receiving...`);
+      setIncomingFileOffer(null);
+    };
+
+    const handleDeclineOffer = () => {
+      if (!incomingFileOffer) return;
+      const { fileId, senderId } = incomingFileOffer;
+      const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
+
+      const declinePayload = {
+        type: "file-decline",
+        fileId: fileId,
+        senderId: senderId,
+        receiverId: mySocketId,
+        receiverNickname: username || "User",
+        targetSid: senderId,
+        roomId: roomId
+      };
+      const declineStr = JSON.stringify(declinePayload);
+
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
+        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(senderId, declineStr);
+      }
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+      if (socket) {
+        socket.emit("file-decline", declinePayload);
+      }
+
+      setIncomingFileOffer(null);
     };
 
     // Toggle paperclip popover or direct file select
@@ -1168,6 +1318,8 @@
         setShowMentionMenu(false);
         setIsCallActive(false);
         setShowQrModal(false);
+        setIncomingFileOffer(null);
+        pendingUploadsRef.current = {};
       };
 
       const onCallChanged = (e) => {
@@ -1177,12 +1329,47 @@
         }
       };
 
+      const onFileOffer = (e) => {
+        const data = e.detail;
+        if (!data || !data.fileId) return;
+        const mySid = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
+        if (data.senderId && mySid && data.senderId === mySid) return;
+        if (data.senderNickname && username && data.senderNickname.toLowerCase() === username.toLowerCase()) return;
+        setIncomingFileOffer(data);
+      };
+
+      const onFileAccept = (e) => {
+        const data = e.detail;
+        const fileId = data?.fileId || data?.id;
+        if (!fileId) return;
+        const pending = pendingUploadsRef.current[fileId];
+        if (!pending) return;
+        delete pendingUploadsRef.current[fileId];
+
+        showToast(`Transfer accepted! Sending '${pending.file.name}'...`);
+        if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.startChunkedTransfer === "function") {
+          window.__NETCHAT_BRIDGE__.startChunkedTransfer(pending.file, pending.targetSid, pending.targetName, fileId);
+        }
+      };
+
+      const onFileDecline = (e) => {
+        const data = e.detail;
+        const fileId = data?.fileId || data?.id;
+        if (fileId && pendingUploadsRef.current[fileId]) {
+          delete pendingUploadsRef.current[fileId];
+        }
+        showToast("Transfer declined by user");
+      };
+
       window.addEventListener("netchat:connection_changed", onConnectionChanged);
       window.addEventListener("netchat:new_message", onNewMessage);
       window.addEventListener("netchat:users_updated", onUsersUpdated);
       window.addEventListener("netchat:room_joined", onRoomJoined);
       window.addEventListener("netchat:room_left", onRoomLeft);
       window.addEventListener("netchat:call_changed", onCallChanged);
+      window.addEventListener("netchat:file_offer", onFileOffer);
+      window.addEventListener("netchat:file_accept", onFileAccept);
+      window.addEventListener("netchat:file_decline", onFileDecline);
 
       return () => {
         clearInterval(interval);
@@ -1192,6 +1379,9 @@
         window.removeEventListener("netchat:room_joined", onRoomJoined);
         window.removeEventListener("netchat:room_left", onRoomLeft);
         window.removeEventListener("netchat:call_changed", onCallChanged);
+        window.removeEventListener("netchat:file_offer", onFileOffer);
+        window.removeEventListener("netchat:file_accept", onFileAccept);
+        window.removeEventListener("netchat:file_decline", onFileDecline);
       };
     }, [username]);
 
@@ -1518,6 +1708,8 @@
       setShowQrModal(false);
       setRoomUsers([]);
       setIsCallActive(false);
+      setIncomingFileOffer(null);
+      pendingUploadsRef.current = {};
 
       // 3. STATE RESET (Strict Order):
       setRoomId('');
@@ -1590,6 +1782,15 @@
             className: "text-zinc-400 hover:text-white p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
           },
             h(Icon, { name: "qr", className: "w-4 h-4" })
+          ),
+          h("button", {
+            type: "button",
+            onClick: handleCopyInviteLink,
+            title: "Copy Invite Link",
+            "aria-label": "Copy Invite Link",
+            className: "text-zinc-400 hover:text-white p-2 sm:p-1.5 bg-zinc-800/50 hover:bg-zinc-700 rounded-lg transition-colors flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-0 sm:min-w-0 cursor-pointer"
+          },
+            h(Icon, { name: isLinkCopied ? "check" : "link", className: `w-4 h-4 ${isLinkCopied ? "text-emerald-400" : ""}` })
           )
         ),
 
@@ -1779,7 +1980,17 @@
                         ),
                         h("div", { className: "bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm p-3 rounded-2xl rounded-tl-sm shadow-sm leading-relaxed" },
                           quotedBox,
-                          renderMessageText(msg.text)
+                          renderMessageText(msg.text),
+                          msg.downloadUrl && h("div", { className: "mt-2 pt-2 border-t border-zinc-800" },
+                            h("a", {
+                              href: msg.downloadUrl,
+                              download: msg.fileName || "download",
+                              className: "inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            },
+                              h(Icon, { name: "download", className: "w-3.5 h-3.5" }),
+                              h("span", null, `Download ${msg.fileName || "File"}`)
+                            )
+                          )
                         )
                       )
                     );
@@ -1996,6 +2207,29 @@
                   )
                 )
           )
+        )
+      ),
+
+      // Responsive WebRTC Incoming File Offer Modal Banner
+      incomingFileOffer && h("div", {
+        className: "fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-zinc-900 border border-zinc-700 p-4 rounded-xl shadow-2xl flex flex-col gap-3 w-[90%] max-w-sm"
+      },
+        h("div", { className: "text-zinc-100 text-sm font-normal" },
+          `${incomingFileOffer.senderNickname || "User"} wants to send: `,
+          h("span", { className: "font-semibold text-emerald-400" }, incomingFileOffer.fileName || "File"),
+          h("span", { className: "text-zinc-400 ml-1" }, `(${formatBytes(incomingFileOffer.fileSize || 0)})`)
+        ),
+        h("div", { className: "flex items-center gap-2.5" },
+          h("button", {
+            type: "button",
+            onClick: handleAcceptOffer,
+            className: "flex-1 bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-lg font-medium text-white text-xs sm:text-sm transition-colors cursor-pointer text-center"
+          }, "Accept"),
+          h("button", {
+            type: "button",
+            onClick: handleDeclineOffer,
+            className: "flex-1 bg-red-600 hover:bg-red-500 py-2.5 rounded-lg font-medium text-white text-xs sm:text-sm transition-colors cursor-pointer text-center"
+          }, "Decline")
         )
       ),
 
