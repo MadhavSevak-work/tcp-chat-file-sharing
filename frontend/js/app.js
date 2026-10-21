@@ -1779,11 +1779,20 @@
     });
 
     // WebRTC Direct File Transfer Handshake Listeners
+    state.socket.on("file-transfer-offer", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_offer", { detail: data }));
+    });
     state.socket.on("file-offer", (data) => {
       window.dispatchEvent(new CustomEvent("netchat:file_offer", { detail: data }));
     });
+    state.socket.on("file-transfer-accept", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: data }));
+    });
     state.socket.on("file-accept", (data) => {
       window.dispatchEvent(new CustomEvent("netchat:file_accept", { detail: data }));
+    });
+    state.socket.on("file-transfer-decline", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: data }));
     });
     state.socket.on("file-decline", (data) => {
       window.dispatchEvent(new CustomEvent("netchat:file_decline", { detail: data }));
@@ -5309,10 +5318,20 @@
       }
       if (msg.type === "p2p_file_complete") {
         const rx = webrtcState.rxTransfer;
-        if (rx && rx.id === msg.id) {
+        if (rx && rx.id === msg.id && !rx.completed) {
+          rx.completed = true;
           const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
-          const blobUrl = URL.createObjectURL(blob);
-          updateP2PTransferComplete(rx.id, blobUrl, rx.name);
+          const downloadUrl = URL.createObjectURL(blob);
+          try {
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = rx.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+          } catch (_) {}
+          updateP2PTransferComplete(rx.id, downloadUrl, rx.name);
           try {
             window.dispatchEvent(new CustomEvent("netchat:new_message", {
               detail: {
@@ -5320,7 +5339,7 @@
                 isMe: false,
                 sender: rx.sender || peerName || "Peer",
                 text: `Received file: ${rx.name} (${formatBytes(rx.size)})`,
-                downloadUrl: blobUrl,
+                downloadUrl: downloadUrl,
                 fileName: rx.name,
                 fileSize: formatBytes(rx.size),
                 timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -5328,7 +5347,7 @@
             }));
           } catch (_) {}
           webrtcState.rxTransfer = null;
-          logActivity(`[P2P Rx Done] '${rx.name}' assembled successfully. Zero server storage used!`);
+          logActivity(`[P2P Rx Done] '${rx.name}' assembled and downloaded automatically.`);
         }
         return;
       }
@@ -5343,6 +5362,39 @@
         rx.receivedBytes += buf.byteLength;
         const pct = Math.min(100, Math.round((rx.receivedBytes / rx.size) * 100));
         updateP2PTransferProgress(rx.id, pct, `${formatBytes(rx.receivedBytes)} / ${formatBytes(rx.size)}`);
+
+        // Check if all chunks match fileSize
+        if (rx.receivedBytes >= rx.size && !rx.completed) {
+          rx.completed = true;
+          const blob = new Blob(rx.chunks, { type: rx.mime || "application/octet-stream" });
+          const downloadUrl = URL.createObjectURL(blob);
+          try {
+            const a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = rx.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 1500);
+          } catch (_) {}
+          updateP2PTransferComplete(rx.id, downloadUrl, rx.name);
+          try {
+            window.dispatchEvent(new CustomEvent("netchat:new_message", {
+              detail: {
+                id: "p2p-rx-done-" + rx.id,
+                isMe: false,
+                sender: rx.sender || peerName || "Peer",
+                text: `Received file: ${rx.name} (${formatBytes(rx.size)})`,
+                downloadUrl: downloadUrl,
+                fileName: rx.name,
+                fileSize: formatBytes(rx.size),
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              }
+            }));
+          } catch (_) {}
+          webrtcState.rxTransfer = null;
+          logActivity(`[P2P Rx Done] '${rx.name}' assembled and downloaded automatically.`);
+        }
       }
     }
   }

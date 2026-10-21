@@ -349,7 +349,7 @@
     }, []);
 
     return h("div", {
-      className: "fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4",
+      className: "fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4",
       onClick: (e) => {
         if (e.target === e.currentTarget) onClose();
       }
@@ -366,8 +366,8 @@
         h("button", {
           type: "button",
           onClick: onClose,
-          className: "mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium py-2.5 rounded-xl transition-colors cursor-pointer"
-        }, "Close Camera")
+          className: "px-4 py-2 bg-zinc-800 text-zinc-300 rounded-lg hover:bg-zinc-700 mt-4 transition-colors cursor-pointer"
+        }, "Cancel / Close Camera")
       )
     );
   }
@@ -492,7 +492,7 @@
     const [errorMsg, setErrorMsg] = useState(null);
     const [passkeyError, setPasskeyError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isScanning, setIsScanning] = useState(false);
+    const [isScannerOpen, setIsScannerOpen] = useState(false);
     const [joinError, setJoinError] = useState("");
     const nicknameInputRef = useRef(null);
 
@@ -626,7 +626,7 @@
 
     // QR Scanner Action
     const handleScanQrClick = () => {
-      setIsScanning(true);
+      setIsScannerOpen(true);
     };
 
     const handleQrDetected = (decodedText) => {
@@ -666,9 +666,9 @@
       if (room) setRoomId(room.toLowerCase());
       if (pass) setPasskey(pass);
 
-      // 4. Set isScanning to false to close camera, ensuring user stays on "Join Room" tab
+      // 4. Set isScannerOpen to false to close camera, ensuring user stays on "Join Room" tab
       setIsJoinMode(true);
-      setIsScanning(false);
+      setIsScannerOpen(false);
       setErrorMsg(null);
       setPasskeyError(null);
       setTimeout(() => {
@@ -909,9 +909,9 @@
       ),
 
       // Live Camera QR Scanner Modal Overlay
-      isScanning && h(QrCameraScannerModal, {
+      isScannerOpen && h(QrCameraScannerModal, {
         onScan: handleQrDetected,
-        onClose: () => setIsScanning(false)
+        onClose: () => setIsScannerOpen(false)
       })
     );
   }
@@ -970,6 +970,7 @@
     // Invite Link copy state & WebRTC File Offer Handshake state
     const [isLinkCopied, setIsLinkCopied] = useState(false);
     const [incomingFileOffer, setIncomingFileOffer] = useState(null);
+    const pendingFileRef = useRef(null);
     const pendingUploadsRef = useRef({});
 
     // Byte formatter for file sizes
@@ -1069,10 +1070,11 @@
       const file = e.target.files[0];
       const target = pendingFileTargetRef.current;
       pendingFileTargetRef.current = null;
+      pendingFileRef.current = file;
 
       const myNickname = username || "Anonymous";
       const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
-      const uniqueId = "file-" + Date.now() + "-" + Math.random().toString(36).substr(2, 7);
+      const fileId = Date.now();
 
       const isAll = (target === "ALL" || target?.type === "ALL" || target?.socketId === "ALL");
       const targetSid = isAll
@@ -1083,27 +1085,29 @@
         : null;
       const targetName = isAll ? "All Peers" : (peerObj ? peerObj.name : (typeof target === "string" ? target : "Peer"));
 
-      // 1. DO NOT send the raw file data immediately. Store actual File object in temporary ref:
-      pendingUploadsRef.current[uniqueId] = {
+      // 1. DO NOT send raw file data immediately. Store File in ref:
+      pendingUploadsRef.current[fileId] = {
         file: file,
         targetSid: targetSid,
         targetName: targetName,
-        fileId: uniqueId
+        fileId: fileId
       };
+      pendingUploadsRef.current[String(fileId)] = pendingUploadsRef.current[fileId];
 
       // 2. Send metadata offer:
       const offerData = {
-        type: "file-offer",
+        to: targetSid,
+        targetSid: targetSid,
+        fileId: fileId,
         fileName: file.name,
         fileSize: file.size,
-        fileId: uniqueId,
+        fileType: file.type || "application/octet-stream",
+        senderName: myNickname,
         senderNickname: myNickname,
         senderId: mySocketId,
-        targetSid: targetSid,
-        targetName: targetName,
         roomId: roomId
       };
-      const offerPayloadStr = JSON.stringify(offerData);
+      const offerPayloadStr = JSON.stringify({ type: "file-transfer-offer", ...offerData });
 
       // Attempt send over WebRTC Data Channel
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
@@ -1113,6 +1117,7 @@
       // Also send over Socket.IO
       const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
       if (socket) {
+        socket.emit("file-transfer-offer", offerData);
         socket.emit("file-offer", offerData);
       }
 
@@ -1125,25 +1130,28 @@
     // Receiver actions for WebRTC file offer
     const handleAcceptOffer = () => {
       if (!incomingFileOffer) return;
-      const { fileId, senderId, senderNickname, fileName } = incomingFileOffer;
+      const { fileId, senderId, senderName, senderNickname, fileName } = incomingFileOffer;
+      const targetSid = senderId || incomingFileOffer.from;
       const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
 
       const acceptPayload = {
-        type: "file-accept",
         fileId: fileId,
-        senderId: senderId,
+        to: targetSid,
+        targetSid: targetSid,
+        senderId: targetSid,
         receiverId: mySocketId,
         receiverNickname: username || "User",
-        targetSid: senderId,
+        receiverName: username || "User",
         roomId: roomId
       };
-      const acceptStr = JSON.stringify(acceptPayload);
+      const acceptStr = JSON.stringify({ type: "file-transfer-accept", ...acceptPayload });
 
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
-        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(senderId, acceptStr);
+        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(targetSid, acceptStr);
       }
       const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
       if (socket) {
+        socket.emit("file-transfer-accept", acceptPayload);
         socket.emit("file-accept", acceptPayload);
       }
 
@@ -1154,24 +1162,27 @@
     const handleDeclineOffer = () => {
       if (!incomingFileOffer) return;
       const { fileId, senderId } = incomingFileOffer;
+      const targetSid = senderId || incomingFileOffer.from;
       const mySocketId = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
 
       const declinePayload = {
-        type: "file-decline",
         fileId: fileId,
-        senderId: senderId,
+        to: targetSid,
+        targetSid: targetSid,
+        senderId: targetSid,
         receiverId: mySocketId,
         receiverNickname: username || "User",
-        targetSid: senderId,
+        receiverName: username || "User",
         roomId: roomId
       };
-      const declineStr = JSON.stringify(declinePayload);
+      const declineStr = JSON.stringify({ type: "file-transfer-decline", ...declinePayload });
 
       if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.sendDataChannelMessage === "function") {
-        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(senderId, declineStr);
+        window.__NETCHAT_BRIDGE__.sendDataChannelMessage(targetSid, declineStr);
       }
       const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
       if (socket) {
+        socket.emit("file-transfer-decline", declinePayload);
         socket.emit("file-decline", declinePayload);
       }
 
@@ -1343,24 +1354,36 @@
       };
 
       const onFileOffer = (e) => {
-        const data = e.detail;
+        const data = e.detail || e;
         if (!data || !data.fileId) return;
         const mySid = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
         if (data.senderId && mySid && data.senderId === mySid) return;
+        if (data.from && mySid && data.from === mySid) return;
         if (data.senderNickname && username && data.senderNickname.toLowerCase() === username.toLowerCase()) return;
+        if (data.senderName && username && data.senderName.toLowerCase() === username.toLowerCase()) return;
         setIncomingFileOffer(data);
       };
 
       const onFileAccept = (e) => {
-        const data = e.detail;
+        const data = e.detail || e;
         const fileId = data?.fileId || data?.id;
-        if (!fileId) return;
-        const pending = pendingUploadsRef.current[fileId];
-        if (!pending) return;
-        delete pendingUploadsRef.current[fileId];
+        let pending = fileId ? (pendingUploadsRef.current[fileId] || pendingUploadsRef.current[String(fileId)]) : null;
+        if (!pending && pendingFileRef.current) {
+          pending = {
+            file: pendingFileRef.current,
+            targetSid: data?.receiverId || data?.from || "ALL",
+            targetName: data?.receiverName || data?.receiverNickname || "Peer",
+            fileId: fileId || Date.now()
+          };
+        }
+        if (!pending || !pending.file) return;
+        if (fileId) {
+          delete pendingUploadsRef.current[fileId];
+          delete pendingUploadsRef.current[String(fileId)];
+        }
 
-        const targetSid = (data && (data.receiverId || data.targetSid || data.senderId)) || pending.targetSid;
-        const targetName = (data && (data.receiverNickname || data.targetName)) || pending.targetName;
+        const targetSid = (data && (data.receiverId || data.targetSid || data.senderId || data.from)) || pending.targetSid;
+        const targetName = (data && (data.receiverNickname || data.receiverName || data.targetName)) || pending.targetName;
 
         showToast(`Transfer accepted! Sending '${pending.file.name}'...`);
         if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.startChunkedTransfer === "function") {
@@ -1369,12 +1392,13 @@
       };
 
       const onFileDecline = (e) => {
-        const data = e.detail;
+        const data = e.detail || e;
         const fileId = data?.fileId || data?.id;
-        if (fileId && pendingUploadsRef.current[fileId]) {
+        if (fileId) {
           delete pendingUploadsRef.current[fileId];
+          delete pendingUploadsRef.current[String(fileId)];
         }
-        showToast("Transfer declined by user");
+        showToast("Transfer declined by peer");
       };
 
       window.addEventListener("netchat:connection_changed", onConnectionChanged);
@@ -1387,6 +1411,16 @@
       window.addEventListener("netchat:file_accept", onFileAccept);
       window.addEventListener("netchat:file_decline", onFileDecline);
 
+      const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
+      if (socket) {
+        socket.on("file-transfer-offer", onFileOffer);
+        socket.on("file-offer", onFileOffer);
+        socket.on("file-transfer-accept", onFileAccept);
+        socket.on("file-accept", onFileAccept);
+        socket.on("file-transfer-decline", onFileDecline);
+        socket.on("file-decline", onFileDecline);
+      }
+
       return () => {
         clearInterval(interval);
         window.removeEventListener("netchat:connection_changed", onConnectionChanged);
@@ -1398,6 +1432,14 @@
         window.removeEventListener("netchat:file_offer", onFileOffer);
         window.removeEventListener("netchat:file_accept", onFileAccept);
         window.removeEventListener("netchat:file_decline", onFileDecline);
+        if (socket) {
+          socket.off("file-transfer-offer", onFileOffer);
+          socket.off("file-offer", onFileOffer);
+          socket.off("file-transfer-accept", onFileAccept);
+          socket.off("file-accept", onFileAccept);
+          socket.off("file-transfer-decline", onFileDecline);
+          socket.off("file-decline", onFileDecline);
+        }
       };
     }, [username]);
 
@@ -1810,17 +1852,9 @@
           )
         ),
 
-        // Right Actions Group (Exact 5-icon order)
+        // Right Actions Group
         h("div", { className: "flex items-center gap-1 sm:gap-2 shrink-0" },
-          // Button 1 - Share/Link
-          h("button", {
-            type: "button",
-            onClick: handleShare,
-            title: "Share Room Link",
-            className: "hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 p-2 rounded-lg transition-colors border border-transparent hover:border-zinc-700/50 cursor-pointer"
-          }, h(Icon, { name: "link", className: "w-4 h-4" })),
-
-          // Button 2 - Voice Call
+          // Button 1 - Voice Call
           h("button", {
             type: "button",
             onClick: handleToggleVoice,
@@ -2228,10 +2262,10 @@
 
       // Responsive WebRTC Incoming File Offer Modal Banner
       incomingFileOffer && h("div", {
-        className: "fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-zinc-900 border border-zinc-700 p-4 rounded-xl shadow-2xl flex flex-col gap-3 w-[90%] max-w-sm"
+        className: "fixed top-5 left-1/2 -translate-x-1/2 z-[250] bg-zinc-900 border border-zinc-700 p-4 rounded-xl shadow-2xl flex flex-col gap-3 min-w-[300px]"
       },
         h("div", { className: "text-zinc-100 text-sm font-normal" },
-          `${incomingFileOffer.senderNickname || "User"} wants to send: `,
+          `${incomingFileOffer.senderName || incomingFileOffer.senderNickname || "User"} wants to send: `,
           h("span", { className: "font-semibold text-emerald-400" }, incomingFileOffer.fileName || "File"),
           h("span", { className: "text-zinc-400 ml-1" }, `(${formatBytes(incomingFileOffer.fileSize || 0)})`)
         ),

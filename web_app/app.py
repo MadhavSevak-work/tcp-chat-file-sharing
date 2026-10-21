@@ -1349,6 +1349,7 @@ def handle_file_reject(data):
 
 
 # WebRTC P2P Direct File Handshake Relays
+@socketio.on("file-transfer-offer")
 @socketio.on("file-offer")
 def handle_file_offer_dash(data):
     """Relays WebRTC direct file offer metadata to target peer with zero server retention."""
@@ -1356,13 +1357,25 @@ def handle_file_offer_dash(data):
         return
     sid = request.sid
     room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
-    target_sid = data.get("targetSid") or data.get("target_sid")
+    target_sid = data.get("to") or data.get("targetSid") or data.get("target_sid")
+    sender_name = data.get("senderName") or data.get("senderNickname") or room_members.get(room_id, {}).get(sid, "Peer")
+    payload = {
+        **data,
+        "senderId": sid,
+        "from": sid,
+        "senderNickname": sender_name,
+        "senderName": sender_name,
+        "roomId": room_id
+    }
     if target_sid and target_sid != "ALL":
-        emit("file-offer", data, room=target_sid)
+        emit("file-transfer-offer", payload, room=target_sid)
+        emit("file-offer", payload, room=target_sid)
     elif room_id:
-        emit("file-offer", data, room=room_id, include_self=False)
+        emit("file-transfer-offer", payload, room=room_id, include_self=False)
+        emit("file-offer", payload, room=room_id, include_self=False)
 
 
+@socketio.on("file-transfer-accept")
 @socketio.on("file-accept")
 def handle_file_accept_dash(data):
     """Relays WebRTC file accept approval signal to the offering sender."""
@@ -1370,13 +1383,22 @@ def handle_file_accept_dash(data):
         return
     sid = request.sid
     room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
-    target_sid = data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    target_sid = data.get("to") or data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    payload = {
+        **data,
+        "receiverId": sid,
+        "from": sid,
+        "roomId": room_id
+    }
     if target_sid:
-        emit("file-accept", data, room=target_sid)
+        emit("file-transfer-accept", payload, room=target_sid)
+        emit("file-accept", payload, room=target_sid)
     elif room_id:
-        emit("file-accept", data, room=room_id, include_self=False)
+        emit("file-transfer-accept", payload, room=room_id, include_self=False)
+        emit("file-accept", payload, room=room_id, include_self=False)
 
 
+@socketio.on("file-transfer-decline")
 @socketio.on("file-decline")
 def handle_file_decline_dash(data):
     """Relays WebRTC file decline signal to the offering sender."""
@@ -1384,11 +1406,19 @@ def handle_file_decline_dash(data):
         return
     sid = request.sid
     room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
-    target_sid = data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    target_sid = data.get("to") or data.get("targetSid") or data.get("target_sid") or data.get("senderId")
+    payload = {
+        **data,
+        "receiverId": sid,
+        "from": sid,
+        "roomId": room_id
+    }
     if target_sid:
-        emit("file-decline", data, room=target_sid)
+        emit("file-transfer-decline", payload, room=target_sid)
+        emit("file-decline", payload, room=target_sid)
     elif room_id:
-        emit("file-decline", data, room=room_id, include_self=False)
+        emit("file-transfer-decline", payload, room=room_id, include_self=False)
+        emit("file-decline", payload, room=room_id, include_self=False)
 
 
 @socketio.on("p2p_direct_packet")
@@ -1398,7 +1428,7 @@ def handle_p2p_direct_packet(data):
         return
     sid = request.sid
     room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
-    target_sid = data.get("targetSid") or data.get("target_sid")
+    target_sid = data.get("to") or data.get("targetSid") or data.get("target_sid")
     sender_name = room_members.get(room_id, {}).get(sid, "Peer")
     payload = {
         "sender_sid": sid,
