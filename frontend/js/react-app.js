@@ -973,6 +973,17 @@
     const pendingFileRef = useRef(null);
     const pendingUploadsRef = useRef({});
 
+    // WebRTC Voice/Video Call Signaling States & Media Refs
+    const [incomingCall, setIncomingCall] = useState(null);
+    const [remoteStream, setRemoteStream] = useState(null);
+    const [callPeerName, setCallPeerName] = useState("");
+    const localStreamRef = useRef(null);
+    const peerConnectionRef = useRef(null);
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
+    const remoteAudioRef = useRef(null);
+    const callTargetSidRef = useRef(null);
+
     // Byte formatter for file sizes
     const formatBytes = (bytes, decimals = 1) => {
       if (!bytes || bytes === 0) return "0 B";
@@ -1401,6 +1412,84 @@
         showToast("Transfer declined by peer");
       };
 
+      const onIncomingCall = (e) => {
+        const data = e?.detail || e;
+        if (!data) return;
+        const mySid = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket && window.__NETCHAT_STATE__.socket.id) || "local";
+        if (data.callerId && mySid && data.callerId === mySid) return;
+        if (data.from && mySid && data.from === mySid) return;
+        if (data.callerName && username && data.callerName.toLowerCase() === username.toLowerCase()) return;
+        setIncomingCall(data);
+      };
+
+      const onCallAccepted = async (e) => {
+        const data = e?.detail || e;
+        if (!data) return;
+        showToast(`Connected to ${data.receiverName || "Peer"}`);
+        setCallPeerName(data.receiverName || "Connected");
+        callTargetSidRef.current = data.from || data.receiverId;
+        const pc = peerConnectionRef.current;
+        if (pc && data.answer && !pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          } catch (err) {
+            console.warn("[Remote SDP Error]", err);
+          }
+        }
+      };
+
+      const onCallRejected = () => {
+        showToast("Call declined");
+        teardownCallMedia();
+      };
+
+      const onEndCallSignal = () => {
+        showToast("Call ended");
+        teardownCallMedia();
+      };
+
+      const onIceCandidateSignal = (e) => {
+        const data = e?.detail || e;
+        if (!data || !data.candidate) return;
+        const pc = peerConnectionRef.current;
+        if (pc) {
+          try {
+            pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+          } catch (_) {}
+        }
+      };
+
+      const onRemoteOfferSignal = async (e) => {
+        const data = e?.detail || e;
+        if (!data || !data.offer) return;
+        const pc = peerConnectionRef.current;
+        if (pc && !pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            const socket = getActiveSocket();
+            if (socket) {
+              socket.emit("webrtc_answer", {
+                to: data.sender_sid || data.from,
+                answer: answer
+              });
+            }
+          } catch (_) {}
+        }
+      };
+
+      const onRemoteAnswerSignal = async (e) => {
+        const data = e?.detail || e;
+        if (!data || !data.answer) return;
+        const pc = peerConnectionRef.current;
+        if (pc && !pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+          } catch (_) {}
+        }
+      };
+
       window.addEventListener("netchat:connection_changed", onConnectionChanged);
       window.addEventListener("netchat:new_message", onNewMessage);
       window.addEventListener("netchat:users_updated", onUsersUpdated);
@@ -1410,6 +1499,10 @@
       window.addEventListener("netchat:file_offer", onFileOffer);
       window.addEventListener("netchat:file_accept", onFileAccept);
       window.addEventListener("netchat:file_decline", onFileDecline);
+      window.addEventListener("netchat:incoming_call", onIncomingCall);
+      window.addEventListener("netchat:call_accepted", onCallAccepted);
+      window.addEventListener("netchat:call_rejected", onCallRejected);
+      window.addEventListener("netchat:end_call", onEndCallSignal);
 
       const socket = (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket;
       if (socket) {
@@ -1419,6 +1512,21 @@
         socket.on("file-accept", onFileAccept);
         socket.on("file-transfer-decline", onFileDecline);
         socket.on("file-decline", onFileDecline);
+        socket.on("incoming-call", onIncomingCall);
+        socket.on("incoming_call", onIncomingCall);
+        socket.on("call-accepted", onCallAccepted);
+        socket.on("call_accepted", onCallAccepted);
+        socket.on("call-rejected", onCallRejected);
+        socket.on("call_rejected", onCallRejected);
+        socket.on("end-call", onEndCallSignal);
+        socket.on("end_call", onEndCallSignal);
+        socket.on("webrtc_call_end", onEndCallSignal);
+        socket.on("webrtc_ice_candidate", onIceCandidateSignal);
+        socket.on("ice-candidate", onIceCandidateSignal);
+        socket.on("webrtc_offer", onRemoteOfferSignal);
+        socket.on("call-offer", onRemoteOfferSignal);
+        socket.on("webrtc_answer", onRemoteAnswerSignal);
+        socket.on("call-answer", onRemoteAnswerSignal);
       }
 
       return () => {
@@ -1432,6 +1540,10 @@
         window.removeEventListener("netchat:file_offer", onFileOffer);
         window.removeEventListener("netchat:file_accept", onFileAccept);
         window.removeEventListener("netchat:file_decline", onFileDecline);
+        window.removeEventListener("netchat:incoming_call", onIncomingCall);
+        window.removeEventListener("netchat:call_accepted", onCallAccepted);
+        window.removeEventListener("netchat:call_rejected", onCallRejected);
+        window.removeEventListener("netchat:end_call", onEndCallSignal);
         if (socket) {
           socket.off("file-transfer-offer", onFileOffer);
           socket.off("file-offer", onFileOffer);
@@ -1439,9 +1551,43 @@
           socket.off("file-accept", onFileAccept);
           socket.off("file-transfer-decline", onFileDecline);
           socket.off("file-decline", onFileDecline);
+          socket.off("incoming-call", onIncomingCall);
+          socket.off("incoming_call", onIncomingCall);
+          socket.off("call-accepted", onCallAccepted);
+          socket.off("call_accepted", onCallAccepted);
+          socket.off("call-rejected", onCallRejected);
+          socket.off("call_rejected", onCallRejected);
+          socket.off("end-call", onEndCallSignal);
+          socket.off("end_call", onEndCallSignal);
+          socket.off("webrtc_call_end", onEndCallSignal);
+          socket.off("webrtc_ice_candidate", onIceCandidateSignal);
+          socket.off("ice-candidate", onIceCandidateSignal);
+          socket.off("webrtc_offer", onRemoteOfferSignal);
+          socket.off("call-offer", onRemoteOfferSignal);
+          socket.off("webrtc_answer", onRemoteAnswerSignal);
+          socket.off("call-answer", onRemoteAnswerSignal);
         }
       };
     }, [username]);
+
+    // Synchronize media stream changes to video/audio DOM elements
+    useEffect(() => {
+      if (remoteVideoRef.current && remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+      if (remoteAudioRef.current && remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+    }, [remoteStream]);
+
+    useEffect(() => {
+      if (localVideoRef.current && localStream) {
+        localVideoRef.current.srcObject = localStream;
+        localVideoRef.current.play().catch(() => {});
+      }
+    }, [localStream, callType, isCallActive]);
 
     // Auto-scroll to bottom whenever messages array changes
     useEffect(() => {
@@ -1647,42 +1793,302 @@
       }
     };
 
-    // Voice / Video Call Toggles
-    const handleToggleVoice = () => {
-      if (isCallActive) {
-        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
-        setIsCallActive(false);
-      } else {
-        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.startCall("audio");
+    // Helper to get active socket
+    const getActiveSocket = () => (window.__NETCHAT_STATE__ && window.__NETCHAT_STATE__.socket) || window.socket || null;
+
+    // Teardown call resources
+    const teardownCallMedia = () => {
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((track) => {
+          try { track.stop(); } catch (_) {}
+        });
+        localStreamRef.current = null;
+      }
+      if (peerConnectionRef.current) {
+        try { peerConnectionRef.current.close(); } catch (_) {}
+        peerConnectionRef.current = null;
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = null;
+      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+
+      setLocalStream(null);
+      setRemoteStream(null);
+      setIsCallActive(false);
+      setIsVoiceMuted(false);
+      setIsCameraOff(false);
+      setCallPeerName("");
+      callTargetSidRef.current = null;
+
+      if (window.__NETCHAT_BRIDGE__ && typeof window.__NETCHAT_BRIDGE__.endCall === "function") {
+        try { window.__NETCHAT_BRIDGE__.endCall(); } catch (_) {}
+      }
+    };
+
+    // End active call and notify peer
+    const handleEndCall = () => {
+      const socket = getActiveSocket();
+      if (socket) {
+        socket.emit("end-call", {
+          roomId: roomId,
+          to: callTargetSidRef.current
+        });
+        socket.emit("end_call", {
+          roomId: roomId,
+          to: callTargetSidRef.current
+        });
+      }
+      teardownCallMedia();
+      showToast("Call ended");
+    };
+
+    // Start outgoing WebRTC call
+    const startCall = async (type) => {
+      try {
+        setCallType(type);
         setIsCallActive(true);
-        setCallType("audio");
+        setCallPeerName("Calling room...");
+        showToast(`Calling room (${type})...`);
+
+        // a & b. Acquire local media stream (audio-only disables video track completely):
+        const isVideo = type === "video";
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false
+        });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+
+        // c. Set local stream & display local call UI/pip
+        if (localVideoRef.current && isVideo) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+
+        // Create RTCPeerConnection with standard STUN server
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+        peerConnectionRef.current = pc;
+
+        // Add local tracks:
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+        // Handle ontrack:
+        pc.ontrack = (event) => {
+          const rStream = event.streams[0] || new MediaStream([event.track]);
+          setRemoteStream(rStream);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = rStream;
+            remoteVideoRef.current.play().catch(() => {});
+          }
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = rStream;
+            remoteAudioRef.current.play().catch(() => {});
+          }
+        };
+
+        // Handle ICE candidates:
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            const socket = getActiveSocket();
+            if (socket) {
+              socket.emit("webrtc_ice_candidate", {
+                to: callTargetSidRef.current,
+                candidate: event.candidate,
+                roomId: roomId
+              });
+              socket.emit("ice-candidate", {
+                to: callTargetSidRef.current,
+                candidate: event.candidate,
+                roomId: roomId
+              });
+            }
+          }
+        };
+
+        // Create SDP offer:
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        // d. Emit call invitation through Socket.IO:
+        const socket = getActiveSocket();
+        const mySocketId = (socket && socket.id) || "local";
+        if (socket) {
+          socket.emit("call-user", {
+            roomId: roomId,
+            callType: type,
+            callerName: username || "Anonymous",
+            callerId: mySocketId,
+            offer: offer
+          });
+          socket.emit("call_user", {
+            roomId: roomId,
+            callType: type,
+            callerName: username || "Anonymous",
+            callerId: mySocketId,
+            offer: offer
+          });
+        }
+      } catch (err) {
+        console.error("[Start Call Error]", err);
+        showToast(`Could not start call: ${err.message || err}`);
+        teardownCallMedia();
+      }
+    };
+
+    // Toggle Voice / Video
+    const handleToggleVoice = () => {
+      if (isCallActive && callType === "audio") {
+        handleEndCall();
+      } else {
+        if (isCallActive) teardownCallMedia();
+        startCall("audio");
       }
     };
 
     const handleToggleVideo = () => {
       if (isCallActive && callType === "video") {
-        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
-        setIsCallActive(false);
+        handleEndCall();
       } else {
-        if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.startCall("video");
-        setIsCallActive(true);
-        setCallType("video");
+        if (isCallActive) teardownCallMedia();
+        startCall("video");
       }
     };
 
+    // Receiver actions: Accept / Decline
+    const handleAcceptCall = async () => {
+      if (!incomingCall) return;
+      const callData = incomingCall;
+      setIncomingCall(null);
+      const type = callData.callType || "audio";
+      setCallType(type);
+      setIsCallActive(true);
+      setCallPeerName(callData.callerName || "Peer");
+      callTargetSidRef.current = callData.callerId;
+
+      try {
+        // a. Acquire receiver stream (audio-only disables video completely):
+        const isVideo = type === "video";
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: isVideo ? { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" } : false
+        });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+
+        if (localVideoRef.current && isVideo) {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+
+        // b. Create RTCPeerConnection with STUN:
+        const pc = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+        });
+        peerConnectionRef.current = pc;
+
+        // c. Add local tracks:
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+        // d. Handle ontrack:
+        pc.ontrack = (event) => {
+          const rStream = event.streams[0] || new MediaStream([event.track]);
+          setRemoteStream(rStream);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = rStream;
+            remoteVideoRef.current.play().catch(() => {});
+          }
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.srcObject = rStream;
+            remoteAudioRef.current.play().catch(() => {});
+          }
+        };
+
+        // Handle ICE:
+        pc.onicecandidate = (event) => {
+          if (event.candidate) {
+            const socket = getActiveSocket();
+            if (socket) {
+              socket.emit("webrtc_ice_candidate", {
+                to: callData.callerId,
+                candidate: event.candidate,
+                roomId: roomId
+              });
+              socket.emit("ice-candidate", {
+                to: callData.callerId,
+                candidate: event.candidate,
+                roomId: roomId
+              });
+            }
+          }
+        };
+
+        let answer = null;
+        if (callData.offer) {
+          await pc.setRemoteDescription(new RTCSessionDescription(callData.offer));
+          answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+        }
+
+        // e. Emit call-accepted back to caller with signaling SDP/ICE:
+        const socket = getActiveSocket();
+        if (socket) {
+          socket.emit("call-accepted", {
+            to: callData.callerId,
+            callerId: callData.callerId,
+            answer: answer,
+            receiverName: username || "User"
+          });
+          socket.emit("call_accepted", {
+            to: callData.callerId,
+            callerId: callData.callerId,
+            answer: answer,
+            receiverName: username || "User"
+          });
+        }
+        showToast(`Connected to ${callData.callerName}'s ${type} call.`);
+      } catch (err) {
+        console.error("[Accept Call Error]", err);
+        showToast(`Could not connect call: ${err.message || err}`);
+        teardownCallMedia();
+      }
+    };
+
+    const handleDeclineCall = () => {
+      if (!incomingCall) return;
+      const socket = getActiveSocket();
+      if (socket) {
+        socket.emit("call-rejected", {
+          to: incomingCall.callerId,
+          callerId: incomingCall.callerId,
+          roomId: roomId
+        });
+        socket.emit("call_rejected", {
+          to: incomingCall.callerId,
+          callerId: incomingCall.callerId,
+          roomId: roomId
+        });
+      }
+      setIncomingCall(null);
+    };
+
     const handleToggleMute = () => {
+      if (localStreamRef.current) {
+        const audioTracks = localStreamRef.current.getAudioTracks();
+        audioTracks.forEach((t) => { t.enabled = !t.enabled; });
+        setIsVoiceMuted((prev) => !prev);
+      }
       if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.toggleMute();
-      setIsVoiceMuted((prev) => !prev);
     };
 
     const handleToggleCamera = () => {
+      if (localStreamRef.current) {
+        const videoTracks = localStreamRef.current.getVideoTracks();
+        videoTracks.forEach((t) => { t.enabled = !t.enabled; });
+        setIsCameraOff((prev) => !prev);
+      }
       if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.toggleCamera();
-      setIsCameraOff((prev) => !prev);
-    };
-
-    const handleEndCall = () => {
-      if (window.__NETCHAT_BRIDGE__) window.__NETCHAT_BRIDGE__.endCall();
-      setIsCallActive(false);
     };
 
     const handleDisconnect = (e) => {
@@ -1799,9 +2205,10 @@
       ? "bg-emerald-500 animate-pulse ring-2 ring-emerald-500/20"
       : (connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500");
 
-    // Dynamic list of call participants: local user + connected mesh peers
+    // Dynamic list of call participants: local user + active peer + connected mesh peers
     const activeCallParticipants = [
       { id: "local", name: username || "You", isLocal: true, isSpeaking: false, isMuted: isVoiceMuted },
+      ...(callPeerName && callPeerName !== "Calling room..." ? [{ id: "remote-active", name: callPeerName, isLocal: false, isSpeaking: false, isMuted: false }] : []),
       ...meshPeers.map((p) => ({
         id: p.id,
         name: p.name,
@@ -2282,6 +2689,90 @@
           }, "Decline")
         )
       ),
+
+      // Responsive WebRTC Incoming Call Notification Banner
+      incomingCall && h("div", {
+        className: "fixed top-5 left-1/2 -translate-x-1/2 z-[250] bg-zinc-900 border border-zinc-700 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 w-[90%] max-w-sm animate-in fade-in slide-in-from-top-3 duration-200"
+      },
+        h("div", { className: "flex flex-col min-w-0" },
+          h("span", { className: "text-sm font-semibold text-white truncate" }, incomingCall.callerName || "Peer"),
+          h("span", { className: "text-xs text-zinc-400 capitalize" }, `Incoming ${incomingCall.callType || "voice"} call...`)
+        ),
+        h("div", { className: "flex items-center gap-2 shrink-0" },
+          h("button", {
+            type: "button",
+            onClick: handleAcceptCall,
+            title: "Accept Call",
+            className: "bg-emerald-600 hover:bg-emerald-500 text-white p-2.5 rounded-full cursor-pointer transition-colors shadow flex items-center justify-center"
+          }, h(Icon, { name: "phone", className: "w-[18px] h-[18px]" })),
+          h("button", {
+            type: "button",
+            onClick: handleDeclineCall,
+            title: "Decline Call",
+            className: "bg-red-600 hover:bg-red-500 text-white p-2.5 rounded-full cursor-pointer transition-colors flex items-center justify-center shadow"
+          }, h(Icon, { name: "phone-off", className: "w-[18px] h-[18px]" }))
+        )
+      ),
+
+      // Video Call Floating PiP Interface
+      isCallActive && callType === "video" && h("div", {
+        id: "react-video-call-pip",
+        className: "fixed bottom-20 right-4 sm:bottom-24 sm:right-6 z-[150] flex flex-col items-end gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150"
+      },
+        h("div", {
+          className: "w-64 sm:w-72 h-44 sm:h-48 bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden shadow-2xl relative flex items-center justify-center"
+        },
+          h("video", {
+            ref: remoteVideoRef,
+            autoPlay: true,
+            playsInline: true,
+            className: `w-full h-full object-cover ${remoteStream ? "block" : "hidden"}`
+          }),
+          !remoteStream && h("div", { className: "flex flex-col items-center justify-center p-4 text-center" },
+            h("div", { className: "w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center mb-2" },
+              h(Icon, { name: "video", className: "w-5 h-5 text-emerald-400 animate-pulse" })
+            ),
+            h("span", { className: "text-xs font-medium text-zinc-300" }, callPeerName || "Waiting for peer..."),
+            h("span", { className: "text-[10px] text-zinc-500 mt-0.5" }, "Camera connected")
+          ),
+          h("div", {
+            className: "absolute top-2 right-2 w-20 h-14 bg-black/80 border border-zinc-600 rounded-lg overflow-hidden shadow-md"
+          },
+            h("video", {
+              ref: localVideoRef,
+              autoPlay: true,
+              playsInline: true,
+              muted: true,
+              className: `w-full h-full object-cover ${isCameraOff ? "hidden" : "scale-x-[-1]"}`
+            }),
+            isCameraOff && h("div", { className: "w-full h-full flex items-center justify-center bg-zinc-800 text-[10px] text-zinc-400" }, "Off")
+          ),
+          h("div", {
+            className: "absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2.5 flex items-center justify-between"
+          },
+            h("span", { className: "text-xs font-semibold text-white drop-shadow truncate max-w-[130px]" },
+              callPeerName || "Peer"
+            ),
+            h("button", {
+              type: "button",
+              onClick: handleEndCall,
+              title: "End Call",
+              className: "bg-red-600 hover:bg-red-500 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow"
+            },
+              h(Icon, { name: "phone-off", className: "w-3 h-3" }),
+              h("span", null, "End")
+            )
+          )
+        )
+      ),
+
+      // Hidden audio element for receiving audio stream
+      h("audio", {
+        ref: remoteAudioRef,
+        autoPlay: true,
+        playsInline: true,
+        className: "hidden"
+      }),
 
       // Toast Notification
       toastMessage && h("div", {

@@ -1778,6 +1778,32 @@
       handleCallUserLeft(data);
     });
 
+    // Real-Time WebRTC Call Handshake Signal Listeners
+    state.socket.on("incoming-call", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:incoming_call", { detail: data }));
+    });
+    state.socket.on("incoming_call", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:incoming_call", { detail: data }));
+    });
+    state.socket.on("call-accepted", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:call_accepted", { detail: data }));
+    });
+    state.socket.on("call_accepted", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:call_accepted", { detail: data }));
+    });
+    state.socket.on("call-rejected", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:call_rejected", { detail: data }));
+    });
+    state.socket.on("call_rejected", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:call_rejected", { detail: data }));
+    });
+    state.socket.on("end-call", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:end_call", { detail: data }));
+    });
+    state.socket.on("end_call", (data) => {
+      window.dispatchEvent(new CustomEvent("netchat:end_call", { detail: data }));
+    });
+
     // WebRTC Direct File Transfer Handshake Listeners
     state.socket.on("file-transfer-offer", (data) => {
       window.dispatchEvent(new CustomEvent("netchat:file_offer", { detail: data }));

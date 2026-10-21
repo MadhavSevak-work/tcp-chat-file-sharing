@@ -139,8 +139,8 @@ ip_connection_limiter = SlidingWindowRateLimiter(max_requests=60, window_seconds
 # Per-socket join/create throttling: max 20 attempts per socket per 10 seconds
 socket_join_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=10.0)
 
-# Message throttling: max 10 incoming chat messages per active socket per second (1.0s)
-socket_message_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=1.0)
+# Message throttling: max 5 incoming chat messages per active socket per second (1.0s)
+socket_message_limiter = SlidingWindowRateLimiter(max_requests=5, window_seconds=1.0)
 
 
 def get_client_ip() -> str:
@@ -707,9 +707,8 @@ def handle_join_room(data):
             is_same_session = bool(
                 client_session_id and existing_sess.get("session_id") == client_session_id
             )
-            is_same_client_ip = (existing_sess.get("ip") == client_ip)
 
-            if is_same_socket or is_same_session or is_same_client_ip:
+            if is_same_socket or is_same_session:
                 # Reconnection / re-claiming existing spot gracefully
                 logger.info(
                     f"[E2EE Re-claim] User '{username}' re-claimed spot in room '{room_id}' "
@@ -725,7 +724,7 @@ def handle_join_room(data):
                 # Genuine collision with another active user in the same room
                 err = {
                     "status": "error",
-                    "message": "Username already taken in this room."
+                    "message": "Username is already taken in this room."
                 }
                 emit("join-error", {"message": err["message"]})
                 emit("join_error", {"message": err["message"]})
@@ -1028,16 +1027,18 @@ def handle_send_private(data):
 # ============================================================================
 
 @socketio.on("webrtc_offer")
+@socketio.on("call-offer")
 def handle_webrtc_offer(data):
     """Relays WebRTC SDP Offer directly to target peer or room with zero retention."""
     sid = request.sid
     if not isinstance(data, dict):
         return
-    room_id = socket_to_room.get(sid) or data.get("room_id")
-    target_sid = data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("to") or data.get("target_sid") or data.get("targetSid")
     sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
     payload = {
         "sender_sid": sid,
+        "from": sid,
         "sender": sender_name,
         "offer": data.get("offer"),
         "type": data.get("type", "video"),
@@ -1045,64 +1046,162 @@ def handle_webrtc_offer(data):
     }
     if target_sid:
         emit("webrtc_offer", payload, room=target_sid)
+        emit("call-offer", payload, room=target_sid)
     elif room_id:
         emit("webrtc_offer", payload, room=room_id, include_self=False)
+        emit("call-offer", payload, room=room_id, include_self=False)
 
 
 @socketio.on("webrtc_answer")
+@socketio.on("call-answer")
 def handle_webrtc_answer(data):
     """Relays WebRTC SDP Answer directly to offering peer with zero retention."""
     sid = request.sid
     if not isinstance(data, dict):
         return
-    room_id = socket_to_room.get(sid) or data.get("room_id")
-    target_sid = data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("to") or data.get("target_sid") or data.get("targetSid") or data.get("callerId")
     sender_name = room_members.get(room_id, {}).get(sid, data.get("sender", "Peer"))
     payload = {
         "sender_sid": sid,
+        "from": sid,
         "sender": sender_name,
         "answer": data.get("answer"),
         "type": data.get("type", "video")
     }
     if target_sid:
         emit("webrtc_answer", payload, room=target_sid)
+        emit("call-answer", payload, room=target_sid)
     elif room_id:
         emit("webrtc_answer", payload, room=room_id, include_self=False)
+        emit("call-answer", payload, room=room_id, include_self=False)
 
 
 @socketio.on("webrtc_ice_candidate")
+@socketio.on("ice-candidate")
 def handle_webrtc_ice_candidate(data):
     """Relays ICE candidates directly between peers with zero retention."""
     sid = request.sid
     if not isinstance(data, dict):
         return
-    room_id = socket_to_room.get(sid) or data.get("room_id")
-    target_sid = data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("to") or data.get("target_sid") or data.get("targetSid") or data.get("callerId")
     payload = {
         "sender_sid": sid,
+        "from": sid,
         "candidate": data.get("candidate")
     }
     if target_sid:
         emit("webrtc_ice_candidate", payload, room=target_sid)
+        emit("ice-candidate", payload, room=target_sid)
     elif room_id:
         emit("webrtc_ice_candidate", payload, room=room_id, include_self=False)
+        emit("ice-candidate", payload, room=room_id, include_self=False)
 
 
-@socketio.on("webrtc_call_end")
-def handle_webrtc_call_end(data):
-    """Relays Call Terminated signal to peer with zero retention."""
+@socketio.on("call-user")
+@socketio.on("call_user")
+def handle_call_user_relay(data):
+    """Broadcasts a real-time call invitation to room peers."""
     sid = request.sid
     if not isinstance(data, dict):
         data = {}
-    room_id = socket_to_room.get(sid) or data.get("room_id")
-    target_sid = data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    if not room_id:
+        return
+    caller_name = data.get("callerName") or data.get("caller_name") or room_members.get(room_id, {}).get(sid, "Peer")
+    call_type = data.get("callType") or data.get("call_type") or "audio"
+    target_sid = data.get("to") or data.get("target_sid")
+    payload = {
+        "roomId": room_id,
+        "room_id": room_id,
+        "callType": call_type,
+        "call_type": call_type,
+        "callerName": caller_name,
+        "caller_name": caller_name,
+        "callerId": sid,
+        "caller_id": sid,
+        "from": sid,
+        "offer": data.get("offer")
+    }
+    if target_sid:
+        emit("incoming-call", payload, room=target_sid)
+        emit("incoming_call", payload, room=target_sid)
+    else:
+        emit("incoming-call", payload, room=room_id, include_self=False)
+        emit("incoming_call", payload, room=room_id, include_self=False)
+
+
+@socketio.on("call-accepted")
+@socketio.on("call_accepted")
+def handle_call_accepted_relay(data):
+    """Relays call acceptance and answer/SDP to caller."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    target = data.get("to") or data.get("callerId") or data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    receiver_name = room_members.get(room_id, {}).get(sid, data.get("receiverName", "Peer"))
+    payload = {
+        **data,
+        "from": sid,
+        "receiverId": sid,
+        "receiverName": receiver_name,
+        "answer": data.get("answer")
+    }
+    if target:
+        emit("call-accepted", payload, room=target)
+        emit("call_accepted", payload, room=target)
+    elif room_id:
+        emit("call-accepted", payload, room=room_id, include_self=False)
+        emit("call_accepted", payload, room=room_id, include_self=False)
+
+
+@socketio.on("call-rejected")
+@socketio.on("call_rejected")
+def handle_call_rejected_relay(data):
+    """Relays call rejection to caller."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    target = data.get("to") or data.get("callerId") or data.get("target_sid")
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    payload = {
+        **data,
+        "from": sid,
+        "rejecterId": sid
+    }
+    if target:
+        emit("call-rejected", payload, room=target)
+        emit("call_rejected", payload, room=target)
+    elif room_id:
+        emit("call-rejected", payload, room=room_id, include_self=False)
+        emit("call_rejected", payload, room=room_id, include_self=False)
+
+
+@socketio.on("end-call")
+@socketio.on("end_call")
+@socketio.on("webrtc_call_end")
+def handle_webrtc_call_end(data):
+    """Relays Call Terminated signal to peer/room with zero retention."""
+    sid = request.sid
+    if not isinstance(data, dict):
+        data = {}
+    room_id = socket_to_room.get(sid) or data.get("roomId") or data.get("room_id")
+    target_sid = data.get("to") or data.get("target_sid")
     payload = {
         "sender_sid": sid,
+        "from": sid,
+        "roomId": room_id,
         "reason": data.get("reason", "ended")
     }
     if target_sid:
+        emit("end-call", payload, room=target_sid)
+        emit("end_call", payload, room=target_sid)
         emit("webrtc_call_end", payload, room=target_sid)
-    elif room_id:
+    if room_id:
+        emit("end-call", payload, room=room_id, include_self=False)
+        emit("end_call", payload, room=room_id, include_self=False)
         emit("webrtc_call_end", payload, room=room_id, include_self=False)
 
 
